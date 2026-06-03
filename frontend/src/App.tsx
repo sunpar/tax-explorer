@@ -52,6 +52,13 @@ type ChartTooltipPayloadEntry = {
   payload?: Record<string, number | null | undefined>;
 };
 
+type ChartPointValue = {
+  value: number;
+  totalRate: number;
+  totalTax: number;
+  marginal: number;
+};
+
 type ChartTooltipProps = {
   active?: boolean;
   chartMode: ChartMode;
@@ -143,6 +150,56 @@ function chartValue(row: ChartRow, chartMode: ChartMode): number {
   if (chartMode === "marginalRate") return row.marginalTaxRatePercent;
   if (chartMode === "totalTax") return row.totalTaxNumber;
   return row.totalTaxRatePercent;
+}
+
+function chartPointValue(row: ChartRow, chartMode: ChartMode): ChartPointValue {
+  return {
+    value: chartValue(row, chartMode),
+    totalRate: row.totalTaxRatePercent,
+    totalTax: row.totalTaxNumber,
+    marginal: row.marginalTaxRatePercent
+  };
+}
+
+function chartValueAtIncome(
+  rows: ChartRow[],
+  income: number,
+  chartMode: ChartMode
+): ChartPointValue | null {
+  const exact = rows.find((row) => row.incomeNumber === income);
+  if (exact) return chartPointValue(exact, chartMode);
+
+  let lower: ChartRow | undefined;
+  let upper: ChartRow | undefined;
+  for (const row of rows) {
+    if (row.incomeNumber < income) lower = row;
+    if (row.incomeNumber > income) {
+      upper = row;
+      break;
+    }
+  }
+
+  if (!lower || !upper) return null;
+
+  const progress =
+    (income - lower.incomeNumber) / (upper.incomeNumber - lower.incomeNumber);
+  const totalTax =
+    lower.totalTaxNumber +
+    (upper.totalTaxNumber - lower.totalTaxNumber) * progress;
+  const totalRate = income === 0 ? 0 : (totalTax / income) * 100;
+  const marginal = lower.marginalTaxRatePercent;
+
+  return {
+    value:
+      chartMode === "totalTax"
+        ? totalTax
+        : chartMode === "marginalRate"
+          ? marginal
+          : totalRate,
+    totalRate,
+    totalTax,
+    marginal
+  };
 }
 
 function additionalMedicareThreshold(parameters: TaxParameters): number {
@@ -499,25 +556,25 @@ function App() {
   );
 
   const comparisonChartData = useMemo<ComparisonChartPoint[]>(() => {
-    const points = new Map<number, ComparisonChartPoint>();
-
+    const incomes = new Set<number>();
     for (const series of comparisonSeries) {
       for (const row of series.rows) {
-        const point =
-          points.get(row.incomeNumber) ??
-          ({ incomeNumber: row.incomeNumber } as ComparisonChartPoint);
-        const keys = chartPayloadKeys(series.key);
-        point[series.key] = chartValue(row, chartMode);
-        point[keys.totalRate] = row.totalTaxRatePercent;
-        point[keys.totalTax] = row.totalTaxNumber;
-        point[keys.marginal] = row.marginalTaxRatePercent;
-        points.set(row.incomeNumber, point);
+        incomes.add(row.incomeNumber);
       }
     }
 
-    return [...points.values()].sort(
-      (left, right) => left.incomeNumber - right.incomeNumber
-    );
+    return [...incomes].sort((left, right) => left - right).map((income) => {
+      const point = { incomeNumber: income } as ComparisonChartPoint;
+      for (const series of comparisonSeries) {
+        const keys = chartPayloadKeys(series.key);
+        const values = chartValueAtIncome(series.rows, income, chartMode);
+        point[series.key] = values?.value ?? null;
+        point[keys.totalRate] = values?.totalRate ?? null;
+        point[keys.totalTax] = values?.totalTax ?? null;
+        point[keys.marginal] = values?.marginal ?? null;
+      }
+      return point;
+    });
   }, [comparisonSeries, chartMode]);
 
   const selectedAdditionalMedicareThreshold =
@@ -799,6 +856,8 @@ function App() {
                 <CartesianGrid stroke="#e7e4dc" vertical={false} />
                 <XAxis
                   dataKey="incomeNumber"
+                  type="number"
+                  domain={[Number(start) || 0, Number(stop) || "dataMax"]}
                   tickFormatter={formatIncomeAxisTick}
                   stroke="#706b60"
                   minTickGap={24}

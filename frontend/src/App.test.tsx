@@ -130,7 +130,12 @@ vi.mock("recharts", async () => {
     ResponsiveContainer: ({ children }: { children: ChartChild }) =>
       React.createElement(React.Fragment, null, children),
     Tooltip: () => null,
-    XAxis: () => null,
+    XAxis: (props: Record<string, unknown>) =>
+      React.createElement("div", {
+        "data-testid": "x-axis",
+        "data-domain": JSON.stringify(props.domain),
+        "data-type": props.type
+      }),
     YAxis: () => null
   };
 });
@@ -209,10 +214,13 @@ function taxBurden(income: number, filingStatus: string): TaxBurden {
 }
 
 function incomeSeries(filingStatus: string): IncomeSeriesResponse {
+  const incomes =
+    filingStatus === "married_joint"
+      ? [0, 50000, 75000, 100000, 110000]
+      : [0, 50000, 80000, 100000, 110000];
+
   return {
-    rows: [0, 50000, 80000, 100000, 110000].map((income) =>
-      taxBurden(income, filingStatus)
-    )
+    rows: incomes.map((income) => taxBurden(income, filingStatus))
   };
 }
 
@@ -297,6 +305,11 @@ describe("App tax curve controls", () => {
     fireEvent.click(screen.getByLabelText("All filing statuses"));
 
     await waitFor(() => expect(screen.getByText("2 curves")).toBeInTheDocument());
+    expect(screen.getByTestId("x-axis")).toHaveAttribute("data-type", "number");
+    expect(screen.getByTestId("x-axis")).toHaveAttribute(
+      "data-domain",
+      "[0,110000]"
+    );
     const seriesNames = screen
       .getAllByTestId("line")
       .map((line) => line.dataset.name);
@@ -306,6 +319,10 @@ describe("App tax curve controls", () => {
     let income100k = chartData().find((point) => point.incomeNumber === 100000);
     expect(income100k?.curve_2026_single).toBe(20);
     expect(income100k?.curve_2026_married_joint).toBe(15);
+    const income75k = chartData().find((point) => point.incomeNumber === 75000);
+    expect(income75k?.curve_2026_single).toBe(20);
+    const income80k = chartData().find((point) => point.incomeNumber === 80000);
+    expect(income80k?.curve_2026_married_joint).toBe(15);
 
     fireEvent.click(screen.getByRole("button", { name: "Marginal Rate" }));
     await waitFor(() =>
