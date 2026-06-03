@@ -3,6 +3,8 @@ import {
   Area,
   CartesianGrid,
   ComposedChart,
+  Legend,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -27,9 +29,41 @@ type ChartRow = TaxBurden & {
   incomeNumber: number;
   totalTaxNumber: number;
   totalTaxRatePercent: number;
+  marginalTaxRatePercent: number;
 };
 
 type ChartMode = "rate" | "absolute";
+
+type CurveSeries = {
+  key: string;
+  label: string;
+  color: string;
+  rows: ChartRow[];
+};
+
+type ComparisonChartPoint = {
+  incomeNumber: number;
+} & Record<string, number | null>;
+
+type ChartClickState = {
+  activeLabel?: unknown;
+  activePayload?: Array<{
+    payload?: {
+      incomeNumber?: unknown;
+    };
+  }>;
+};
+
+const SERIES_COLORS = [
+  "#237a5b",
+  "#5966a8",
+  "#a65f2b",
+  "#8a4f94",
+  "#4b7f8f",
+  "#8c6d1f",
+  "#b04a54",
+  "#526b2f"
+];
 
 function toCurrency(value: string | number): string {
   return new Intl.NumberFormat("en-US", {
@@ -47,6 +81,77 @@ function formatPercentValue(value: string | number): string {
   return `${Number(value).toFixed(2)}%`;
 }
 
+function trimTrailingZeros(value: string): string {
+  return value.replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
+}
+
+function formatIncomeAxisTick(value: string | number): string {
+  const amount = Number(value);
+  if (Math.abs(amount) >= 500000) {
+    return `$${trimTrailingZeros((amount / 1000000).toFixed(1))}m`;
+  }
+  return `$${trimTrailingZeros((amount / 1000).toFixed(0))}k`;
+}
+
+function thousandsToDollars(value: string): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "0";
+  return trimTrailingZeros((amount * 1000).toFixed(2));
+}
+
+function dollarsToThousands(value: string | number): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "0";
+  return trimTrailingZeros((amount / 1000).toFixed(3));
+}
+
+function formatThousandsOption(value: string | number): string {
+  return `$${dollarsToThousands(value)}k`;
+}
+
+function seriesColor(index: number): string {
+  return SERIES_COLORS[index % SERIES_COLORS.length];
+}
+
+function seriesKey(year: number, filingStatus: string): string {
+  return `curve_${year}_${filingStatus.replace(/[^a-z0-9]+/gi, "_")}`;
+}
+
+function buildChartRows(
+  rows: TaxBurden[],
+  includeEmployer: boolean
+): ChartRow[] {
+  return rows.map((row) => {
+    const incomeNumber = Number(row.gross_income);
+    const totalTaxNumber = includeEmployer
+      ? Number(row.total_tax_with_employer_payroll)
+      : Number(row.total_employee_tax);
+    const marginalTaxRate = includeEmployer
+      ? Number(row.marginal_tax_rate_with_employer_payroll)
+      : Number(row.marginal_employee_tax_rate);
+
+    return {
+      ...row,
+      incomeNumber,
+      totalTaxNumber,
+      totalTaxRatePercent:
+        incomeNumber === 0 ? 0 : (totalTaxNumber / incomeNumber) * 100,
+      marginalTaxRatePercent: marginalTaxRate * 100
+    };
+  });
+}
+
+function comparisonSeriesLabel(
+  year: number,
+  statusLabel: string,
+  compareFilingStatuses: boolean,
+  compareTaxYears: boolean
+): string {
+  if (compareFilingStatuses && compareTaxYears) return `${year} ${statusLabel}`;
+  if (compareTaxYears) return `${year} ${statusLabel}`;
+  return statusLabel;
+}
+
 function breakdownShare(amount: string, totalTax: number): number {
   if (totalTax <= 0) return 0;
   return Math.max(0, Math.min(100, (Number(amount) / totalTax) * 100));
@@ -62,21 +167,70 @@ function nearestRow(rows: ChartRow[], income: number): ChartRow | undefined {
   }, undefined);
 }
 
+function readClickedIncome(state: unknown): number | null {
+  if (!state || typeof state !== "object") return null;
+  const chartState = state as ChartClickState;
+  const income = Number(
+    chartState.activePayload?.[0]?.payload?.incomeNumber ??
+      chartState.activeLabel
+  );
+  return Number.isFinite(income) ? income : null;
+}
+
+function marginalRateChangeIncomeSet(
+  parameters: TaxParameters | null,
+  start: string,
+  stop: string
+): Set<number> {
+  const startAmount = Number(start) || 0;
+  const stopAmount = Number(stop) || 0;
+  const incomes = new Set<number>([startAmount]);
+  if (!parameters) return incomes;
+
+  for (const bracket of parameters.federal.brackets) {
+    incomes.add(
+      Number(parameters.federal.standard_deduction) +
+        Number(bracket.lower_bound)
+    );
+  }
+  incomes.add(Number(parameters.payroll.social_security_wage_base));
+  incomes.add(
+    Number(
+      parameters.payroll.additional_medicare_thresholds[
+        parameters.federal.filing_status
+      ] ?? parameters.payroll.additional_medicare_threshold_single
+    )
+  );
+
+  return new Set(
+    [...incomes].filter((income) => income >= startAmount && income <= stopAmount)
+  );
+}
+
 function App() {
   const [taxYears, setTaxYears] = useState<number[]>([]);
   const [filingStatuses, setFilingStatuses] = useState<FilingStatus[]>([]);
   const [year, setYear] = useState(2026);
   const [filingStatus, setFilingStatus] = useState("single");
-  const [start, setStart] = useState("0");
-  const [stop, setStop] = useState("500000");
-  const [step, setStep] = useState("10000");
+  const [startThousands, setStartThousands] = useState("0");
+  const [stopThousands, setStopThousands] = useState("2000");
+  const [stepThousands, setStepThousands] = useState("10");
   const [selectedIncome, setSelectedIncome] = useState(100000);
   const [includeEmployer, setIncludeEmployer] = useState(false);
+  const [compareFilingStatuses, setCompareFilingStatuses] = useState(false);
+  const [compareTaxYears, setCompareTaxYears] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>("rate");
   const [parameters, setParameters] = useState<TaxParameters | null>(null);
   const [rows, setRows] = useState<TaxBurden[]>([]);
+  const [comparisonSeries, setComparisonSeries] = useState<CurveSeries[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const start = thousandsToDollars(startThousands);
+  const stop = thousandsToDollars(stopThousands);
+  const step = thousandsToDollars(stepThousands);
+  const selectedFilingStatus = filingStatuses.find(
+    (status) => status.code === filingStatus
+  );
 
   useEffect(() => {
     fetchTaxYears()
@@ -113,24 +267,91 @@ function App() {
     setLoading(true);
     setError(null);
 
-    Promise.all([
-      fetchTaxParameters(year, filingStatus),
-      fetchIncomeSeries({
+    async function loadScenario() {
+      const selectedSeriesRequest = {
         year,
         filingStatus,
         start,
         stop,
         step,
-        includeEmployerPayrollTax: includeEmployer
-      })
-    ])
-      .then(([nextParameters, series]) => {
-        if (cancelled) return;
-        setParameters(nextParameters);
-        setRows(series.rows);
-      })
+        includeEmployerPayrollTax: includeEmployer,
+        includeMarginalBreakpoints: true
+      };
+      const [nextParameters, selectedSeries] = await Promise.all([
+        fetchTaxParameters(year, filingStatus),
+        fetchIncomeSeries(selectedSeriesRequest)
+      ]);
+      const yearsToCompare =
+        compareTaxYears && taxYears.length > 0 ? taxYears : [year];
+      const seriesRequests: Array<{
+        year: number;
+        filingStatus: string;
+        statusLabel: string;
+      }> = [];
+
+      for (const comparisonYear of yearsToCompare) {
+        const statuses =
+          comparisonYear === year && filingStatuses.length > 0
+            ? filingStatuses
+            : await fetchFilingStatuses(comparisonYear);
+        const statusesToCompare = compareFilingStatuses
+          ? statuses
+          : statuses.filter((status) => status.code === filingStatus);
+
+        for (const status of statusesToCompare) {
+          seriesRequests.push({
+            year: comparisonYear,
+            filingStatus: status.code,
+            statusLabel: status.label
+          });
+        }
+      }
+
+      if (seriesRequests.length === 0) {
+        seriesRequests.push({
+          year,
+          filingStatus,
+          statusLabel: selectedFilingStatus?.label ?? filingStatus
+        });
+      }
+
+      const nextComparisonSeries = await Promise.all(
+        seriesRequests.map(async (request, index) => {
+          const isSelectedSeries =
+            request.year === year && request.filingStatus === filingStatus;
+          const response = isSelectedSeries
+            ? selectedSeries
+            : await fetchIncomeSeries({
+                ...selectedSeriesRequest,
+                year: request.year,
+                filingStatus: request.filingStatus
+              });
+
+          return {
+            key: seriesKey(request.year, request.filingStatus),
+            label: comparisonSeriesLabel(
+              request.year,
+              request.statusLabel,
+              compareFilingStatuses,
+              compareTaxYears
+            ),
+            color: seriesColor(index),
+            rows: buildChartRows(response.rows, includeEmployer)
+          };
+        })
+      );
+
+      if (cancelled) return;
+      setParameters(nextParameters);
+      setRows(selectedSeries.rows);
+      setComparisonSeries(nextComparisonSeries);
+    }
+
+    loadScenario()
       .catch((nextError: Error) => {
-        if (!cancelled) setError(nextError.message);
+        if (cancelled) return;
+        setComparisonSeries([]);
+        setError(nextError.message);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -139,24 +360,22 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [year, filingStatus, start, stop, step, includeEmployer]);
+  }, [
+    year,
+    filingStatus,
+    selectedFilingStatus?.label,
+    start,
+    stop,
+    step,
+    includeEmployer,
+    compareFilingStatuses,
+    compareTaxYears,
+    taxYears,
+    filingStatuses
+  ]);
 
   const chartRows = useMemo<ChartRow[]>(
-    () =>
-      rows.map((row) => {
-        const incomeNumber = Number(row.gross_income);
-        const totalTaxNumber = includeEmployer
-          ? Number(row.total_tax_with_employer_payroll)
-          : Number(row.total_employee_tax);
-
-        return {
-          ...row,
-          incomeNumber,
-          totalTaxNumber,
-          totalTaxRatePercent:
-            incomeNumber === 0 ? 0 : (totalTaxNumber / incomeNumber) * 100
-        };
-      }),
+    () => buildChartRows(rows, includeEmployer),
     [rows, includeEmployer]
   );
 
@@ -166,23 +385,79 @@ function App() {
   );
 
   const tableRows = useMemo(() => {
-    if (chartRows.length <= 12) return chartRows;
-    const stride = Math.ceil(chartRows.length / 12);
-    return chartRows.filter((_, index) => index % stride === 0);
-  }, [chartRows]);
+    const breakpointIncomes = marginalRateChangeIncomeSet(parameters, start, stop);
+    return chartRows.filter((row) => breakpointIncomes.has(row.incomeNumber));
+  }, [chartRows, parameters, start, stop]);
 
-  const selectedFilingStatus = filingStatuses.find(
-    (status) => status.code === filingStatus
+  const sampledIncomeOptions = useMemo(
+    () =>
+      [...new Set(tableRows.map((row) => row.incomeNumber))].sort(
+        (left, right) => left - right
+      ),
+    [tableRows]
   );
+
+  const quickStartOptions = useMemo(
+    () =>
+      [...new Set([0, ...sampledIncomeOptions])].sort(
+        (left, right) => left - right
+      ),
+    [sampledIncomeOptions]
+  );
+
+  const quickStopOptions = useMemo(
+    () => sampledIncomeOptions.filter((income) => income > 0),
+    [sampledIncomeOptions]
+  );
+
+  const comparisonChartData = useMemo<ComparisonChartPoint[]>(() => {
+    const points = new Map<number, ComparisonChartPoint>();
+
+    for (const series of comparisonSeries) {
+      for (const row of series.rows) {
+        const point =
+          points.get(row.incomeNumber) ?? ({ incomeNumber: row.incomeNumber } as ComparisonChartPoint);
+        point[series.key] =
+          chartMode === "rate" ? row.totalTaxRatePercent : row.totalTaxNumber;
+        points.set(row.incomeNumber, point);
+      }
+    }
+
+    return [...points.values()].sort(
+      (left, right) => left.incomeNumber - right.incomeNumber
+    );
+  }, [comparisonSeries, chartMode]);
+
   const selectedAdditionalMedicareThreshold =
     parameters?.payroll.additional_medicare_thresholds[filingStatus] ??
     parameters?.payroll.additional_medicare_threshold_single;
-  const chartDataKey =
-    chartMode === "rate" ? "totalTaxRatePercent" : "totalTaxNumber";
   const chartLabel =
     chartMode === "rate" ? "Total tax as % of W-2 income" : "Total tax paid";
+  const comparingCurves = compareFilingStatuses || compareTaxYears;
+  const dataStatusLabel = loading
+    ? "Loading"
+    : comparingCurves
+      ? `${comparisonSeries.length} ${
+          comparisonSeries.length === 1 ? "curve" : "curves"
+        }`
+      : `${chartRows.length} rows`;
+  const primarySeries = comparisonSeries[0];
   const breakdownRows = selectedRow?.tax_breakdown ?? [];
   const totalBreakdownTax = selectedRow?.totalTaxNumber ?? 0;
+  const handleChartClick = (state: unknown) => {
+    const income = readClickedIncome(state);
+    if (income !== null) {
+      setSelectedIncome(income);
+    }
+  };
+  const setQuickStart = (income: number) => {
+    setStartThousands(dollarsToThousands(income));
+    setSelectedIncome((currentIncome) => Math.max(currentIncome, income));
+  };
+  const setQuickStop = (income: number) => {
+    setStopThousands(dollarsToThousands(income));
+    setSelectedIncome((currentIncome) => Math.min(currentIncome, income));
+  };
 
   return (
     <main className="app-shell">
@@ -223,48 +498,94 @@ function App() {
             </select>
           </label>
 
-          <label>
-            <span>Filing status</span>
-            <select
-              value={filingStatus}
-              onChange={(event) => setFilingStatus(event.target.value)}
+          <div className="segmented-field">
+            <span id="filing-status-label">Filing status</span>
+            <div
+              className="segmented-control filing-status-control"
+              role="radiogroup"
+              aria-labelledby="filing-status-label"
             >
               {filingStatuses.map((status) => (
-                <option key={status.code} value={status.code}>
+                <button
+                  key={status.code}
+                  type="button"
+                  role="radio"
+                  aria-checked={status.code === filingStatus}
+                  className={status.code === filingStatus ? "active" : ""}
+                  onClick={() => setFilingStatus(status.code)}
+                >
                   {status.label}
-                </option>
+                </button>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
 
           <div className="field-grid">
-            <label>
-              <span>Start</span>
+            <div className="range-field">
+              <label htmlFor="start-thousands">
+                <span>Start ($k)</span>
+              </label>
               <input
+                id="start-thousands"
                 type="number"
                 min="0"
-                value={start}
-                onChange={(event) => setStart(event.target.value)}
+                value={startThousands}
+                onChange={(event) => setStartThousands(event.target.value)}
               />
-            </label>
-            <label>
-              <span>Stop</span>
+              <select
+                aria-label="Quick start"
+                value=""
+                onChange={(event) => {
+                  if (event.target.value) {
+                    setQuickStart(Number(event.target.value));
+                  }
+                }}
+              >
+                <option value="">Quick start</option>
+                {quickStartOptions.map((income) => (
+                  <option key={income} value={income}>
+                    {formatThousandsOption(income)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="range-field">
+              <label htmlFor="stop-thousands">
+                <span>Stop ($k)</span>
+              </label>
               <input
+                id="stop-thousands"
                 type="number"
                 min="0"
-                value={stop}
-                onChange={(event) => setStop(event.target.value)}
+                value={stopThousands}
+                onChange={(event) => setStopThousands(event.target.value)}
               />
-            </label>
+              <select
+                aria-label="Quick stop"
+                value=""
+                onChange={(event) => {
+                  if (event.target.value) {
+                    setQuickStop(Number(event.target.value));
+                  }
+                }}
+              >
+                <option value="">Quick stop</option>
+                {quickStopOptions.map((income) => (
+                  <option key={income} value={income}>
+                    {formatThousandsOption(income)}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <label>
-            <span>Step</span>
+            <span>Step ($k)</span>
             <input
               type="number"
               min="1"
-              value={step}
-              onChange={(event) => setStep(event.target.value)}
+              value={stepThousands}
+              onChange={(event) => setStepThousands(event.target.value)}
             />
           </label>
 
@@ -310,6 +631,28 @@ function App() {
             </div>
           </div>
 
+          <div className="compare-control">
+            <span>Compare curves</span>
+            <label className="toggle-row">
+              <input
+                type="checkbox"
+                checked={compareFilingStatuses}
+                onChange={(event) =>
+                  setCompareFilingStatuses(event.target.checked)
+                }
+              />
+              <span>All filing statuses</span>
+            </label>
+            <label className="toggle-row">
+              <input
+                type="checkbox"
+                checked={compareTaxYears}
+                onChange={(event) => setCompareTaxYears(event.target.checked)}
+              />
+              <span>All tax years</span>
+            </label>
+          </div>
+
           <button
             type="button"
             className="refresh-button"
@@ -331,7 +674,7 @@ function App() {
             </div>
             <div className="data-status">
               <ShieldCheck size={16} aria-hidden="true" />
-              <span>{loading ? "Loading" : `${chartRows.length} rows`}</span>
+              <span>{dataStatusLabel}</span>
             </div>
           </div>
 
@@ -339,11 +682,15 @@ function App() {
 
           <div className="chart-frame">
             <ResponsiveContainer width="100%" height={360}>
-              <ComposedChart data={chartRows} margin={{ left: 8, right: 12 }}>
+              <ComposedChart
+                data={comparisonChartData}
+                margin={{ left: 8, right: 12 }}
+                onClick={handleChartClick}
+              >
                 <CartesianGrid stroke="#e7e4dc" vertical={false} />
                 <XAxis
                   dataKey="incomeNumber"
-                  tickFormatter={(value) => `$${Number(value) / 1000}k`}
+                  tickFormatter={formatIncomeAxisTick}
                   stroke="#706b60"
                   minTickGap={24}
                 />
@@ -356,25 +703,44 @@ function App() {
                   stroke="#706b60"
                 />
                 <Tooltip
-                  formatter={(value) => {
+                  formatter={(value, name) => {
                     if (chartMode === "rate") {
                       return [
                         `${Number(value).toFixed(2)}%`,
-                        "Total tax rate"
+                        String(name)
                       ];
                     }
-                    return [toCurrency(Number(value)), "Total tax paid"];
+                    return [toCurrency(Number(value)), String(name)];
                   }}
                   labelFormatter={(value) => `Income ${toCurrency(Number(value))}`}
                 />
-                <Area
-                  type="monotone"
-                  dataKey={chartDataKey}
-                  fill="#d9eadf"
-                  stroke="#237a5b"
-                  fillOpacity={0.65}
-                  name={chartDataKey}
-                />
+                {comparingCurves ? (
+                  <>
+                    <Legend verticalAlign="top" height={34} />
+                    {comparisonSeries.map((series) => (
+                      <Line
+                        key={series.key}
+                        type="monotone"
+                        dataKey={series.key}
+                        name={series.label}
+                        stroke={series.color}
+                        strokeWidth={2}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                        connectNulls
+                      />
+                    ))}
+                  </>
+                ) : primarySeries ? (
+                  <Area
+                    type="monotone"
+                    dataKey={primarySeries.key}
+                    fill="#d9eadf"
+                    stroke={primarySeries.color}
+                    fillOpacity={0.65}
+                    name={primarySeries.label}
+                  />
+                ) : null}
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -512,7 +878,8 @@ function App() {
                 <th>Addl Medicare</th>
                 {includeEmployer ? <th>Employer payroll</th> : null}
                 <th>Total</th>
-                <th>Rate</th>
+                <th>Effective rate</th>
+                <th>Marginal rate</th>
               </tr>
             </thead>
             <tbody>
@@ -528,6 +895,7 @@ function App() {
                   ) : null}
                   <td>{toCurrency(row.totalTaxNumber)}</td>
                   <td>{formatPercentValue(row.totalTaxRatePercent)}</td>
+                  <td>{formatPercentValue(row.marginalTaxRatePercent)}</td>
                 </tr>
               ))}
             </tbody>

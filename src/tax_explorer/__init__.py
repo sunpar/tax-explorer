@@ -60,10 +60,12 @@ class TaxBurden:
     total_employee_payroll_tax: Decimal
     total_employee_tax: Decimal
     effective_employee_tax_rate: Decimal
+    marginal_employee_tax_rate: Decimal
     employer_social_security_tax: Decimal
     employer_medicare_tax: Decimal
     total_employer_payroll_tax: Decimal
     total_tax_with_employer_payroll: Decimal
+    marginal_tax_rate_with_employer_payroll: Decimal
 
 
 FEDERAL_2026_SINGLE = FederalTaxParameters(
@@ -128,12 +130,19 @@ def calculate_tax_burden(
     )
     total_employee_tax = _money(federal_income_tax + total_employee_payroll_tax)
     effective_employee_tax_rate = _rate(total_employee_tax, gross_income)
+    marginal_employee_tax_rate = _marginal_employee_tax_rate(
+        gross_income, federal, payroll
+    )
 
     employer_social_security_tax = _money("0")
     employer_medicare_tax = _money("0")
+    marginal_employer_payroll_tax_rate = Decimal("0")
     if scenario.include_employer_payroll_tax:
         employer_social_security_tax = employee_social_security_tax
         employer_medicare_tax = employee_medicare_tax
+        marginal_employer_payroll_tax_rate = _marginal_employer_payroll_tax_rate(
+            gross_income, payroll
+        )
 
     total_employer_payroll_tax = _money(
         employer_social_security_tax + employer_medicare_tax
@@ -141,6 +150,9 @@ def calculate_tax_burden(
     total_tax_with_employer_payroll = _money(
         total_employee_tax + total_employer_payroll_tax
     )
+    marginal_tax_rate_with_employer_payroll = (
+        marginal_employee_tax_rate + marginal_employer_payroll_tax_rate
+    ).quantize(RATE_PRECISION, rounding=ROUND_HALF_UP)
 
     return TaxBurden(
         gross_income=gross_income,
@@ -152,10 +164,12 @@ def calculate_tax_burden(
         total_employee_payroll_tax=total_employee_payroll_tax,
         total_employee_tax=total_employee_tax,
         effective_employee_tax_rate=effective_employee_tax_rate,
+        marginal_employee_tax_rate=marginal_employee_tax_rate,
         employer_social_security_tax=employer_social_security_tax,
         employer_medicare_tax=employer_medicare_tax,
         total_employer_payroll_tax=total_employer_payroll_tax,
         total_tax_with_employer_payroll=total_tax_with_employer_payroll,
+        marginal_tax_rate_with_employer_payroll=marginal_tax_rate_with_employer_payroll,
     )
 
 
@@ -164,6 +178,7 @@ def build_income_series(
     stop: Decimal | int | float | str,
     step: Decimal | int | float | str,
     include_employer_payroll_tax: bool = False,
+    include_marginal_breakpoints: bool = False,
     federal: FederalTaxParameters = FEDERAL_2026_SINGLE,
     payroll: PayrollTaxParameters = PAYROLL_2026,
 ) -> list[TaxBurden]:
@@ -177,24 +192,41 @@ def build_income_series(
     if current > stop_amount:
         raise ValueError("start must be less than or equal to stop")
 
-    rows: list[TaxBurden] = []
+    incomes: set[Decimal] = set()
     while current <= stop_amount:
-        if len(rows) >= MAX_INCOME_SERIES_ROWS:
-            raise ValueError(
-                f"income-series supports at most {MAX_INCOME_SERIES_ROWS} rows"
-            )
-        rows.append(
-            calculate_tax_burden(
-                TaxScenario(
-                    gross_income=current,
-                    include_employer_payroll_tax=include_employer_payroll_tax,
-                ),
-                federal=federal,
-                payroll=payroll,
-            )
-        )
+        incomes.add(current)
         current = _money(current + step_amount)
-    return rows
+
+    if include_marginal_breakpoints:
+        incomes.add(stop_amount)
+        incomes.update(
+            income
+            for income in _marginal_rate_change_incomes(federal, payroll)
+            if current_range_contains(income, start_amount=_money(start), stop_amount=stop_amount)
+        )
+
+    if len(incomes) > MAX_INCOME_SERIES_ROWS:
+        raise ValueError(
+            f"income-series supports at most {MAX_INCOME_SERIES_ROWS} rows"
+        )
+
+    return [
+        calculate_tax_burden(
+            TaxScenario(
+                gross_income=income,
+                include_employer_payroll_tax=include_employer_payroll_tax,
+            ),
+            federal=federal,
+            payroll=payroll,
+        )
+        for income in sorted(incomes)
+    ]
+
+
+def current_range_contains(
+    income: Decimal, start_amount: Decimal, stop_amount: Decimal
+) -> bool:
+    return start_amount <= income <= stop_amount
 
 
 def _calculate_progressive_tax(
@@ -218,6 +250,57 @@ def _calculate_progressive_tax(
             break
 
     return _money(tax)
+
+
+def _marginal_employee_tax_rate(
+    gross_income: Decimal,
+    federal: FederalTaxParameters,
+    payroll: PayrollTaxParameters,
+) -> Decimal:
+    rate = _federal_marginal_rate(gross_income, federal)
+    if gross_income < payroll.social_security_wage_base:
+        rate += payroll.social_security_rate
+    rate += payroll.medicare_rate
+    if gross_income >= _additional_medicare_threshold(federal, payroll):
+        rate += payroll.additional_medicare_rate
+    return rate.quantize(RATE_PRECISION, rounding=ROUND_HALF_UP)
+
+
+def _marginal_employer_payroll_tax_rate(
+    gross_income: Decimal, payroll: PayrollTaxParameters
+) -> Decimal:
+    rate = payroll.medicare_rate
+    if gross_income < payroll.social_security_wage_base:
+        rate += payroll.social_security_rate
+    return rate.quantize(RATE_PRECISION, rounding=ROUND_HALF_UP)
+
+
+def _federal_marginal_rate(
+    gross_income: Decimal, federal: FederalTaxParameters
+) -> Decimal:
+    taxable_income = max(_money("0"), gross_income - federal.standard_deduction)
+    if taxable_income == 0 and gross_income < federal.standard_deduction:
+        return Decimal("0")
+
+    selected_rate = federal.brackets[0].rate
+    for bracket in federal.brackets:
+        if taxable_income >= bracket.lower_bound:
+            selected_rate = bracket.rate
+        else:
+            break
+    return selected_rate
+
+
+def _marginal_rate_change_incomes(
+    federal: FederalTaxParameters, payroll: PayrollTaxParameters
+) -> set[Decimal]:
+    incomes = {
+        federal.standard_deduction + bracket.lower_bound
+        for bracket in federal.brackets
+    }
+    incomes.add(payroll.social_security_wage_base)
+    incomes.add(_additional_medicare_threshold(federal, payroll))
+    return {_money(income) for income in incomes}
 
 
 def _additional_medicare_threshold(

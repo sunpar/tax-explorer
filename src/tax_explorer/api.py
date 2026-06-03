@@ -112,6 +112,7 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
         stop: Decimal = Query(default=Decimal("500000"), ge=0),
         step: Decimal = Query(default=Decimal("10000"), gt=0),
         include_employer_payroll_tax: bool = Query(default=False),
+        include_marginal_breakpoints: bool = Query(default=False),
     ) -> dict[str, list[dict[str, Any]]]:
         try:
             federal, payroll = _load_parameters(app, year, filing_status)
@@ -124,6 +125,7 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
                 stop=stop,
                 step=step,
                 include_employer_payroll_tax=include_employer_payroll_tax,
+                include_marginal_breakpoints=include_marginal_breakpoints,
                 federal=federal,
                 payroll=payroll,
             )

@@ -164,6 +164,40 @@ def test_returns_income_series_from_database_parameters(tmp_path):
     assert rows[-1]["total_employee_tax"] == "20820.00"
 
 
+def test_income_series_can_include_marginal_breakpoints_and_rates(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "0",
+            "stop": "250000",
+            "step": "100000",
+            "include_marginal_breakpoints": True,
+        },
+    )
+
+    assert response.status_code == 200
+    rows = response.json()["rows"]
+    assert [row["gross_income"] for row in rows] == [
+        "0.00",
+        "16100.00",
+        "28500.00",
+        "66500.00",
+        "100000.00",
+        "121800.00",
+        "184500.00",
+        "200000.00",
+        "217875.00",
+        "250000.00",
+    ]
+    assert rows[0]["marginal_employee_tax_rate"] == "0.0765"
+    assert rows[1]["marginal_employee_tax_rate"] == "0.1765"
+    assert rows[6]["marginal_employee_tax_rate"] == "0.2545"
+
+
 def test_income_series_rejects_reversed_income_range(tmp_path):
     client = create_test_client(tmp_path)
 

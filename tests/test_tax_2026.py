@@ -33,6 +33,7 @@ def test_federal_income_tax_uses_progressive_2026_single_brackets_after_standard
     assert result.federal_income_tax == money("13170.00")
     assert result.total_employee_tax == money("20820.00")
     assert result.effective_employee_tax_rate == Decimal("0.2082")
+    assert result.marginal_employee_tax_rate == Decimal("0.2965")
 
 
 def test_social_security_tax_is_capped_at_2026_wage_base():
@@ -80,6 +81,28 @@ def test_build_income_series_samples_inclusive_income_range():
         money("0.00"),
         money("50000.00"),
         money("100000.00"),
+    ]
+
+
+def test_build_income_series_can_include_exact_marginal_rate_change_points():
+    rows = build_income_series(
+        start=0,
+        stop=250000,
+        step=100000,
+        include_marginal_breakpoints=True,
+    )
+
+    assert [row.gross_income for row in rows] == [
+        money("0.00"),
+        money("16100.00"),
+        money("28500.00"),
+        money("66500.00"),
+        money("100000.00"),
+        money("121800.00"),
+        money("184500.00"),
+        money("200000.00"),
+        money("217875.00"),
+        money("250000.00"),
     ]
 
 

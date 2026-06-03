@@ -157,6 +157,17 @@ label span {
   color: #625c51;
 }
 
+.segmented-field {
+  display: grid;
+  gap: 7px;
+}
+
+.segmented-field > span {
+  color: #625c51;
+  font-size: 13px;
+  font-weight: 680;
+}
+
 input,
 select {
   width: 100%;
@@ -188,6 +199,48 @@ input[type="range"] {
   gap: 10px;
 }
 
+.range-field {
+  display: grid;
+  gap: 7px;
+}
+
+.range-field select {
+  height: 34px;
+  font-size: 12px;
+}
+
+.segmented-control {
+  display: grid;
+  gap: 3px;
+  padding: 3px;
+  background: #f5f2ea;
+  border: 1px solid #d8d1c4;
+  border-radius: 8px;
+}
+
+.filing-status-control {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.segmented-control button {
+  min-height: 36px;
+  padding: 7px 8px;
+  color: #5c564d;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 720;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.segmented-control button.active {
+  color: #ffffff;
+  background: #245f49;
+}
+
 .toggle-row {
   grid-template-columns: 18px 1fr;
   align-items: center;
@@ -205,7 +258,8 @@ input[type="range"] {
   gap: 8px;
 }
 
-.mode-control > span {
+.mode-control > span,
+.compare-control > span {
   color: #625c51;
   font-size: 13px;
   font-weight: 680;
@@ -234,6 +288,11 @@ input[type="range"] {
 .mode-control button.active {
   color: #ffffff;
   background: #245f49;
+}
+
+.compare-control {
+  display: grid;
+  gap: 10px;
 }
 
 .refresh-button {
@@ -268,6 +327,7 @@ input[type="range"] {
 .chart-frame {
   min-height: 380px;
   padding: 10px 4px 0;
+  cursor: crosshair;
 }
 
 .error-box {
@@ -459,10 +519,10 @@ table {
 th,
 td {
   height: 42px;
-  padding: 0 18px;
+  padding: 0 10px;
   text-align: right;
   border-top: 1px solid #e5e0d7;
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
