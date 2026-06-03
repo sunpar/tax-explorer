@@ -427,6 +427,14 @@ function breakdownShare(amount: string, totalTax: number): number {
   return Math.max(0, Math.min(100, (Number(amount) / totalTax) * 100));
 }
 
+function formatCapUsage(amount: string | number, cap: string | number): string {
+  const capNumber = Number(cap);
+  if (capNumber <= 0) return "Inactive ($0 cap)";
+  const amountNumber = Number(amount);
+  const usage = Math.max(0, Math.min(100, (amountNumber / capNumber) * 100));
+  return `${formatPercentValue(usage)} of ${toCurrency(capNumber)} max`;
+}
+
 function nearestRow(rows: ChartRow[], income: number): ChartRow | undefined {
   return rows.reduce<ChartRow | undefined>((nearest, row) => {
     if (!nearest) return row;
@@ -699,6 +707,31 @@ function App() {
     () => nearestRow(chartRows, selectedIncome),
     [chartRows, selectedIncome]
   );
+  const selectedDeductionUsage = useMemo(() => {
+    if (!selectedRow || !parameters) return [];
+    return [
+      {
+        label: "Total pre-tax",
+        amount: selectedRow.total_pretax_deductions,
+        cap: totalPretaxDeductionCap(parameters)
+      },
+      {
+        label: "401(k) contribution",
+        amount: selectedRow.employee_401k_contribution,
+        cap: parameters.pretax_deductions.employee_401k_limit
+      },
+      {
+        label: "Health FSA contribution",
+        amount: selectedRow.health_fsa_contribution,
+        cap: parameters.pretax_deductions.health_fsa_limit
+      },
+      {
+        label: "Dependent-care FSA",
+        amount: selectedRow.dependent_care_fsa_contribution,
+        cap: parameters.pretax_deductions.dependent_care_fsa_limit
+      }
+    ];
+  }, [parameters, selectedRow]);
 
   const tableRows = useMemo(() => {
     const breakpointIncomes = marginalRateChangeIncomeSet(
@@ -1156,6 +1189,30 @@ function App() {
               }
             />
           </div>
+
+          <section
+            className="deduction-usage"
+            aria-label="Deduction usage details"
+          >
+            <div className="deduction-usage-heading">
+              <h3>Deduction Usage</h3>
+              <span>
+                Selected income{" "}
+                {selectedRow ? toCurrency(selectedRow.gross_income) : "-"}
+              </span>
+            </div>
+            <dl>
+              {selectedDeductionUsage.map((item) => (
+                <div key={item.label}>
+                  <dt>{item.label}</dt>
+                  <dd>
+                    <strong>{toCurrency(item.amount)}</strong>
+                    <span>{formatCapUsage(item.amount, item.cap)}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </section>
 
           <section
             className="breakdown-section"

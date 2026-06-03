@@ -430,6 +430,76 @@ input[type="range"] {
   line-height: 1.1;
 }
 
+.deduction-usage {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e0d7;
+}
+
+.deduction-usage-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.deduction-usage-heading h3 {
+  margin: 0;
+  color: #171510;
+  font-size: 15px;
+}
+
+.deduction-usage-heading span {
+  color: #706b60;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.deduction-usage dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.deduction-usage dl > div {
+  min-width: 0;
+  padding: 10px 12px;
+  background: #fbfaf6;
+  border: 1px solid #e5e0d7;
+  border-radius: 8px;
+}
+
+.deduction-usage dt {
+  color: #706b60;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.deduction-usage dd {
+  margin: 7px 0 0;
+}
+
+.deduction-usage strong,
+.deduction-usage dd span {
+  display: block;
+}
+
+.deduction-usage strong {
+  color: #171510;
+  font-size: 17px;
+  line-height: 1.1;
+}
+
+.deduction-usage dd span {
+  margin-top: 4px;
+  color: #5d574d;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
 .breakdown-section {
   margin-top: 16px;
   padding-top: 16px;
@@ -623,6 +693,10 @@ td {
   .summary-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .deduction-usage dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -641,8 +715,14 @@ td {
 
   .field-grid,
   .summary-strip,
+  .deduction-usage dl,
   .breakdown-list {
     grid-template-columns: 1fr;
+  }
+
+  .deduction-usage-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .chart-header {

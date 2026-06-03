@@ -391,6 +391,20 @@ describe("App tax curve controls", () => {
     expect(screen.getByText("Max available")).toHaveClass("active");
     expect(screen.getAllByText("Pre-tax deductions").length).toBeGreaterThan(0);
     expect(screen.getAllByText("$27,900").length).toBeGreaterThan(0);
+    expect(screen.getByText("Deduction Usage")).toBeInTheDocument();
+    expect(screen.getByText("401(k) contribution")).toBeInTheDocument();
+    expect(screen.getByText("Health FSA contribution")).toBeInTheDocument();
+    expect(screen.getByText("Dependent-care FSA")).toBeInTheDocument();
+    expect(
+      screen.getByText("100.00% of $27,900 max")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("100.00% of $24,500 max")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("100.00% of $3,400 max")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Inactive ($0 cap)")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("radio", { name: "Gradual phase-in" }));
 
