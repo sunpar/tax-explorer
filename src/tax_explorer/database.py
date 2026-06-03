@@ -213,7 +213,15 @@ def seed_default_tax_data(connection: sqlite3.Connection) -> None:
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(year) DO NOTHING
         """,
-        (2026, "24500.00", "3400.00", "0.00", "0.01"),
+        (2026, "24500.00", "3400.00", "7500.00", "0.01"),
+    )
+    connection.execute(
+        """
+        UPDATE pretax_deduction_parameters
+        SET dependent_care_fsa_limit = ?
+        WHERE year = ? AND dependent_care_fsa_limit = ?
+        """,
+        ("7500.00", 2026, "0.00"),
     )
     connection.commit()
 

@@ -45,6 +45,20 @@ export type TaxBreakdownItem = {
   amount: string;
 };
 
+export type PayrollBreakdownItem = {
+  label: string;
+  gross_income: string;
+  payroll_wages: string;
+  employee_social_security_tax: string;
+  employee_medicare_tax: string;
+  employee_additional_medicare_tax: string;
+  total_employee_payroll_tax: string;
+  employer_social_security_tax: string;
+  employer_medicare_tax: string;
+  total_employer_payroll_tax: string;
+  total_payroll_tax: string;
+};
+
 export type TaxBurden = {
   gross_income: string;
   taxable_income: string;
@@ -65,6 +79,7 @@ export type TaxBurden = {
   total_employer_payroll_tax: string;
   total_tax_with_employer_payroll: string;
   marginal_tax_rate_with_employer_payroll: string;
+  payroll_breakdown: PayrollBreakdownItem[];
   tax_breakdown: TaxBreakdownItem[];
 };
 

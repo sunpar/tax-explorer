@@ -16,6 +16,13 @@ EXPECTED_ADDITIONAL_MEDICARE_THRESHOLDS = {
 }
 
 
+def numeric_schema(schema):
+    return next(
+        (candidate for candidate in schema.get("anyOf", []) if "minimum" in candidate),
+        schema,
+    )
+
+
 def test_lists_available_tax_years(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -61,7 +68,7 @@ def test_returns_parameters_for_tax_year(tmp_path):
         "tax_year": 2026,
         "employee_401k_limit": "24500.00",
         "health_fsa_limit": "3400.00",
-        "dependent_care_fsa_limit": "0.00",
+        "dependent_care_fsa_limit": "7500.00",
         "gradual_phase_in_start_rate": "0.01",
     }
     assert (
@@ -113,6 +120,148 @@ def test_calculates_tax_burden_from_database_parameters(tmp_path):
     assert body["effective_employee_tax_rate"] == "0.1442"
 
 
+def test_calculate_uses_dependent_care_fsa_when_dependents_are_present(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "single",
+            "gross_income": "100000",
+            "dependent_count": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["dependent_care_fsa_contribution"] == "7500.00"
+    assert body["total_pretax_deductions"] == "35400.00"
+    assert body["taxable_income"] == "48500.00"
+    assert body["employee_social_security_tax"] == "5524.20"
+    assert body["employee_medicare_tax"] == "1291.95"
+    assert body["total_employee_tax"] == "12388.15"
+
+
+def test_calculate_uses_secondary_income_for_married_joint_dual_earners(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "married_joint",
+            "gross_income": "300000",
+            "secondary_income": "150000",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["employee_401k_contribution"] == "49000.00"
+    assert body["health_fsa_contribution"] == "6800.00"
+    assert body["total_pretax_deductions"] == "55800.00"
+    assert body["taxable_income"] == "212000.00"
+    assert body["employee_social_security_tax"] == "18178.40"
+    assert body["employee_medicare_tax"] == "4251.40"
+    assert body["employee_additional_medicare_tax"] == "388.80"
+    assert body["total_employee_tax"] == "58894.60"
+
+
+def test_calculate_response_includes_dual_earner_payroll_breakdown(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "married_joint",
+            "gross_income": "300000",
+            "secondary_income": "150000",
+            "include_employer_payroll_tax": True,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["payroll_breakdown"] == [
+        {
+            "label": "Income 1",
+            "gross_income": "150000.00",
+            "payroll_wages": "146600.00",
+            "employee_social_security_tax": "9089.20",
+            "employee_medicare_tax": "2125.70",
+            "employee_additional_medicare_tax": "194.40",
+            "total_employee_payroll_tax": "11409.30",
+            "employer_social_security_tax": "9089.20",
+            "employer_medicare_tax": "2125.70",
+            "total_employer_payroll_tax": "11214.90",
+            "total_payroll_tax": "22624.20",
+        },
+        {
+            "label": "Income 2",
+            "gross_income": "150000.00",
+            "payroll_wages": "146600.00",
+            "employee_social_security_tax": "9089.20",
+            "employee_medicare_tax": "2125.70",
+            "employee_additional_medicare_tax": "194.40",
+            "total_employee_payroll_tax": "11409.30",
+            "employer_social_security_tax": "9089.20",
+            "employer_medicare_tax": "2125.70",
+            "total_employer_payroll_tax": "11214.90",
+            "total_payroll_tax": "22624.20",
+        },
+        {
+            "label": "Total",
+            "gross_income": "300000.00",
+            "payroll_wages": "293200.00",
+            "employee_social_security_tax": "18178.40",
+            "employee_medicare_tax": "4251.40",
+            "employee_additional_medicare_tax": "388.80",
+            "total_employee_payroll_tax": "22818.60",
+            "employer_social_security_tax": "18178.40",
+            "employer_medicare_tax": "4251.40",
+            "total_employer_payroll_tax": "22429.80",
+            "total_payroll_tax": "45248.40",
+        },
+    ]
+
+
+def test_calculate_rejects_secondary_income_for_non_joint_filers(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "single",
+            "gross_income": "100000",
+            "secondary_income": "25000",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "secondary_income is only supported for married_joint"
+    )
+
+
+def test_calculate_rejects_negative_dependent_count(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "single",
+            "gross_income": "100000",
+            "dependent_count": -1,
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_openapi_documents_pretax_deduction_modes(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -123,10 +272,18 @@ def test_openapi_documents_pretax_deduction_modes(tmp_path):
     calculate_mode_schema = openapi["components"]["schemas"]["CalculateRequest"][
         "properties"
     ]["pretax_deduction_mode"]
+    calculate_dependent_count_schema = openapi["components"]["schemas"][
+        "CalculateRequest"
+    ]["properties"]["dependent_count"]
+    calculate_secondary_income_schema = openapi["components"]["schemas"][
+        "CalculateRequest"
+    ]["properties"]["secondary_income"]
     assert calculate_mode_schema["enum"] == [
         "max_available",
         "gradual_phase_in",
     ]
+    assert calculate_dependent_count_schema["minimum"] == 0
+    assert numeric_schema(calculate_secondary_income_schema)["minimum"] == 0
 
     income_series_parameters = openapi["paths"]["/api/income-series"]["get"][
         "parameters"
@@ -140,6 +297,18 @@ def test_openapi_documents_pretax_deduction_modes(tmp_path):
         "max_available",
         "gradual_phase_in",
     ]
+    income_series_dependent_count = next(
+        parameter
+        for parameter in income_series_parameters
+        if parameter["name"] == "dependent_count"
+    )
+    assert income_series_dependent_count["schema"]["minimum"] == 0
+    income_series_secondary_income = next(
+        parameter
+        for parameter in income_series_parameters
+        if parameter["name"] == "secondary_income"
+    )
+    assert numeric_schema(income_series_secondary_income["schema"])["minimum"] == 0
 
 
 def test_calculate_response_breaks_tax_down_by_component(tmp_path):
@@ -262,6 +431,90 @@ def test_income_series_accepts_gradual_pretax_deduction_mode(tmp_path):
     assert row["employee_401k_contribution"] == "3028.58"
     assert row["health_fsa_contribution"] == "420.29"
     assert row["total_employee_tax"] == "20029.10"
+
+
+def test_income_series_uses_dependent_care_fsa_when_dependents_are_present(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "100000",
+            "stop": "100000",
+            "step": "50000",
+            "dependent_count": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    row = response.json()["rows"][0]
+    assert row["dependent_care_fsa_contribution"] == "7500.00"
+    assert row["total_pretax_deductions"] == "35400.00"
+    assert row["total_employee_tax"] == "12388.15"
+
+
+def test_income_series_accepts_secondary_income_for_married_joint(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "married_joint",
+            "start": "300000",
+            "stop": "300000",
+            "step": "50000",
+            "secondary_income": "150000",
+        },
+    )
+
+    assert response.status_code == 200
+    row = response.json()["rows"][0]
+    assert row["employee_401k_contribution"] == "49000.00"
+    assert row["health_fsa_contribution"] == "6800.00"
+    assert row["employee_social_security_tax"] == "18178.40"
+    assert row["total_employee_tax"] == "58894.60"
+
+
+def test_income_series_rejects_secondary_income_for_non_joint_filers(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "100000",
+            "stop": "100000",
+            "step": "50000",
+            "secondary_income": "25000",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "secondary_income is only supported for married_joint"
+    )
+
+
+def test_income_series_rejects_negative_dependent_count(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "100000",
+            "stop": "100000",
+            "step": "50000",
+            "dependent_count": -1,
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_income_series_rejects_unknown_pretax_deduction_mode(tmp_path):

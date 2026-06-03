@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   CartesianGrid,
@@ -18,6 +18,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 import {
+  fetchTaxBurden,
   fetchFilingStatuses,
   fetchIncomeSeries,
   fetchTaxParameters,
@@ -35,6 +36,20 @@ type ChartRow = TaxBurden & {
 
 type ChartMode = "effectiveRate" | "marginalRate" | "totalTax";
 type PretaxDeductionMode = "max_available" | "gradual_phase_in";
+
+type PretaxDeductionCaps = {
+  employee401k: number;
+  healthFsa: number;
+  dependentCareFsa: number;
+  total: number;
+};
+
+type DeductionUsageItem = {
+  label: string;
+  amount: string;
+  cap: number;
+  inactiveLabel?: string;
+};
 
 type CurveSeries = {
   key: string;
@@ -88,6 +103,45 @@ const SERIES_COLORS = [
   "#b04a54",
   "#526b2f"
 ];
+const DEPENDENT_COUNT_STORAGE_KEY = "taxExplorer.dependentCount";
+const PRIMARY_INCOME_STORAGE_KEY = "taxExplorer.primaryIncomeThousands";
+const SECONDARY_INCOME_STORAGE_KEY = "taxExplorer.secondaryIncomeThousands";
+const SELECTED_INCOME_MAX = 3000000;
+
+function sanitizeDependentCount(value: string | number | null): number {
+  const parsed = Math.floor(Number(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function readStoredDependentCount(): string {
+  if (typeof window === "undefined") return "0";
+  return String(
+    sanitizeDependentCount(window.localStorage.getItem(DEPENDENT_COUNT_STORAGE_KEY))
+  );
+}
+
+function sanitizeThousandsValue(value: string | number | null): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return "0";
+  return trimTrailingZeros(amount.toFixed(3));
+}
+
+function readStoredSecondaryIncomeThousands(): string {
+  if (typeof window === "undefined") return "0";
+  return sanitizeThousandsValue(
+    window.localStorage.getItem(SECONDARY_INCOME_STORAGE_KEY)
+  );
+}
+
+function readStoredPrimaryIncomeThousands(): string | null {
+  if (typeof window === "undefined") return null;
+  const storedValue = window.localStorage.getItem(PRIMARY_INCOME_STORAGE_KEY);
+  return storedValue === null ? null : sanitizeThousandsValue(storedValue);
+}
+
+function secondaryIncomeSplitThousands(totalIncome: number): string {
+  return dollarsToThousands(roundMoneyNumber(totalIncome * 0.4));
+}
 
 function toCurrency(value: string | number): string {
   return new Intl.NumberFormat("en-US", {
@@ -225,9 +279,15 @@ function additionalMedicareThreshold(parameters: TaxParameters): number {
 
 function marginalRateChangeIncomes(
   parameters: TaxParameters,
-  mode: PretaxDeductionMode
+  mode: PretaxDeductionMode,
+  dependentCount: number,
+  secondaryIncome: number
 ): number[] {
-  const pretaxCap = totalPretaxDeductionCap(parameters);
+  const pretaxCap = totalPretaxDeductionCap(
+    parameters,
+    dependentCount,
+    secondaryIncome
+  );
   const standardDeduction = Number(parameters.federal.standard_deduction);
   const incomes: number[] = [];
 
@@ -240,69 +300,137 @@ function marginalRateChangeIncomes(
     }
   } else {
     incomes.push(standardDeduction);
-    incomes.push(gradualPhaseInEnd(parameters));
+    incomes.push(gradualPhaseInEnd(parameters, dependentCount, secondaryIncome));
     for (const bracket of parameters.federal.brackets.slice(1)) {
       const income = solveIncomeForTarget(
         Number(bracket.lower_bound),
         (grossIncome) =>
-          taxableIncomeBeforeTax(parameters, mode, grossIncome)
+          taxableIncomeBeforeTax(
+            parameters,
+            mode,
+            dependentCount,
+            secondaryIncome,
+            grossIncome
+          )
       );
       if (income !== null) incomes.push(income);
     }
   }
 
-  for (const payrollThreshold of [
-    Number(parameters.payroll.social_security_wage_base),
-    additionalMedicareThreshold(parameters)
-  ]) {
+  for (let workerIndex = 0; workerIndex < workerCount(parameters, secondaryIncome); workerIndex += 1) {
     const income = solveIncomeForTarget(
-      payrollThreshold,
-      (grossIncome) => payrollWages(parameters, mode, grossIncome)
+      Number(parameters.payroll.social_security_wage_base),
+      (grossIncome) =>
+        workerPayrollWages(
+          parameters,
+          mode,
+          dependentCount,
+          secondaryIncome,
+          grossIncome
+        )[workerIndex] ?? 0
     );
     if (income !== null) incomes.push(income);
   }
+
+  const additionalMedicareIncome = solveIncomeForTarget(
+    additionalMedicareThreshold(parameters),
+    (grossIncome) =>
+      payrollWages(parameters, mode, dependentCount, secondaryIncome, grossIncome)
+  );
+  if (additionalMedicareIncome !== null) incomes.push(additionalMedicareIncome);
 
   return incomes
     .filter((income) => Number.isFinite(income))
     .map(roundMoneyNumber);
 }
 
-function totalPretaxDeductionCap(parameters: TaxParameters): number {
-  return (
-    Number(parameters.pretax_deductions.employee_401k_limit) +
-    Number(parameters.pretax_deductions.health_fsa_limit) +
-    Number(parameters.pretax_deductions.dependent_care_fsa_limit)
+function pretaxDeductionCaps(
+  parameters: TaxParameters,
+  dependentCount: number,
+  secondaryIncome: number
+): PretaxDeductionCaps {
+  const dualIncome = workerCount(parameters, secondaryIncome) === 2;
+  const employee401k =
+    Number(parameters.pretax_deductions.employee_401k_limit) *
+    (dualIncome ? 2 : 1);
+  const healthFsa =
+    Number(parameters.pretax_deductions.health_fsa_limit) * (dualIncome ? 2 : 1);
+  const configuredDependentCareFsa = Number(
+    parameters.pretax_deductions.dependent_care_fsa_limit
   );
+  const dependentCareFsa =
+    dependentCount > 0
+      ? parameters.federal.filing_status === "married_separate"
+        ? configuredDependentCareFsa / 2
+        : configuredDependentCareFsa
+      : 0;
+
+  return {
+    employee401k,
+    healthFsa,
+    dependentCareFsa,
+    total: employee401k + healthFsa + dependentCareFsa
+  };
 }
 
-function gradualPhaseInEnd(parameters: TaxParameters): number {
+function totalPretaxDeductionCap(
+  parameters: TaxParameters,
+  dependentCount: number,
+  secondaryIncome: number
+): number {
+  return pretaxDeductionCaps(parameters, dependentCount, secondaryIncome).total;
+}
+
+function gradualPhaseInEnd(
+  parameters: TaxParameters,
+  dependentCount: number,
+  secondaryIncome: number
+): number {
   const nextToLastBracket =
     parameters.federal.brackets[
       Math.max(0, parameters.federal.brackets.length - 2)
     ];
+  if (workerCount(parameters, secondaryIncome) === 2) {
+    const caps = pretaxDeductionCaps(parameters, dependentCount, secondaryIncome);
+    const singleWorkerCap =
+      caps.employee401k / 2 + caps.healthFsa / 2 + caps.dependentCareFsa;
+    return (
+      (Number(parameters.federal.standard_deduction) +
+        Number(nextToLastBracket?.lower_bound ?? 0) +
+        singleWorkerCap) *
+      1.5
+    );
+  }
+
   return (
     Number(parameters.federal.standard_deduction) +
     Number(nextToLastBracket?.lower_bound ?? 0) +
-    totalPretaxDeductionCap(parameters)
+    totalPretaxDeductionCap(parameters, dependentCount, secondaryIncome)
   );
 }
 
 function pretaxDeductionsAtIncome(
   parameters: TaxParameters,
   mode: PretaxDeductionMode,
+  dependentCount: number,
+  secondaryIncome: number,
   grossIncome: number
 ) {
-  const totalCap = totalPretaxDeductionCap(parameters);
-  if (totalCap <= 0) return { total: 0, healthFsa: 0 };
+  const caps = pretaxDeductionCaps(parameters, dependentCount, secondaryIncome);
+  if (caps.total <= 0) return { total: 0, healthFsa: 0, dependentCareFsa: 0 };
 
   let total: number;
   if (mode === "max_available") {
-    total = Math.min(grossIncome, totalCap);
+    total = Math.min(grossIncome, caps.total);
   } else if (grossIncome <= Number(parameters.federal.standard_deduction)) {
     total = 0;
   } else {
     const phaseStart = Number(parameters.federal.standard_deduction);
-    const phaseEnd = gradualPhaseInEnd(parameters);
+    const phaseEnd = gradualPhaseInEnd(
+      parameters,
+      dependentCount,
+      secondaryIncome
+    );
     const z = Math.max(
       0,
       Math.min(1, (grossIncome - phaseStart) / (phaseEnd - phaseStart))
@@ -310,23 +438,34 @@ function pretaxDeductionsAtIncome(
     const startRate = Number(
       parameters.pretax_deductions.gradual_phase_in_start_rate
     );
-    const endRate = totalCap / phaseEnd;
-    total = Math.min(totalCap, grossIncome * (startRate + (endRate - startRate) * z));
+    const endRate = caps.total / phaseEnd;
+    total = Math.min(
+      caps.total,
+      grossIncome * (startRate + (endRate - startRate) * z)
+    );
   }
 
   return {
     total,
-    healthFsa:
-      (total * Number(parameters.pretax_deductions.health_fsa_limit)) / totalCap
+    healthFsa: (total * caps.healthFsa) / caps.total,
+    dependentCareFsa: (total * caps.dependentCareFsa) / caps.total
   };
 }
 
 function taxableIncomeBeforeTax(
   parameters: TaxParameters,
   mode: PretaxDeductionMode,
+  dependentCount: number,
+  secondaryIncome: number,
   grossIncome: number
 ): number {
-  const pretax = pretaxDeductionsAtIncome(parameters, mode, grossIncome);
+  const pretax = pretaxDeductionsAtIncome(
+    parameters,
+    mode,
+    dependentCount,
+    secondaryIncome,
+    grossIncome
+  );
   return Math.max(
     0,
     grossIncome - pretax.total - Number(parameters.federal.standard_deduction)
@@ -336,10 +475,69 @@ function taxableIncomeBeforeTax(
 function payrollWages(
   parameters: TaxParameters,
   mode: PretaxDeductionMode,
+  dependentCount: number,
+  secondaryIncome: number,
   grossIncome: number
 ): number {
-  const pretax = pretaxDeductionsAtIncome(parameters, mode, grossIncome);
-  return Math.max(0, grossIncome - pretax.healthFsa);
+  return workerPayrollWages(
+    parameters,
+    mode,
+    dependentCount,
+    secondaryIncome,
+    grossIncome
+  ).reduce((total, wages) => total + wages, 0);
+}
+
+function workerPayrollWages(
+  parameters: TaxParameters,
+  mode: PretaxDeductionMode,
+  dependentCount: number,
+  secondaryIncome: number,
+  grossIncome: number
+): number[] {
+  const pretax = pretaxDeductionsAtIncome(
+    parameters,
+    mode,
+    dependentCount,
+    secondaryIncome,
+    grossIncome
+  );
+  const incomes = workerIncomes(parameters, secondaryIncome, grossIncome);
+  const payrollExclusion = pretax.healthFsa + pretax.dependentCareFsa;
+  if (grossIncome <= 0 || payrollExclusion <= 0) {
+    return incomes.map((income) => Math.max(0, income));
+  }
+
+  let remainingExclusion = payrollExclusion;
+  let remainingIncome = grossIncome;
+  return incomes.map((income) => {
+    const exclusion =
+      remainingIncome <= 0
+        ? 0
+        : Math.min(income, (remainingExclusion * income) / remainingIncome);
+    remainingExclusion -= exclusion;
+    remainingIncome -= income;
+    return Math.max(0, income - exclusion);
+  });
+}
+
+function workerIncomes(
+  parameters: TaxParameters,
+  secondaryIncome: number,
+  grossIncome: number
+): number[] {
+  if (workerCount(parameters, secondaryIncome) === 1) return [grossIncome];
+  const secondary = Math.min(Math.max(0, secondaryIncome), grossIncome);
+  return [grossIncome - secondary, secondary];
+}
+
+function workerCount(
+  parameters: TaxParameters,
+  secondaryIncome: number
+): number {
+  return parameters.federal.filing_status === "married_joint" && secondaryIncome > 0
+    ? 2
+    : 1;
 }
 
 function solveIncomeForTarget(
@@ -377,10 +575,17 @@ function sortedUniqueNumbers(values: Iterable<number>): number[] {
 
 function defaultStopThousands(
   parameters: TaxParameters,
-  mode: PretaxDeductionMode
+  mode: PretaxDeductionMode,
+  dependentCount: number,
+  secondaryIncome: number
 ): string {
   const lastChangeIncome = Math.max(
-    ...marginalRateChangeIncomes(parameters, mode)
+    ...marginalRateChangeIncomes(
+      parameters,
+      mode,
+      dependentCount,
+      secondaryIncome
+    )
   );
   return dollarsToThousands(lastChangeIncome * 1.1);
 }
@@ -427,9 +632,13 @@ function breakdownShare(amount: string, totalTax: number): number {
   return Math.max(0, Math.min(100, (Number(amount) / totalTax) * 100));
 }
 
-function formatCapUsage(amount: string | number, cap: string | number): string {
+function formatCapUsage(
+  amount: string | number,
+  cap: string | number,
+  inactiveLabel = "Inactive ($0 cap)"
+): string {
   const capNumber = Number(cap);
-  if (capNumber <= 0) return "Inactive ($0 cap)";
+  if (capNumber <= 0) return inactiveLabel;
   const amountNumber = Number(amount);
   const usage = Math.max(0, Math.min(100, (amountNumber / capNumber) * 100));
   return `${formatPercentValue(usage)} of ${toCurrency(capNumber)} max`;
@@ -458,6 +667,8 @@ function readClickedIncome(state: unknown): number | null {
 function marginalRateChangeIncomeSet(
   parameters: TaxParameters | null,
   mode: PretaxDeductionMode,
+  dependentCount: number,
+  secondaryIncome: number,
   start: string,
   stop: string
 ): Set<number> {
@@ -466,7 +677,12 @@ function marginalRateChangeIncomeSet(
   const incomes = new Set<number>([startAmount]);
   if (!parameters) return incomes;
 
-  for (const income of marginalRateChangeIncomes(parameters, mode)) {
+  for (const income of marginalRateChangeIncomes(
+    parameters,
+    mode,
+    dependentCount,
+    secondaryIncome
+  )) {
     incomes.add(income);
   }
 
@@ -526,23 +742,68 @@ function App() {
   const [hasCustomStop, setHasCustomStop] = useState(false);
   const [stepThousands, setStepThousands] = useState("10");
   const [selectedIncome, setSelectedIncome] = useState(100000);
+  const [hasCustomSelectedIncome, setHasCustomSelectedIncome] = useState(false);
+  const hasCustomSelectedIncomeRef = useRef(false);
   const [includeEmployer, setIncludeEmployer] = useState(false);
   const [pretaxDeductionMode, setPretaxDeductionMode] =
-    useState<PretaxDeductionMode>("max_available");
+    useState<PretaxDeductionMode>("gradual_phase_in");
+  const [dependentCountInput, setDependentCountInput] = useState(
+    readStoredDependentCount
+  );
+  const [storedPrimaryIncomeThousands, setStoredPrimaryIncomeThousands] =
+    useState(readStoredPrimaryIncomeThousands);
+  const [secondaryIncomeThousands, setSecondaryIncomeThousands] = useState(
+    readStoredSecondaryIncomeThousands
+  );
+  const [hasCustomIncomeSplit, setHasCustomIncomeSplit] = useState(false);
+  const hasCustomIncomeSplitRef = useRef(false);
+  const hasAppliedStoredIncomeSplitRef = useRef(false);
   const [compareFilingStatuses, setCompareFilingStatuses] = useState(false);
   const [compareTaxYears, setCompareTaxYears] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>("effectiveRate");
   const [parameters, setParameters] = useState<TaxParameters | null>(null);
   const [rows, setRows] = useState<TaxBurden[]>([]);
+  const [selectedBurden, setSelectedBurden] = useState<TaxBurden | null>(null);
   const [comparisonSeries, setComparisonSeries] = useState<CurveSeries[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const start = thousandsToDollars(startThousands);
   const stop = thousandsToDollars(stopThousands);
   const step = thousandsToDollars(stepThousands);
+  const dependentCount = sanitizeDependentCount(dependentCountInput);
+  const rawSecondaryIncome = Number(
+    thousandsToDollars(secondaryIncomeThousands)
+  );
+  const secondaryIncome =
+    filingStatus === "married_joint" ? Math.max(0, rawSecondaryIncome) : 0;
+  const primaryIncome = Math.max(0, selectedIncome - secondaryIncome);
+  const activeSecondaryIncome = Math.min(secondaryIncome, selectedIncome);
+  const secondaryIncomeRequest = String(activeSecondaryIncome);
   const selectedFilingStatus = filingStatuses.find(
     (status) => status.code === filingStatus
   );
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      DEPENDENT_COUNT_STORAGE_KEY,
+      String(dependentCount)
+    );
+  }, [dependentCount]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      SECONDARY_INCOME_STORAGE_KEY,
+      sanitizeThousandsValue(secondaryIncomeThousands)
+    );
+  }, [secondaryIncomeThousands]);
+
+  useEffect(() => {
+    if (storedPrimaryIncomeThousands === null) return;
+    window.localStorage.setItem(
+      PRIMARY_INCOME_STORAGE_KEY,
+      sanitizeThousandsValue(storedPrimaryIncomeThousands)
+    );
+  }, [storedPrimaryIncomeThousands]);
 
   useEffect(() => {
     fetchTaxYears()
@@ -583,7 +844,9 @@ function App() {
       const nextParameters = await fetchTaxParameters(year, filingStatus);
       const nextDefaultStopThousands = defaultStopThousands(
         nextParameters,
-        pretaxDeductionMode
+        pretaxDeductionMode,
+        dependentCount,
+        secondaryIncome
       );
       const resolvedStop = hasCustomStop
         ? stop
@@ -596,6 +859,8 @@ function App() {
         step,
         includeEmployerPayrollTax: includeEmployer,
         includeMarginalBreakpoints: true,
+        dependentCount,
+        secondaryIncome: secondaryIncomeRequest,
         pretaxDeductionMode
       };
       const selectedSeries = await fetchIncomeSeries(selectedSeriesRequest);
@@ -642,7 +907,11 @@ function App() {
             : await fetchIncomeSeries({
                 ...selectedSeriesRequest,
                 year: request.year,
-                filingStatus: request.filingStatus
+                filingStatus: request.filingStatus,
+                secondaryIncome:
+                  request.filingStatus === "married_joint"
+                    ? selectedSeriesRequest.secondaryIncome
+                    : "0"
               });
 
           return {
@@ -692,10 +961,47 @@ function App() {
     hasCustomStop,
     includeEmployer,
     pretaxDeductionMode,
+    dependentCount,
+    secondaryIncome,
+    secondaryIncomeRequest,
     compareFilingStatuses,
     compareTaxYears,
     taxYears,
     filingStatuses
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchTaxBurden({
+      year,
+      filingStatus,
+      grossIncome: String(selectedIncome),
+      includeEmployerPayrollTax: includeEmployer,
+      dependentCount,
+      secondaryIncome: secondaryIncomeRequest,
+      pretaxDeductionMode
+    })
+      .then((burden) => {
+        if (!cancelled) setSelectedBurden(burden);
+      })
+      .catch((nextError: Error) => {
+        if (cancelled) return;
+        setSelectedBurden(null);
+        setError(nextError.message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    year,
+    filingStatus,
+    selectedIncome,
+    includeEmployer,
+    pretaxDeductionMode,
+    dependentCount,
+    secondaryIncomeRequest
   ]);
 
   const chartRows = useMemo<ChartRow[]>(
@@ -703,45 +1009,66 @@ function App() {
     [rows, includeEmployer]
   );
 
-  const selectedRow = useMemo(
-    () => nearestRow(chartRows, selectedIncome),
-    [chartRows, selectedIncome]
-  );
+  const selectedRow = useMemo(() => {
+    if (selectedBurden) return buildChartRows([selectedBurden], includeEmployer)[0];
+    return nearestRow(chartRows, selectedIncome);
+  }, [chartRows, includeEmployer, selectedBurden, selectedIncome]);
   const selectedDeductionUsage = useMemo(() => {
     if (!selectedRow || !parameters) return [];
+    const caps = pretaxDeductionCaps(
+      parameters,
+      dependentCount,
+      secondaryIncome
+    );
+    const configuredDependentCareFsa = Number(
+      parameters.pretax_deductions.dependent_care_fsa_limit
+    );
     return [
       {
         label: "Total pre-tax",
         amount: selectedRow.total_pretax_deductions,
-        cap: totalPretaxDeductionCap(parameters)
+        cap: caps.total
       },
       {
         label: "401(k) contribution",
         amount: selectedRow.employee_401k_contribution,
-        cap: parameters.pretax_deductions.employee_401k_limit
+        cap: caps.employee401k
       },
       {
         label: "Health FSA contribution",
         amount: selectedRow.health_fsa_contribution,
-        cap: parameters.pretax_deductions.health_fsa_limit
+        cap: caps.healthFsa
       },
       {
         label: "Dependent-care FSA",
         amount: selectedRow.dependent_care_fsa_contribution,
-        cap: parameters.pretax_deductions.dependent_care_fsa_limit
+        cap: caps.dependentCareFsa,
+        inactiveLabel: `No dependents (${toCurrency(
+          configuredDependentCareFsa
+        )} max)`
       }
-    ];
-  }, [parameters, selectedRow]);
+    ] satisfies DeductionUsageItem[];
+  }, [dependentCount, parameters, secondaryIncome, selectedRow]);
 
   const tableRows = useMemo(() => {
     const breakpointIncomes = marginalRateChangeIncomeSet(
       parameters,
       pretaxDeductionMode,
+      dependentCount,
+      secondaryIncome,
       start,
       stop
     );
     return chartRows.filter((row) => breakpointIncomes.has(row.incomeNumber));
-  }, [chartRows, parameters, pretaxDeductionMode, start, stop]);
+  }, [
+    chartRows,
+    dependentCount,
+    parameters,
+    pretaxDeductionMode,
+    secondaryIncome,
+    start,
+    stop
+  ]);
 
   const sampledIncomeOptions = useMemo(
     () => sortedUniqueNumbers(tableRows.map((row) => row.incomeNumber)),
@@ -757,6 +1084,75 @@ function App() {
     () => sampledIncomeOptions.filter((income) => income > 0),
     [sampledIncomeOptions]
   );
+  const defaultSelectedIncome =
+    sampledIncomeOptions.length > 0
+      ? (sampledIncomeOptions.filter((income) => income > 0).pop() ??
+        sampledIncomeOptions[sampledIncomeOptions.length - 1])
+      : undefined;
+
+  useEffect(() => {
+    if (
+      filingStatus !== "married_joint" ||
+      storedPrimaryIncomeThousands === null ||
+      hasAppliedStoredIncomeSplitRef.current
+    ) {
+      return;
+    }
+
+    const storedPrimaryIncome =
+      Number(thousandsToDollars(storedPrimaryIncomeThousands)) || 0;
+    const storedSecondaryIncome =
+      Number(thousandsToDollars(secondaryIncomeThousands)) || 0;
+    hasAppliedStoredIncomeSplitRef.current = true;
+    hasCustomSelectedIncomeRef.current = true;
+    hasCustomIncomeSplitRef.current = true;
+    setHasCustomSelectedIncome(true);
+    setHasCustomIncomeSplit(true);
+    setSelectedIncome(
+      Math.max(0, storedPrimaryIncome) + Math.max(0, storedSecondaryIncome)
+    );
+  }, [filingStatus, secondaryIncomeThousands, storedPrimaryIncomeThousands]);
+
+  useEffect(() => {
+    if (
+      loading ||
+      hasCustomSelectedIncomeRef.current ||
+      defaultSelectedIncome === undefined
+    ) {
+      return;
+    }
+    setSelectedIncome((currentIncome) =>
+      currentIncome === defaultSelectedIncome
+        ? currentIncome
+        : defaultSelectedIncome
+    );
+  }, [defaultSelectedIncome, hasCustomSelectedIncome, loading]);
+
+  useEffect(() => {
+    if (
+      filingStatus !== "married_joint" ||
+      secondaryIncome <= 0 ||
+      hasCustomIncomeSplitRef.current ||
+      hasCustomSelectedIncomeRef.current ||
+      selectedIncome <= 0
+    ) {
+      return;
+    }
+
+    const nextSecondaryIncomeThousands =
+      secondaryIncomeSplitThousands(selectedIncome);
+    setSecondaryIncomeThousands((currentValue) =>
+      currentValue === nextSecondaryIncomeThousands
+        ? currentValue
+        : nextSecondaryIncomeThousands
+    );
+  }, [
+    filingStatus,
+    hasCustomIncomeSplit,
+    hasCustomSelectedIncome,
+    secondaryIncome,
+    selectedIncome
+  ]);
 
   const comparisonChartData = useMemo<ComparisonChartPoint[]>(() => {
     const incomes = new Set<number>();
@@ -801,20 +1197,57 @@ function App() {
   const primarySeries = comparisonSeries[0];
   const breakdownRows = selectedRow?.tax_breakdown ?? [];
   const totalBreakdownTax = selectedRow?.totalTaxNumber ?? 0;
+  const payrollBreakdownRows =
+    includeEmployer && selectedRow ? (selectedRow.payroll_breakdown ?? []) : [];
+  const totalPayrollBreakdownRow = payrollBreakdownRows.find(
+    (row) => row.label === "Total"
+  );
+  const combinedPayrollTax =
+    totalPayrollBreakdownRow?.total_payroll_tax ??
+    String(
+      Number(selectedRow?.total_employee_payroll_tax ?? 0) +
+        Number(selectedRow?.total_employer_payroll_tax ?? 0)
+    );
+  const markCustomSelectedIncome = () => {
+    hasCustomSelectedIncomeRef.current = true;
+    setHasCustomSelectedIncome(true);
+  };
+  const markCustomIncomeSplit = () => {
+    hasCustomIncomeSplitRef.current = true;
+    setHasCustomIncomeSplit(true);
+  };
   const handleChartClick = (state: unknown) => {
     const income = readClickedIncome(state);
     if (income !== null) {
+      markCustomSelectedIncome();
       setSelectedIncome(income);
     }
   };
   const setQuickStart = (income: number) => {
     setStartThousands(dollarsToThousands(income));
+    markCustomSelectedIncome();
     setSelectedIncome((currentIncome) => Math.max(currentIncome, income));
   };
   const setQuickStop = (income: number) => {
     setHasCustomStop(true);
     setStopThousands(dollarsToThousands(income));
+    markCustomSelectedIncome();
     setSelectedIncome((currentIncome) => Math.min(currentIncome, income));
+  };
+  const setPrimaryIncomeThousands = (value: string) => {
+    const nextPrimaryIncome = Math.max(0, Number(thousandsToDollars(value)) || 0);
+    markCustomSelectedIncome();
+    markCustomIncomeSplit();
+    setStoredPrimaryIncomeThousands(value);
+    setSelectedIncome(nextPrimaryIncome + activeSecondaryIncome);
+  };
+  const setSecondaryIncomeThousandsValue = (value: string) => {
+    const nextSecondaryIncome = Math.max(0, Number(thousandsToDollars(value)) || 0);
+    markCustomSelectedIncome();
+    markCustomIncomeSplit();
+    setStoredPrimaryIncomeThousands(dollarsToThousands(primaryIncome));
+    setSecondaryIncomeThousands(value);
+    setSelectedIncome(primaryIncome + nextSecondaryIncome);
   };
 
   return (
@@ -842,7 +1275,7 @@ function App() {
             <h2>Scenario</h2>
           </div>
 
-          <label>
+          <label className="tax-year-field">
             <span>Tax year</span>
             <select
               value={year}
@@ -878,71 +1311,127 @@ function App() {
             </div>
           </div>
 
-          <div className="field-grid">
-            <div className="range-field">
+          <label className="dependent-count-field" htmlFor="dependent-count">
+            <span>Dependents</span>
+            <input
+              id="dependent-count"
+              type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
+              value={dependentCountInput}
+              onChange={(event) => setDependentCountInput(event.target.value)}
+              onBlur={() => setDependentCountInput(String(dependentCount))}
+            />
+          </label>
+
+          {filingStatus === "married_joint" ? (
+            <div className="field-grid">
+              <label htmlFor="primary-income-thousands">
+                <span>Income 1 ($k)</span>
+                <input
+                  id="primary-income-thousands"
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={dollarsToThousands(primaryIncome)}
+                  onChange={(event) =>
+                    setPrimaryIncomeThousands(event.target.value)
+                  }
+                />
+              </label>
+              <label htmlFor="secondary-income-thousands">
+                <span>Income 2 ($k)</span>
+                <input
+                  id="secondary-income-thousands"
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={secondaryIncomeThousands}
+                  onChange={(event) =>
+                    setSecondaryIncomeThousandsValue(event.target.value)
+                  }
+                  onBlur={() =>
+                    setSecondaryIncomeThousands(
+                      sanitizeThousandsValue(secondaryIncomeThousands)
+                    )
+                  }
+                />
+              </label>
+            </div>
+          ) : null}
+
+          <div className="range-card" aria-label="Income range">
+            <div className="range-input-grid">
               <label htmlFor="start-thousands">
                 <span>Start ($k)</span>
+                <input
+                  id="start-thousands"
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={startThousands}
+                  onChange={(event) => setStartThousands(event.target.value)}
+                />
               </label>
-              <input
-                id="start-thousands"
-                type="number"
-                min="0"
-                step="0.001"
-                value={startThousands}
-                onChange={(event) => setStartThousands(event.target.value)}
-              />
-              <select
-                aria-label="Quick start"
-                value=""
-                onChange={(event) => {
-                  if (event.target.value) {
-                    setQuickStart(Number(event.target.value));
-                  }
-                }}
-              >
-                <option value="">Quick start</option>
-                {quickStartOptions.map((income) => (
-                  <option key={income} value={income}>
-                    {formatThousandsOption(income)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="range-field">
               <label htmlFor="stop-thousands">
                 <span>Stop ($k)</span>
+                <input
+                  id="stop-thousands"
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={stopThousands}
+                  onChange={(event) => {
+                    setHasCustomStop(true);
+                    setStopThousands(event.target.value);
+                  }}
+                />
               </label>
-              <input
-                id="stop-thousands"
-                type="number"
-                min="0"
-                step="0.001"
-                value={stopThousands}
-                onChange={(event) => {
-                  setHasCustomStop(true);
-                  setStopThousands(event.target.value);
-                }}
-              />
-              <select
-                aria-label="Quick stop"
-                value=""
-                onChange={(event) => {
-                  if (event.target.value) {
-                    setQuickStop(Number(event.target.value));
-                  }
-                }}
-              >
-                <option value="">Quick stop</option>
-                {quickStopOptions.map((income) => (
-                  <option key={income} value={income}>
-                    {formatThousandsOption(income)}
-                  </option>
-                ))}
-              </select>
             </div>
+            <details className="range-preset-group">
+              <summary>
+                <span>Start presets</span>
+                <span>{formatThousandsOption(Number(start) || 0)}</span>
+              </summary>
+              <div className="range-chip-list" aria-label="Start presets">
+                {quickStartOptions.map((income) => (
+                  <button
+                    key={income}
+                    type="button"
+                    aria-label={`Start ${formatThousandsOption(income)}`}
+                    aria-pressed={Number(start) === income}
+                    className={Number(start) === income ? "active" : ""}
+                    onClick={() => setQuickStart(income)}
+                  >
+                    {formatThousandsOption(income)}
+                  </button>
+                ))}
+              </div>
+            </details>
+            <details className="range-preset-group">
+              <summary>
+                <span>Stop presets</span>
+                <span>{formatThousandsOption(Number(stop) || 0)}</span>
+              </summary>
+              <div className="range-chip-list" aria-label="Stop presets">
+                {quickStopOptions.map((income) => (
+                  <button
+                    key={income}
+                    type="button"
+                    aria-label={`Stop ${formatThousandsOption(income)}`}
+                    aria-pressed={Number(stop) === income}
+                    className={Number(stop) === income ? "active" : ""}
+                    onClick={() => setQuickStop(income)}
+                  >
+                    {formatThousandsOption(income)}
+                  </button>
+                ))}
+              </div>
+            </details>
           </div>
 
-          <label>
+          <label className="step-size-field">
             <span>Step ($k)</span>
             <input
               type="number"
@@ -957,10 +1446,13 @@ function App() {
             <input
               type="range"
               min={Number(start) || 0}
-              max={Number(stop) || 0}
-              step={Number(step) || 1000}
+              max={SELECTED_INCOME_MAX}
+              step={1}
               value={selectedIncome}
-              onChange={(event) => setSelectedIncome(Number(event.target.value))}
+              onChange={(event) => {
+                markCustomSelectedIncome();
+                setSelectedIncome(Number(event.target.value));
+              }}
             />
             <strong>{toCurrency(selectedIncome)}</strong>
           </label>
@@ -1058,7 +1550,10 @@ function App() {
           <button
             type="button"
             className="refresh-button"
-            onClick={() => setSelectedIncome(Number(start) || 0)}
+            onClick={() => {
+              markCustomSelectedIncome();
+              setSelectedIncome(Number(start) || 0);
+            }}
             title="Reset selected income"
           >
             <RefreshCw size={16} aria-hidden="true" />
@@ -1190,6 +1685,83 @@ function App() {
             />
           </div>
 
+          {includeEmployer && selectedRow ? (
+            <section
+              className="employer-payroll-section"
+              aria-label="Employer payroll tax details"
+            >
+              <div className="employer-payroll-heading">
+                <div>
+                  <h3>Employer Payroll Breakdown</h3>
+                  <p>
+                    Selected income {toCurrency(selectedRow.gross_income)}
+                  </p>
+                </div>
+                <strong>
+                  Employer-paid{" "}
+                  {toCurrency(selectedRow.total_employer_payroll_tax)}
+                </strong>
+              </div>
+
+              <div className="payroll-overview">
+                <Metric
+                  label="Employer-paid payroll tax"
+                  value={toCurrency(selectedRow.total_employer_payroll_tax)}
+                />
+                <Metric
+                  label="Employee payroll tax"
+                  value={toCurrency(selectedRow.total_employee_payroll_tax)}
+                />
+                <Metric
+                  label="Combined payroll tax"
+                  value={toCurrency(combinedPayrollTax)}
+                />
+              </div>
+
+              {payrollBreakdownRows.length > 0 ? (
+                <div className="payroll-table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Earner</th>
+                        <th>Gross income</th>
+                        <th>Payroll wages</th>
+                        <th>Employee SS</th>
+                        <th>Employee Medicare</th>
+                        <th>Addl Medicare</th>
+                        <th>Employer SS</th>
+                        <th>Employer Medicare</th>
+                        <th>Employer total</th>
+                        <th>Combined payroll</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {payrollBreakdownRows.map((row) => (
+                        <tr
+                          key={row.label}
+                          className={row.label === "Total" ? "total-row" : ""}
+                        >
+                          <td>{row.label}</td>
+                          <td>{toCurrency(row.gross_income)}</td>
+                          <td>{toCurrency(row.payroll_wages)}</td>
+                          <td>{toCurrency(row.employee_social_security_tax)}</td>
+                          <td>{toCurrency(row.employee_medicare_tax)}</td>
+                          <td>
+                            {toCurrency(row.employee_additional_medicare_tax)}
+                          </td>
+                          <td>{toCurrency(row.employer_social_security_tax)}</td>
+                          <td>{toCurrency(row.employer_medicare_tax)}</td>
+                          <td>{toCurrency(row.total_employer_payroll_tax)}</td>
+                          <td>{toCurrency(row.total_payroll_tax)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
           <section
             className="deduction-usage"
             aria-label="Deduction usage details"
@@ -1207,7 +1779,13 @@ function App() {
                   <dt>{item.label}</dt>
                   <dd>
                     <strong>{toCurrency(item.amount)}</strong>
-                    <span>{formatCapUsage(item.amount, item.cap)}</span>
+                    <span>
+                      {formatCapUsage(
+                        item.amount,
+                        item.cap,
+                        item.inactiveLabel
+                      )}
+                    </span>
                   </dd>
                 </div>
               ))}
@@ -1337,44 +1915,48 @@ function App() {
 
         <section className="table-panel">
           <h2>Sampled Income Rows</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Income</th>
-                <th>Pre-tax deductions</th>
-                <th>401(k)</th>
-                <th>Health FSA</th>
-                <th>Income tax</th>
-                <th>Social Security</th>
-                <th>Medicare</th>
-                <th>Addl Medicare</th>
-                {includeEmployer ? <th>Employer payroll</th> : null}
-                <th>Total</th>
-                <th>Effective rate</th>
-                <th>Marginal rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tableRows.map((row) => (
-                <tr key={row.gross_income}>
-                  <td>{toCurrency(row.gross_income)}</td>
-                  <td>{toCurrency(row.total_pretax_deductions)}</td>
-                  <td>{toCurrency(row.employee_401k_contribution)}</td>
-                  <td>{toCurrency(row.health_fsa_contribution)}</td>
-                  <td>{toCurrency(row.federal_income_tax)}</td>
-                  <td>{toCurrency(row.employee_social_security_tax)}</td>
-                  <td>{toCurrency(row.employee_medicare_tax)}</td>
-                  <td>{toCurrency(row.employee_additional_medicare_tax)}</td>
-                  {includeEmployer ? (
-                    <td>{toCurrency(row.total_employer_payroll_tax)}</td>
-                  ) : null}
-                  <td>{toCurrency(row.totalTaxNumber)}</td>
-                  <td>{formatPercentValue(row.totalTaxRatePercent)}</td>
-                  <td>{formatPercentValue(row.marginalTaxRatePercent)}</td>
+          <div className="sampled-table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Income</th>
+                  <th>Pre-tax deductions</th>
+                  <th>401(k)</th>
+                  <th>Health FSA</th>
+                  <th>Dependent care</th>
+                  <th>Income tax</th>
+                  <th>Social Security</th>
+                  <th>Medicare</th>
+                  <th>Addl Medicare</th>
+                  {includeEmployer ? <th>Employer payroll</th> : null}
+                  <th>Total</th>
+                  <th>Effective rate</th>
+                  <th>Marginal rate</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {tableRows.map((row) => (
+                  <tr key={row.gross_income}>
+                    <td>{toCurrency(row.gross_income)}</td>
+                    <td>{toCurrency(row.total_pretax_deductions)}</td>
+                    <td>{toCurrency(row.employee_401k_contribution)}</td>
+                    <td>{toCurrency(row.health_fsa_contribution)}</td>
+                    <td>{toCurrency(row.dependent_care_fsa_contribution)}</td>
+                    <td>{toCurrency(row.federal_income_tax)}</td>
+                    <td>{toCurrency(row.employee_social_security_tax)}</td>
+                    <td>{toCurrency(row.employee_medicare_tax)}</td>
+                    <td>{toCurrency(row.employee_additional_medicare_tax)}</td>
+                    {includeEmployer ? (
+                      <td>{toCurrency(row.total_employer_payroll_tax)}</td>
+                    ) : null}
+                    <td>{toCurrency(row.totalTaxNumber)}</td>
+                    <td>{formatPercentValue(row.totalTaxRatePercent)}</td>
+                    <td>{formatPercentValue(row.marginalTaxRatePercent)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       </section>
     </main>

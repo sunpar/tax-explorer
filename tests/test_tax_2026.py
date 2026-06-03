@@ -5,7 +5,9 @@ import tax_explorer as tax_module
 
 from tax_explorer import (
     FEDERAL_2026_SINGLE,
+    FederalTaxParameters,
     PayrollTaxParameters,
+    TaxBracket,
     TaxScenario,
     build_income_series,
     calculate_tax_burden,
@@ -14,6 +16,22 @@ from tax_explorer import (
 
 def money(value: str) -> Decimal:
     return Decimal(value)
+
+
+FEDERAL_2026_MARRIED_JOINT = FederalTaxParameters(
+    tax_year=2026,
+    filing_status="married_joint",
+    standard_deduction=money("32200.00"),
+    brackets=(
+        TaxBracket(money("0.00"), Decimal("0.10")),
+        TaxBracket(money("24800.00"), Decimal("0.12")),
+        TaxBracket(money("100800.00"), Decimal("0.22")),
+        TaxBracket(money("211400.00"), Decimal("0.24")),
+        TaxBracket(money("403550.00"), Decimal("0.32")),
+        TaxBracket(money("512450.00"), Decimal("0.35")),
+        TaxBracket(money("768700.00"), Decimal("0.37")),
+    ),
+)
 
 
 def test_standard_deduction_eliminates_income_tax_below_threshold():
@@ -42,6 +60,23 @@ def test_federal_income_tax_uses_progressive_2026_single_brackets_after_standard
     assert result.total_employee_tax == money("14421.90")
     assert result.effective_employee_tax_rate == Decimal("0.1442")
     assert result.marginal_employee_tax_rate == Decimal("0.2965")
+
+
+def test_dependent_care_fsa_activates_when_dependents_are_present():
+    result = calculate_tax_burden(
+        TaxScenario(gross_income=money("100000"), dependent_count=1)
+    )
+
+    assert result.employee_401k_contribution == money("24500.00")
+    assert result.health_fsa_contribution == money("3400.00")
+    assert result.dependent_care_fsa_contribution == money("7500.00")
+    assert result.total_pretax_deductions == money("35400.00")
+    assert result.taxable_income == money("48500.00")
+    assert result.federal_income_tax == money("5572.00")
+    assert result.employee_social_security_tax == money("5524.20")
+    assert result.employee_medicare_tax == money("1291.95")
+    assert result.total_employee_tax == money("12388.15")
+    assert result.marginal_employee_tax_rate == Decimal("0.1965")
 
 
 def test_social_security_tax_is_capped_at_2026_wage_base():
@@ -80,6 +115,70 @@ def test_can_include_employer_payroll_tax_for_economic_burden_view():
     assert result.employer_medicare_tax == money("3575.70")
     assert result.total_employer_payroll_tax == money("15014.70")
     assert result.total_tax_with_employer_payroll == money("72824.80")
+
+
+def test_dual_earner_payroll_breakdown_shows_employee_and_employer_taxes_by_worker():
+    result = calculate_tax_burden(
+        TaxScenario(
+            gross_income=money("300000"),
+            secondary_income=money("150000"),
+            include_employer_payroll_tax=True,
+        ),
+        federal=FEDERAL_2026_MARRIED_JOINT,
+    )
+
+    assert [
+        (
+            row.label,
+            row.gross_income,
+            row.employee_social_security_tax,
+            row.employee_medicare_tax,
+            row.employee_additional_medicare_tax,
+            row.total_employee_payroll_tax,
+            row.employer_social_security_tax,
+            row.employer_medicare_tax,
+            row.total_employer_payroll_tax,
+            row.total_payroll_tax,
+        )
+        for row in result.payroll_breakdown
+    ] == [
+        (
+            "Income 1",
+            money("150000.00"),
+            money("9089.20"),
+            money("2125.70"),
+            money("194.40"),
+            money("11409.30"),
+            money("9089.20"),
+            money("2125.70"),
+            money("11214.90"),
+            money("22624.20"),
+        ),
+        (
+            "Income 2",
+            money("150000.00"),
+            money("9089.20"),
+            money("2125.70"),
+            money("194.40"),
+            money("11409.30"),
+            money("9089.20"),
+            money("2125.70"),
+            money("11214.90"),
+            money("22624.20"),
+        ),
+        (
+            "Total",
+            money("300000.00"),
+            money("18178.40"),
+            money("4251.40"),
+            money("388.80"),
+            money("22818.60"),
+            money("18178.40"),
+            money("4251.40"),
+            money("22429.80"),
+            money("45248.40"),
+        ),
+    ]
 
 
 def test_gradual_phase_in_starts_after_standard_deduction_and_reaches_caps():
@@ -158,6 +257,30 @@ def test_build_income_series_can_include_exact_marginal_rate_change_points():
     ]
 
 
+def test_build_income_series_includes_dependent_care_breakpoints():
+    rows = build_income_series(
+        start=0,
+        stop=250000,
+        step=100000,
+        include_marginal_breakpoints=True,
+        dependent_count=1,
+    )
+
+    assert [row.gross_income for row in rows] == [
+        money("0.00"),
+        money("35400.00"),
+        money("51500.00"),
+        money("63900.00"),
+        money("100000.00"),
+        money("101900.00"),
+        money("157200.00"),
+        money("195400.00"),
+        money("200000.00"),
+        money("210900.00"),
+        money("250000.00"),
+    ]
+
+
 def test_build_income_series_can_include_gradual_phase_in_breakpoints():
     rows = build_income_series(
         start=0,
@@ -216,3 +339,10 @@ def test_build_income_series_rejects_excessive_row_count_without_scanning_full_r
 def test_negative_income_is_rejected(income):
     with pytest.raises(ValueError, match="gross_income"):
         calculate_tax_burden(TaxScenario(gross_income=income))
+
+
+def test_negative_dependent_count_is_rejected():
+    with pytest.raises(ValueError, match="dependent_count"):
+        calculate_tax_burden(
+            TaxScenario(gross_income=money("100000"), dependent_count=-1)
+        )

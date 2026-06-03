@@ -35,6 +35,13 @@ CSV_FIELDS = (
 )
 
 
+def non_negative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate default 2026 US W-2 tax burden rows by income."
@@ -53,6 +60,12 @@ def main(argv: list[str] | None = None) -> int:
         default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
         help="Pre-tax payroll deduction usage model.",
     )
+    parser.add_argument(
+        "--dependent-count",
+        type=non_negative_int,
+        default=0,
+        help="Number of dependents eligible for dependent-care FSA modeling.",
+    )
     args = parser.parse_args(argv)
 
     rows = build_income_series(
@@ -61,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         step=args.step,
         include_employer_payroll_tax=args.include_employer_payroll_tax,
         pretax_deduction_mode=args.pretax_deduction_mode,
+        dependent_count=args.dependent_count,
     )
     write_csv(rows)
     return 0

@@ -74,6 +74,37 @@ def test_cli_accepts_gradual_pretax_deduction_mode(monkeypatch):
     assert row["health_fsa_contribution"] == "420.29"
 
 
+def test_cli_accepts_dependent_count(monkeypatch):
+    output = io.StringIO()
+    monkeypatch.setattr("sys.stdout", output)
+
+    result = main(
+        [
+            "--start",
+            "100000",
+            "--stop",
+            "100000",
+            "--step",
+            "50000",
+            "--dependent-count",
+            "1",
+        ]
+    )
+
+    row = next(csv.DictReader(io.StringIO(output.getvalue())))
+    assert result == 0
+    assert row["dependent_care_fsa_contribution"] == "7500.00"
+    assert row["total_pretax_deductions"] == "35400.00"
+    assert row["total_employee_tax"] == "12388.15"
+
+
+def test_cli_rejects_negative_dependent_count():
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--dependent-count", "-1"])
+
+    assert exc_info.value.code == 2
+
+
 def test_cli_rejects_unknown_pretax_deduction_mode():
     with pytest.raises(SystemExit) as exc_info:
         main(["--pretax-deduction-mode", "unknown"])

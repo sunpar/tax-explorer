@@ -38,6 +38,12 @@ Use the gradual deduction phase-in model:
 uv run tax-explorer --start 0 --stop 500000 --step 10000 --pretax-deduction-mode gradual_phase_in
 ```
 
+Include dependent-care FSA modeling for filers with dependents:
+
+```bash
+uv run tax-explorer --start 0 --stop 500000 --step 10000 --dependent-count 1
+```
+
 Run the API:
 
 ```bash
@@ -67,7 +73,7 @@ npm run build
 - `GET /api/tax-years/{year}/filing-statuses`
 - `GET /api/tax-years/{year}/parameters?filing_status=head_of_household`
 - `POST /api/calculate`
-- `GET /api/income-series?year=2026&filing_status=married_joint&start=0&stop=500000&step=10000&pretax_deduction_mode=max_available`
+- `GET /api/income-series?year=2026&filing_status=married_joint&start=0&stop=500000&step=10000&dependent_count=1&secondary_income=50000&pretax_deduction_mode=max_available`
 
 API request and response field names use snake_case. Monetary and rate values
 are serialized as strings to preserve decimal precision. Payroll parameter
@@ -75,10 +81,17 @@ responses include both `additional_medicare_threshold_single` for legacy callers
 and `additional_medicare_thresholds`, keyed by filing status, for selected-status
 Additional Medicare Tax calculations.
 
-The default `pretax_deduction_mode` is `max_available`, which uses the active
-employee 401(k) and health FSA caps as income allows. The alternate
+The default `pretax_deduction_mode` is `max_available`, which uses active
+employee 401(k), health FSA, and dependent-care FSA caps as income allows.
+Dependent-care FSA is active when `dependent_count` is greater than zero; married
+filing separately uses half of the configured dependent-care cap. The alternate
 `gradual_phase_in` mode starts at the selected filing status standard deduction
 and ramps deductions from 1% of gross income until the active caps are maxed.
+For married filing jointly, `secondary_income` can model a second earner inside
+the total household gross income. When it is greater than zero, Social Security
+tax is capped separately per earner, employee 401(k) and health FSA caps double,
+and the gradual phase-in endpoint for the duplicated worker caps is extended to
+roughly 150% of the one-earner max-out income.
 
 The local SQLite database is created and seeded at `data/tax_explorer.sqlite3`
 when the API starts. Set `TAX_EXPLORER_DB=/path/to/file.sqlite3` to override the
@@ -93,12 +106,14 @@ The model currently assumes:
 - Filing statuses: single, married filing jointly, married filing separately,
   and head of household
 - Standard deduction for the selected filing status
-- Employee 401(k) and health FSA pre-tax deduction modeling
+- Employee 401(k), health FSA, and dependent-care FSA pre-tax deduction modeling
+- Optional married-joint second income for per-earner Social Security caps and
+  doubled worker-specific 401(k) and health FSA limits
 - Wage income subject to employee FICA payroll taxes
 - No credits, itemized deductions, state taxes, local taxes, AMT, NIIT, or
   self-employment tax
-- Dependent-care FSA, dual-income households, and age-based 401(k) catch-up
-  limits are not modeled yet
+- No dependent-care qualified-expense validation, spouse earned-income constraint
+  checks, or age-based 401(k) catch-up limits yet
 
 ## Sources
 
@@ -112,3 +127,6 @@ The model currently assumes:
   https://www.irs.gov/retirement-plans/plan-participant-employee/retirement-topics-contributions
 - IRS Internal Revenue Bulletin 2025-45 for 2026 standard deduction and health
   FSA limits: https://www.irs.gov/irb/2025-45_IRB
+- IRS summary of business tax provisions from the One Big Beautiful Bill for the
+  dependent care assistance program exclusion increase:
+  https://www.irs.gov/newsroom/one-big-beautiful-bill-business-tax-provisions-youtube-video-text-script

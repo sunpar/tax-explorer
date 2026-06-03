@@ -193,20 +193,118 @@ input[type="range"] {
   padding: 0;
 }
 
-.field-grid {
+.dependent-count-field,
+.step-size-field,
+.tax-year-field {
+  justify-items: start;
+}
+
+.dependent-count-field input,
+.step-size-field input {
+  width: 72px;
+  text-align: right;
+}
+
+.tax-year-field select {
+  width: 112px;
+}
+
+.field-grid,
+.range-input-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
 
-.range-field {
+.range-card {
+  display: grid;
+  gap: 12px;
+  padding: 10px;
+  background: #fbfaf6;
+  border: 1px solid #e5e0d7;
+  border-radius: 8px;
+}
+
+.range-preset-group {
   display: grid;
   gap: 7px;
 }
 
-.range-field select {
-  height: 34px;
+.range-preset-group summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: #4f493f;
+  background: #ffffff;
+  border: 1px solid #d8d1c4;
+  border-radius: 7px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.range-preset-group summary::-webkit-details-marker {
+  display: none;
+}
+
+.range-preset-group summary::after {
+  color: #625c51;
+  content: "+";
+  font-size: 16px;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.range-preset-group[open] summary::after {
+  content: "-";
+}
+
+.range-preset-group summary:hover {
+  border-color: #2f7e60;
+}
+
+.range-preset-group summary span:first-child {
+  color: #625c51;
   font-size: 12px;
+  font-weight: 720;
+}
+
+.range-preset-group summary span:last-child {
+  color: #171510;
+  font-size: 12px;
+  font-weight: 780;
+  white-space: nowrap;
+}
+
+.range-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.range-chip-list button {
+  min-height: 28px;
+  padding: 0 8px;
+  color: #4f493f;
+  background: #ffffff;
+  border: 1px solid #d8d1c4;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 720;
+  line-height: 1;
+}
+
+.range-chip-list button.active {
+  color: #ffffff;
+  background: #245f49;
+  border-color: #245f49;
+}
+
+.range-chip-list button:hover {
+  border-color: #2f7e60;
 }
 
 .segmented-control {
@@ -322,6 +420,7 @@ input[type="range"] {
 }
 
 .results-panel {
+  container-type: inline-size;
   min-width: 0;
   padding: 20px;
 }
@@ -400,13 +499,14 @@ input[type="range"] {
 
 .summary-strip {
   display: grid;
-  grid-template-columns: repeat(6, minmax(110px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   padding-top: 16px;
   border-top: 1px solid #e5e0d7;
 }
 
 .metric {
+  min-width: 0;
   min-height: 74px;
   padding: 12px;
   background: #fbfaf6;
@@ -420,6 +520,9 @@ input[type="range"] {
   font-size: 12px;
   font-weight: 680;
   line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .metric strong {
@@ -430,10 +533,85 @@ input[type="range"] {
   line-height: 1.1;
 }
 
+.employer-payroll-section {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f3faf5;
+  border: 1px solid #cfe3d5;
+  border-radius: 8px;
+}
+
+.employer-payroll-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.employer-payroll-heading h3 {
+  margin: 0;
+  color: #171510;
+  font-size: 16px;
+}
+
+.employer-payroll-heading p {
+  margin: 3px 0 0;
+  color: #706b60;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.employer-payroll-heading > strong {
+  padding: 8px 10px;
+  color: #ffffff;
+  background: #245f49;
+  border-radius: 7px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.payroll-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.payroll-table-scroll {
+  margin: 0 -16px -16px;
+  overflow-x: auto;
+}
+
+.payroll-table-scroll table {
+  min-width: 980px;
+}
+
+.payroll-table-scroll th:first-child,
+.payroll-table-scroll td:first-child {
+  padding-left: 16px;
+}
+
+.payroll-table-scroll th:last-child,
+.payroll-table-scroll td:last-child {
+  padding-right: 16px;
+}
+
+.payroll-table-scroll .total-row td {
+  background: #edf5ee;
+  font-weight: 800;
+}
+
 .deduction-usage {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid #e5e0d7;
+}
+
+@container (max-width: 940px) {
+  .summary-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .deduction-usage-heading {
@@ -593,12 +771,34 @@ input[type="range"] {
 }
 
 .table-panel {
+  padding: 18px;
+}
+
+.parameter-panel h2 {
+  padding: 18px 18px 0;
+}
+
+.table-panel h2 {
+  margin-bottom: 14px;
+}
+
+.sampled-table-scroll {
+  margin: 0 -18px -18px;
   overflow-x: auto;
 }
 
-.parameter-panel h2,
-.table-panel h2 {
-  padding: 18px 18px 0;
+.sampled-table-scroll table {
+  min-width: 980px;
+}
+
+.sampled-table-scroll th:first-child,
+.sampled-table-scroll td:first-child {
+  padding-left: 18px;
+}
+
+.sampled-table-scroll th:last-child,
+.sampled-table-scroll td:last-child {
+  padding-right: 18px;
 }
 
 dl {
@@ -686,6 +886,7 @@ td {
   }
 
   .panel-heading,
+  .range-card,
   .refresh-button {
     grid-column: 1 / -1;
   }
@@ -696,6 +897,10 @@ td {
 
   .deduction-usage dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .payroll-overview {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -714,6 +919,7 @@ td {
   }
 
   .field-grid,
+  .range-input-grid,
   .summary-strip,
   .deduction-usage dl,
   .breakdown-list {
@@ -723,6 +929,20 @@ td {
   .deduction-usage-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .employer-payroll-heading {
+    flex-direction: column;
+  }
+
+  .payroll-table-scroll th:first-child,
+  .payroll-table-scroll td:first-child {
+    padding-left: 14px;
+  }
+
+  .payroll-table-scroll th:last-child,
+  .payroll-table-scroll td:last-child {
+    padding-right: 14px;
   }
 
   .chart-header {
@@ -739,7 +959,11 @@ td {
   }
 
   .table-panel {
-    overflow-x: auto;
+    padding: 14px;
+  }
+
+  .sampled-table-scroll {
+    margin: 0 -14px -14px;
   }
 
   th,
@@ -747,5 +971,15 @@ td {
     height: 38px;
     padding: 0 8px;
     font-size: 11px;
+  }
+
+  .sampled-table-scroll th:first-child,
+  .sampled-table-scroll td:first-child {
+    padding-left: 14px;
+  }
+
+  .sampled-table-scroll th:last-child,
+  .sampled-table-scroll td:last-child {
+    padding-right: 14px;
   }
 }
