@@ -410,6 +410,34 @@ def test_income_series_can_include_marginal_breakpoints_and_rates(tmp_path):
     assert rows[7]["marginal_employee_tax_rate"] == "0.2545"
 
 
+def test_income_series_includes_lopsided_dual_earner_deduction_breakpoint(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "married_joint",
+            "start": "0",
+            "stop": "120000",
+            "step": "120000",
+            "include_marginal_breakpoints": True,
+            "secondary_income": "5000",
+        },
+    )
+
+    assert response.status_code == 200
+    rows = response.json()["rows"]
+    assert [row["gross_income"] for row in rows] == [
+        "0.00",
+        "32900.00",
+        "65100.00",
+        "89900.00",
+        "120000.00",
+    ]
+    assert rows[1]["total_pretax_deductions"] == "32900.00"
+
+
 def test_income_series_accepts_gradual_pretax_deduction_mode(tmp_path):
     client = create_test_client(tmp_path)
 

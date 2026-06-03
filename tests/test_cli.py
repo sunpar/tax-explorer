@@ -116,6 +116,23 @@ def test_cli_rejects_unknown_pretax_deduction_mode():
     assert exc_info.value.code == 2
 
 
+def test_cli_reports_invalid_secondary_income_as_usage_error(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--secondary-income",
+                "1",
+                "--database-path",
+                str(tmp_path / "tax.sqlite3"),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert (
+        "secondary_income is only supported for married_joint" in capsys.readouterr().err
+    )
+
+
 def test_cli_accepts_year_filing_status_and_secondary_income(monkeypatch, tmp_path):
     output = io.StringIO()
     monkeypatch.setattr("sys.stdout", output)

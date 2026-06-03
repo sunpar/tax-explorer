@@ -305,6 +305,26 @@ def test_build_income_series_includes_dependent_care_breakpoints():
     ]
 
 
+def test_build_income_series_includes_lopsided_dual_earner_deduction_breakpoint():
+    rows = build_income_series(
+        start=0,
+        stop=120000,
+        step=120000,
+        include_marginal_breakpoints=True,
+        secondary_income=money("5000"),
+        federal=FEDERAL_2026_MARRIED_JOINT,
+    )
+
+    assert [row.gross_income for row in rows] == [
+        money("0.00"),
+        money("32900.00"),
+        money("65100.00"),
+        money("89900.00"),
+        money("120000.00"),
+    ]
+    assert rows[1].total_pretax_deductions == money("32900.00")
+
+
 def test_build_income_series_can_include_gradual_phase_in_breakpoints():
     rows = build_income_series(
         start=0,

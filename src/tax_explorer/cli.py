@@ -99,22 +99,22 @@ def main(argv: list[str] | None = None) -> int:
             pretax_deductions = load_pretax_deduction_parameters(
                 connection, args.year
             )
+        rows = build_income_series(
+            start=args.start,
+            stop=args.stop,
+            step=args.step,
+            include_employer_payroll_tax=args.include_employer_payroll_tax,
+            include_marginal_breakpoints=args.include_marginal_breakpoints,
+            pretax_deduction_mode=args.pretax_deduction_mode,
+            dependent_count=args.dependent_count,
+            secondary_income=args.secondary_income,
+            federal=federal,
+            payroll=payroll,
+            pretax_deductions=pretax_deductions,
+        )
     except ValueError as exc:
         parser.error(str(exc))
 
-    rows = build_income_series(
-        start=args.start,
-        stop=args.stop,
-        step=args.step,
-        include_employer_payroll_tax=args.include_employer_payroll_tax,
-        include_marginal_breakpoints=args.include_marginal_breakpoints,
-        pretax_deduction_mode=args.pretax_deduction_mode,
-        dependent_count=args.dependent_count,
-        secondary_income=args.secondary_income,
-        federal=federal,
-        payroll=payroll,
-        pretax_deductions=pretax_deductions,
-    )
     write_csv(rows)
     return 0
 

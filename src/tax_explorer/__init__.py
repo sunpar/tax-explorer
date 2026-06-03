@@ -976,16 +976,30 @@ def _marginal_rate_change_incomes(
     worker_count: int,
     secondary_income: Decimal,
 ) -> set[Decimal]:
-    total_cap = _pretax_deduction_cap(pretax_deductions)
     incomes: set[Decimal] = set()
     if pretax_deduction_mode == PRETAX_DEDUCTION_MODE_MAX_AVAILABLE:
-        if total_cap > 0:
-            incomes.add(total_cap)
-        taxable_income_start = federal.standard_deduction + total_cap
         incomes.update(
-            taxable_income_start + bracket.lower_bound
-            for bracket in federal.brackets
+            _max_available_pretax_deduction_change_incomes(
+                federal,
+                pretax_deductions,
+                worker_count,
+                secondary_income,
+            )
         )
+        for bracket in federal.brackets:
+            income = _solve_income_for_target(
+                target=federal.standard_deduction + bracket.lower_bound,
+                value_at_income=lambda gross_income: _income_after_pretax_before_tax(
+                    gross_income,
+                    min(secondary_income, gross_income),
+                    federal,
+                    pretax_deductions,
+                    pretax_deduction_mode,
+                    worker_count,
+                ),
+            )
+            if income is not None:
+                incomes.add(income)
     else:
         incomes.add(federal.standard_deduction)
         incomes.add(
@@ -1038,6 +1052,94 @@ def _marginal_rate_change_incomes(
         incomes.add(additional_medicare_income)
 
     return {_money(income) for income in incomes}
+
+
+def _max_available_pretax_deduction_change_incomes(
+    federal: FederalTaxParameters,
+    pretax_deductions: PretaxDeductionParameters,
+    worker_count: int,
+    secondary_income: Decimal,
+) -> set[Decimal]:
+    incomes: set[Decimal] = set()
+    total_cap = _pretax_deduction_cap(pretax_deductions)
+    if total_cap <= 0:
+        return incomes
+
+    probe_income = max(
+        total_cap * Decimal("4") + secondary_income + federal.standard_deduction,
+        ONE_DOLLAR,
+    )
+    max_deduction_income = _solve_income_for_target(
+        target=_total_pretax_deductions_before_tax(
+            probe_income,
+            secondary_income,
+            federal,
+            pretax_deductions,
+            PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
+            worker_count,
+        ),
+        value_at_income=lambda gross_income: _total_pretax_deductions_before_tax(
+            gross_income,
+            min(secondary_income, gross_income),
+            federal,
+            pretax_deductions,
+            PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
+            worker_count,
+        ),
+    )
+    if max_deduction_income is not None:
+        incomes.add(max_deduction_income)
+
+    non_dependent_cap = (
+        pretax_deductions.employee_401k_limit + pretax_deductions.health_fsa_limit
+    )
+    if worker_count > 1 and non_dependent_cap > 0:
+        per_worker_cap = non_dependent_cap / worker_count
+        if secondary_income > per_worker_cap:
+            incomes.add(per_worker_cap)
+            incomes.add(secondary_income)
+            incomes.add(secondary_income + per_worker_cap)
+
+    return incomes
+
+
+def _income_after_pretax_before_tax(
+    gross_income: Decimal,
+    secondary_income: Decimal,
+    federal: FederalTaxParameters,
+    pretax_deductions: PretaxDeductionParameters,
+    pretax_deduction_mode: str,
+    worker_count: int,
+) -> Decimal:
+    pretax = _calculate_pretax_deductions(
+        gross_income,
+        secondary_income=secondary_income,
+        federal=federal,
+        parameters=pretax_deductions,
+        mode=pretax_deduction_mode,
+        worker_count=worker_count,
+        rounded=False,
+    )
+    return max(ZERO, gross_income - pretax.total_pretax_deductions)
+
+
+def _total_pretax_deductions_before_tax(
+    gross_income: Decimal,
+    secondary_income: Decimal,
+    federal: FederalTaxParameters,
+    pretax_deductions: PretaxDeductionParameters,
+    pretax_deduction_mode: str,
+    worker_count: int,
+) -> Decimal:
+    return _calculate_pretax_deductions(
+        gross_income,
+        secondary_income=secondary_income,
+        federal=federal,
+        parameters=pretax_deductions,
+        mode=pretax_deduction_mode,
+        worker_count=worker_count,
+        rounded=False,
+    ).total_pretax_deductions
 
 
 def _taxable_income_before_tax(

@@ -282,20 +282,30 @@ function marginalRateChangeIncomes(
   dependentCount: number,
   secondaryIncome: number
 ): number[] {
-  const pretaxCap = totalPretaxDeductionCap(
-    parameters,
-    dependentCount,
-    secondaryIncome
-  );
   const standardDeduction = Number(parameters.federal.standard_deduction);
   const incomes: number[] = [];
 
   if (mode === "max_available") {
-    if (pretaxCap > 0) incomes.push(pretaxCap);
+    incomes.push(
+      ...maxAvailablePretaxDeductionChangeIncomes(
+        parameters,
+        dependentCount,
+        secondaryIncome
+      )
+    );
     for (const bracket of parameters.federal.brackets) {
-      incomes.push(
-        standardDeduction + pretaxCap + Number(bracket.lower_bound)
+      const income = solveIncomeForTarget(
+        standardDeduction + Number(bracket.lower_bound),
+        (grossIncome) =>
+          incomeAfterPretaxBeforeTax(
+            parameters,
+            mode,
+            dependentCount,
+            secondaryIncome,
+            grossIncome
+          )
       );
+      if (income !== null) incomes.push(income);
     }
   } else {
     incomes.push(standardDeduction);
@@ -341,6 +351,70 @@ function marginalRateChangeIncomes(
   return incomes
     .filter((income) => Number.isFinite(income))
     .map(roundMoneyNumber);
+}
+
+function maxAvailablePretaxDeductionChangeIncomes(
+  parameters: TaxParameters,
+  dependentCount: number,
+  secondaryIncome: number
+): number[] {
+  const incomes: number[] = [];
+  const caps = pretaxDeductionCaps(parameters, dependentCount, secondaryIncome);
+  if (caps.total <= 0) return incomes;
+
+  const standardDeduction = Number(parameters.federal.standard_deduction);
+  const probeIncome = Math.max(
+    caps.total * 4 + secondaryIncome + standardDeduction,
+    1
+  );
+  const maxDeduction = pretaxDeductionsAtIncome(
+    parameters,
+    "max_available",
+    dependentCount,
+    secondaryIncome,
+    probeIncome
+  ).total;
+  const maxDeductionIncome = solveIncomeForTarget(
+    maxDeduction,
+    (grossIncome) =>
+      pretaxDeductionsAtIncome(
+        parameters,
+        "max_available",
+        dependentCount,
+        secondaryIncome,
+        grossIncome
+      ).total
+  );
+  if (maxDeductionIncome !== null) incomes.push(maxDeductionIncome);
+
+  const workers = workerCount(parameters, secondaryIncome);
+  const nonDependentCap = caps.employee401k + caps.healthFsa;
+  if (workers > 1 && nonDependentCap > 0) {
+    const perWorkerCap = nonDependentCap / workers;
+    if (secondaryIncome > perWorkerCap) {
+      incomes.push(perWorkerCap);
+      incomes.push(secondaryIncome, secondaryIncome + perWorkerCap);
+    }
+  }
+
+  return incomes;
+}
+
+function incomeAfterPretaxBeforeTax(
+  parameters: TaxParameters,
+  mode: PretaxDeductionMode,
+  dependentCount: number,
+  secondaryIncome: number,
+  grossIncome: number
+): number {
+  const pretax = pretaxDeductionsAtIncome(
+    parameters,
+    mode,
+    dependentCount,
+    secondaryIncome,
+    grossIncome
+  );
+  return Math.max(0, grossIncome - pretax.total);
 }
 
 function pretaxDeductionCaps(
