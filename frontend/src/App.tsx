@@ -32,7 +32,7 @@ type ChartRow = TaxBurden & {
   marginalTaxRatePercent: number;
 };
 
-type ChartMode = "rate" | "absolute";
+type ChartMode = "effectiveRate" | "marginalRate" | "totalTax";
 
 type CurveSeries = {
   key: string;
@@ -44,6 +44,20 @@ type CurveSeries = {
 type ComparisonChartPoint = {
   incomeNumber: number;
 } & Record<string, number | null>;
+
+type ChartTooltipPayloadEntry = {
+  color?: string;
+  dataKey?: string | number;
+  name?: string | number;
+  payload?: Record<string, number | null | undefined>;
+};
+
+type ChartTooltipProps = {
+  active?: boolean;
+  chartMode: ChartMode;
+  label?: string | number;
+  payload?: readonly ChartTooltipPayloadEntry[];
+};
 
 type ChartClickState = {
   activeLabel?: unknown;
@@ -117,6 +131,44 @@ function seriesKey(year: number, filingStatus: string): string {
   return `curve_${year}_${filingStatus.replace(/[^a-z0-9]+/gi, "_")}`;
 }
 
+function chartPayloadKeys(key: string) {
+  return {
+    marginal: `${key}_marginal`,
+    totalRate: `${key}_total_rate`,
+    totalTax: `${key}_total_tax`
+  };
+}
+
+function chartValue(row: ChartRow, chartMode: ChartMode): number {
+  if (chartMode === "marginalRate") return row.marginalTaxRatePercent;
+  if (chartMode === "totalTax") return row.totalTaxNumber;
+  return row.totalTaxRatePercent;
+}
+
+function additionalMedicareThreshold(parameters: TaxParameters): number {
+  return Number(
+    parameters.payroll.additional_medicare_thresholds[
+      parameters.federal.filing_status
+    ] ?? parameters.payroll.additional_medicare_threshold_single
+  );
+}
+
+function marginalRateChangeIncomes(parameters: TaxParameters): number[] {
+  const incomes = parameters.federal.brackets.map(
+    (bracket) =>
+      Number(parameters.federal.standard_deduction) +
+      Number(bracket.lower_bound)
+  );
+  incomes.push(Number(parameters.payroll.social_security_wage_base));
+  incomes.push(additionalMedicareThreshold(parameters));
+  return incomes.filter((income) => Number.isFinite(income));
+}
+
+function defaultStopThousands(parameters: TaxParameters): string {
+  const lastChangeIncome = Math.max(...marginalRateChangeIncomes(parameters));
+  return dollarsToThousands(lastChangeIncome * 1.1);
+}
+
 function buildChartRows(
   rows: TaxBurden[],
   includeEmployer: boolean
@@ -187,23 +239,51 @@ function marginalRateChangeIncomeSet(
   const incomes = new Set<number>([startAmount]);
   if (!parameters) return incomes;
 
-  for (const bracket of parameters.federal.brackets) {
-    incomes.add(
-      Number(parameters.federal.standard_deduction) +
-        Number(bracket.lower_bound)
-    );
+  for (const income of marginalRateChangeIncomes(parameters)) {
+    incomes.add(income);
   }
-  incomes.add(Number(parameters.payroll.social_security_wage_base));
-  incomes.add(
-    Number(
-      parameters.payroll.additional_medicare_thresholds[
-        parameters.federal.filing_status
-      ] ?? parameters.payroll.additional_medicare_threshold_single
-    )
-  );
 
   return new Set(
     [...incomes].filter((income) => income >= startAmount && income <= stopAmount)
+  );
+}
+
+function ChartTooltip({
+  active,
+  chartMode,
+  label,
+  payload = []
+}: ChartTooltipProps) {
+  if (!active || payload.length === 0) return null;
+
+  return (
+    <div className="chart-tooltip">
+      <strong>Income {toCurrency(label ?? 0)}</strong>
+      <ol>
+        {payload.map((entry) => {
+          const key = String(entry.dataKey ?? "");
+          const keys = chartPayloadKeys(key);
+          const point = entry.payload ?? {};
+          const totalRate = point[keys.totalRate];
+          const marginalRate = point[keys.marginal];
+          const totalTax = point[keys.totalTax];
+
+          return (
+            <li key={key}>
+              <span className="tooltip-series">
+                <i style={{ backgroundColor: entry.color }} />
+                {entry.name}
+              </span>
+              {chartMode === "totalTax" ? (
+                <span>Total tax {toCurrency(totalTax ?? 0)}</span>
+              ) : null}
+              <span>Total rate {formatPercentValue(totalRate ?? 0)}</span>
+              <span>Marginal rate {formatPercentValue(marginalRate ?? 0)}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
 
@@ -213,13 +293,14 @@ function App() {
   const [year, setYear] = useState(2026);
   const [filingStatus, setFilingStatus] = useState("single");
   const [startThousands, setStartThousands] = useState("0");
-  const [stopThousands, setStopThousands] = useState("2000");
+  const [stopThousands, setStopThousands] = useState("");
+  const [hasCustomStop, setHasCustomStop] = useState(false);
   const [stepThousands, setStepThousands] = useState("10");
   const [selectedIncome, setSelectedIncome] = useState(100000);
   const [includeEmployer, setIncludeEmployer] = useState(false);
   const [compareFilingStatuses, setCompareFilingStatuses] = useState(false);
   const [compareTaxYears, setCompareTaxYears] = useState(false);
-  const [chartMode, setChartMode] = useState<ChartMode>("rate");
+  const [chartMode, setChartMode] = useState<ChartMode>("effectiveRate");
   const [parameters, setParameters] = useState<TaxParameters | null>(null);
   const [rows, setRows] = useState<TaxBurden[]>([]);
   const [comparisonSeries, setComparisonSeries] = useState<CurveSeries[]>([]);
@@ -268,19 +349,21 @@ function App() {
     setError(null);
 
     async function loadScenario() {
+      const nextParameters = await fetchTaxParameters(year, filingStatus);
+      const nextDefaultStopThousands = defaultStopThousands(nextParameters);
+      const resolvedStop = hasCustomStop
+        ? stop
+        : thousandsToDollars(nextDefaultStopThousands);
       const selectedSeriesRequest = {
         year,
         filingStatus,
         start,
-        stop,
+        stop: resolvedStop,
         step,
         includeEmployerPayrollTax: includeEmployer,
         includeMarginalBreakpoints: true
       };
-      const [nextParameters, selectedSeries] = await Promise.all([
-        fetchTaxParameters(year, filingStatus),
-        fetchIncomeSeries(selectedSeriesRequest)
-      ]);
+      const selectedSeries = await fetchIncomeSeries(selectedSeriesRequest);
       const yearsToCompare =
         compareTaxYears && taxYears.length > 0 ? taxYears : [year];
       const seriesRequests: Array<{
@@ -342,6 +425,9 @@ function App() {
       );
 
       if (cancelled) return;
+      if (!hasCustomStop && stopThousands !== nextDefaultStopThousands) {
+        setStopThousands(nextDefaultStopThousands);
+      }
       setParameters(nextParameters);
       setRows(selectedSeries.rows);
       setComparisonSeries(nextComparisonSeries);
@@ -367,6 +453,8 @@ function App() {
     start,
     stop,
     step,
+    stopThousands,
+    hasCustomStop,
     includeEmployer,
     compareFilingStatuses,
     compareTaxYears,
@@ -417,8 +505,11 @@ function App() {
       for (const row of series.rows) {
         const point =
           points.get(row.incomeNumber) ?? ({ incomeNumber: row.incomeNumber } as ComparisonChartPoint);
-        point[series.key] =
-          chartMode === "rate" ? row.totalTaxRatePercent : row.totalTaxNumber;
+        const keys = chartPayloadKeys(series.key);
+        point[series.key] = chartValue(row, chartMode);
+        point[keys.totalRate] = row.totalTaxRatePercent;
+        point[keys.totalTax] = row.totalTaxNumber;
+        point[keys.marginal] = row.marginalTaxRatePercent;
         points.set(row.incomeNumber, point);
       }
     }
@@ -429,10 +520,14 @@ function App() {
   }, [comparisonSeries, chartMode]);
 
   const selectedAdditionalMedicareThreshold =
-    parameters?.payroll.additional_medicare_thresholds[filingStatus] ??
-    parameters?.payroll.additional_medicare_threshold_single;
+    parameters ? additionalMedicareThreshold(parameters) : undefined;
   const chartLabel =
-    chartMode === "rate" ? "Total tax as % of W-2 income" : "Total tax paid";
+    chartMode === "marginalRate"
+      ? "Marginal tax rate"
+      : chartMode === "totalTax"
+        ? "Total tax paid"
+        : "Effective tax rate";
+  const curveType = chartMode === "marginalRate" ? "stepAfter" : "monotone";
   const comparingCurves = compareFilingStatuses || compareTaxYears;
   const dataStatusLabel = loading
     ? "Loading"
@@ -455,6 +550,7 @@ function App() {
     setSelectedIncome((currentIncome) => Math.max(currentIncome, income));
   };
   const setQuickStop = (income: number) => {
+    setHasCustomStop(true);
     setStopThousands(dollarsToThousands(income));
     setSelectedIncome((currentIncome) => Math.min(currentIncome, income));
   };
@@ -529,6 +625,7 @@ function App() {
                 id="start-thousands"
                 type="number"
                 min="0"
+                step="0.001"
                 value={startThousands}
                 onChange={(event) => setStartThousands(event.target.value)}
               />
@@ -557,8 +654,12 @@ function App() {
                 id="stop-thousands"
                 type="number"
                 min="0"
+                step="0.001"
                 value={stopThousands}
-                onChange={(event) => setStopThousands(event.target.value)}
+                onChange={(event) => {
+                  setHasCustomStop(true);
+                  setStopThousands(event.target.value);
+                }}
               />
               <select
                 aria-label="Quick stop"
@@ -616,17 +717,24 @@ function App() {
             <div>
               <button
                 type="button"
-                className={chartMode === "rate" ? "active" : ""}
-                onClick={() => setChartMode("rate")}
+                className={chartMode === "effectiveRate" ? "active" : ""}
+                onClick={() => setChartMode("effectiveRate")}
               >
-                Percent
+                Effective Rate
               </button>
               <button
                 type="button"
-                className={chartMode === "absolute" ? "active" : ""}
-                onClick={() => setChartMode("absolute")}
+                className={chartMode === "marginalRate" ? "active" : ""}
+                onClick={() => setChartMode("marginalRate")}
               >
-                Dollars
+                Marginal Rate
+              </button>
+              <button
+                type="button"
+                className={chartMode === "totalTax" ? "active" : ""}
+                onClick={() => setChartMode("totalTax")}
+              >
+                Total Tax $
               </button>
             </div>
           </div>
@@ -696,23 +804,23 @@ function App() {
                 />
                 <YAxis
                   tickFormatter={(value) =>
-                    chartMode === "rate"
-                      ? `${Number(value).toFixed(0)}%`
-                      : `$${Number(value) / 1000}k`
+                    chartMode === "totalTax"
+                      ? `$${Number(value) / 1000}k`
+                      : `${Number(value).toFixed(0)}%`
                   }
                   stroke="#706b60"
                 />
                 <Tooltip
-                  formatter={(value, name) => {
-                    if (chartMode === "rate") {
-                      return [
-                        `${Number(value).toFixed(2)}%`,
-                        String(name)
-                      ];
-                    }
-                    return [toCurrency(Number(value)), String(name)];
-                  }}
-                  labelFormatter={(value) => `Income ${toCurrency(Number(value))}`}
+                  content={(props) => (
+                    <ChartTooltip
+                      active={props.active}
+                      chartMode={chartMode}
+                      label={props.label}
+                      payload={
+                        props.payload as unknown as readonly ChartTooltipPayloadEntry[]
+                      }
+                    />
+                  )}
                 />
                 {comparingCurves ? (
                   <>
@@ -720,7 +828,7 @@ function App() {
                     {comparisonSeries.map((series) => (
                       <Line
                         key={series.key}
-                        type="monotone"
+                        type={curveType}
                         dataKey={series.key}
                         name={series.label}
                         stroke={series.color}
@@ -733,7 +841,7 @@ function App() {
                   </>
                 ) : primarySeries ? (
                   <Area
-                    type="monotone"
+                    type={curveType}
                     dataKey={primarySeries.key}
                     fill="#d9eadf"
                     stroke={primarySeries.color}

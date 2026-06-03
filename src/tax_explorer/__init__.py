@@ -8,6 +8,9 @@ from typing import Iterable, Mapping
 MONEY = Decimal("0.01")
 RATE_PRECISION = Decimal("0.0001")
 MAX_INCOME_SERIES_ROWS = 2001
+ZERO = Decimal("0")
+ZERO_MONEY = Decimal("0.00")
+ZERO_RATE = Decimal("0.0000")
 
 
 def _decimal(value: Decimal | int | float | str) -> Decimal:
@@ -108,7 +111,7 @@ def calculate_tax_burden(
     if gross_income < 0:
         raise ValueError("gross_income must be non-negative")
 
-    taxable_income = max(_money("0"), gross_income - federal.standard_deduction)
+    taxable_income = max(ZERO_MONEY, gross_income - federal.standard_deduction)
     federal_income_tax = _calculate_progressive_tax(taxable_income, federal.brackets)
 
     social_security_wages = min(gross_income, payroll.social_security_wage_base)
@@ -118,7 +121,7 @@ def calculate_tax_burden(
     employee_medicare_tax = _money(gross_income * payroll.medicare_rate)
     additional_medicare_threshold = _additional_medicare_threshold(federal, payroll)
     additional_medicare_wages = max(
-        _money("0"), gross_income - additional_medicare_threshold
+        ZERO_MONEY, gross_income - additional_medicare_threshold
     )
     employee_additional_medicare_tax = _money(
         additional_medicare_wages * payroll.additional_medicare_rate
@@ -134,9 +137,9 @@ def calculate_tax_burden(
         gross_income, federal, payroll
     )
 
-    employer_social_security_tax = _money("0")
-    employer_medicare_tax = _money("0")
-    marginal_employer_payroll_tax_rate = Decimal("0")
+    employer_social_security_tax = ZERO_MONEY
+    employer_medicare_tax = ZERO_MONEY
+    marginal_employer_payroll_tax_rate = ZERO_RATE
     if scenario.include_employer_payroll_tax:
         employer_social_security_tax = employee_social_security_tax
         employer_medicare_tax = employee_medicare_tax
@@ -183,6 +186,7 @@ def build_income_series(
     payroll: PayrollTaxParameters = PAYROLL_2026,
 ) -> list[TaxBurden]:
     current = _money(start)
+    start_amount = current
     stop_amount = _money(stop)
     step_amount = _money(step)
     if step_amount <= 0:
@@ -193,22 +197,25 @@ def build_income_series(
         raise ValueError("start must be less than or equal to stop")
 
     incomes: set[Decimal] = set()
+
+    def add_income(income: Decimal) -> None:
+        incomes.add(income)
+        if len(incomes) > MAX_INCOME_SERIES_ROWS:
+            raise ValueError(
+                f"income-series supports at most {MAX_INCOME_SERIES_ROWS} rows"
+            )
+
     while current <= stop_amount:
-        incomes.add(current)
+        add_income(current)
         current = _money(current + step_amount)
 
     if include_marginal_breakpoints:
-        incomes.add(stop_amount)
-        incomes.update(
-            income
-            for income in _marginal_rate_change_incomes(federal, payroll)
-            if current_range_contains(income, start_amount=_money(start), stop_amount=stop_amount)
-        )
-
-    if len(incomes) > MAX_INCOME_SERIES_ROWS:
-        raise ValueError(
-            f"income-series supports at most {MAX_INCOME_SERIES_ROWS} rows"
-        )
+        add_income(stop_amount)
+        for income in _marginal_rate_change_incomes(federal, payroll):
+            if current_range_contains(
+                income, start_amount=start_amount, stop_amount=stop_amount
+            ):
+                add_income(income)
 
     return [
         calculate_tax_burden(
@@ -232,22 +239,25 @@ def current_range_contains(
 def _calculate_progressive_tax(
     taxable_income: Decimal, brackets: Iterable[TaxBracket]
 ) -> Decimal:
-    bracket_list = list(brackets)
-    tax = Decimal("0")
+    bracket_iter = iter(brackets)
+    try:
+        bracket = next(bracket_iter)
+    except StopIteration:
+        return ZERO_MONEY
 
-    for index, bracket in enumerate(bracket_list):
-        next_lower_bound = (
-            bracket_list[index + 1].lower_bound
-            if index + 1 < len(bracket_list)
-            else None
-        )
-        bracket_ceiling = taxable_income if next_lower_bound is None else next_lower_bound
+    tax = ZERO
+    for next_bracket in bracket_iter:
+        bracket_ceiling = next_bracket.lower_bound
         taxable_at_rate = max(
-            Decimal("0"), min(taxable_income, bracket_ceiling) - bracket.lower_bound
+            ZERO, min(taxable_income, bracket_ceiling) - bracket.lower_bound
         )
         tax += taxable_at_rate * bracket.rate
         if taxable_income <= bracket_ceiling:
-            break
+            return _money(tax)
+        bracket = next_bracket
+    else:
+        taxable_at_rate = max(ZERO, taxable_income - bracket.lower_bound)
+        tax += taxable_at_rate * bracket.rate
 
     return _money(tax)
 
@@ -278,9 +288,9 @@ def _marginal_employer_payroll_tax_rate(
 def _federal_marginal_rate(
     gross_income: Decimal, federal: FederalTaxParameters
 ) -> Decimal:
-    taxable_income = max(_money("0"), gross_income - federal.standard_deduction)
+    taxable_income = max(ZERO_MONEY, gross_income - federal.standard_deduction)
     if taxable_income == 0 and gross_income < federal.standard_deduction:
-        return Decimal("0")
+        return ZERO_RATE
 
     selected_rate = federal.brackets[0].rate
     for bracket in federal.brackets:
@@ -313,5 +323,5 @@ def _additional_medicare_threshold(
 
 def _rate(numerator: Decimal, denominator: Decimal) -> Decimal:
     if denominator == 0:
-        return Decimal("0.0000")
+        return ZERO_RATE
     return (numerator / denominator).quantize(RATE_PRECISION, rounding=ROUND_HALF_UP)

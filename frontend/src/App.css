@@ -267,7 +267,7 @@ input[type="range"] {
 
 .mode-control div {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 3px;
   background: #f5f2ea;
   border: 1px solid #d8d1c4;
@@ -275,14 +275,16 @@ input[type="range"] {
 }
 
 .mode-control button {
-  height: 34px;
+  min-height: 36px;
+  padding: 6px 5px;
   color: #5c564d;
   background: transparent;
   border: 0;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 720;
+  line-height: 1.15;
 }
 
 .mode-control button.active {
@@ -328,6 +330,57 @@ input[type="range"] {
   min-height: 380px;
   padding: 10px 4px 0;
   cursor: crosshair;
+}
+
+.chart-tooltip {
+  min-width: 190px;
+  padding: 10px 12px;
+  color: #24211c;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d8d1c4;
+  border-radius: 8px;
+  box-shadow: 0 14px 32px rgba(48, 42, 32, 0.16);
+}
+
+.chart-tooltip strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #171510;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.chart-tooltip ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chart-tooltip li {
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.chart-tooltip span {
+  color: #5d574d;
+}
+
+.tooltip-series {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #24211c;
+  font-weight: 760;
+}
+
+.tooltip-series i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 
 .error-box {

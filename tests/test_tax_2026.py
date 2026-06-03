@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+import tax_explorer as tax_module
 
 from tax_explorer import (
     FEDERAL_2026_SINGLE,
@@ -114,6 +115,26 @@ def test_build_income_series_rejects_reversed_income_range():
 def test_build_income_series_rejects_excessive_row_count():
     with pytest.raises(ValueError, match="at most 2001 rows"):
         build_income_series(start=0, stop=2001000, step=1000)
+
+
+def test_build_income_series_rejects_excessive_row_count_without_scanning_full_range(
+    monkeypatch,
+):
+    original_money = tax_module._money
+    money_calls = 0
+
+    def guarded_money(value):
+        nonlocal money_calls
+        money_calls += 1
+        if money_calls > 12:
+            raise AssertionError("row limit was not enforced promptly")
+        return original_money(value)
+
+    monkeypatch.setattr(tax_module, "MAX_INCOME_SERIES_ROWS", 3)
+    monkeypatch.setattr(tax_module, "_money", guarded_money)
+
+    with pytest.raises(ValueError, match="at most 3 rows"):
+        tax_module.build_income_series(start=0, stop=1000000, step=1)
 
 
 @pytest.mark.parametrize("income", [money("-1"), money("-0.01")])
