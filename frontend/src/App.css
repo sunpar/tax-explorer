@@ -191,6 +191,42 @@ input[type="range"] {
   accent-color: #2f7e60;
 }
 
+.mode-control {
+  display: grid;
+  gap: 8px;
+}
+
+.mode-control > span {
+  color: #625c51;
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.mode-control div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  background: #f5f2ea;
+  border: 1px solid #d8d1c4;
+  border-radius: 8px;
+}
+
+.mode-control button {
+  height: 34px;
+  color: #5c564d;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.mode-control button.active {
+  color: #ffffff;
+  background: #245f49;
+}
+
 .refresh-button {
   display: inline-flex;
   align-items: center;

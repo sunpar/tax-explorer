@@ -24,6 +24,11 @@ export type TaxParameters = {
   payroll: PayrollParameters;
 };
 
+export type FilingStatus = {
+  code: string;
+  label: string;
+};
+
 export type TaxBurden = {
   gross_income: string;
   taxable_income: string;

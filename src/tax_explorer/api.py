@@ -21,6 +21,7 @@ from tax_explorer import (
 from tax_explorer.database import (
     DEFAULT_DATABASE_PATH,
     get_available_tax_years,
+    get_filing_statuses,
     initialize_database,
     load_federal_tax_parameters,
     load_payroll_tax_parameters,
@@ -56,6 +57,16 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
     def tax_years() -> dict[str, list[int]]:
         with _database(app) as connection:
             return {"years": get_available_tax_years(connection)}
+
+    @app.get("/api/tax-years/{year}/filing-statuses")
+    def filing_statuses(year: int) -> dict[str, list[dict[str, str]]]:
+        with _database(app) as connection:
+            statuses = get_filing_statuses(connection, year)
+        if not statuses:
+            raise HTTPException(
+                status_code=404, detail=f"No filing statuses for {year}"
+            )
+        return {"statuses": statuses}
 
     @app.get("/api/tax-years/{year}/parameters")
     def tax_parameters(

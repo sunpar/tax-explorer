@@ -43,12 +43,19 @@ def create_schema(connection: sqlite3.Connection) -> None:
             label TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS filing_statuses (
+            code TEXT PRIMARY KEY,
+            label TEXT NOT NULL,
+            sort_order INTEGER NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS federal_tax_parameters (
             year INTEGER NOT NULL,
             filing_status TEXT NOT NULL,
             standard_deduction TEXT NOT NULL,
             PRIMARY KEY (year, filing_status),
-            FOREIGN KEY (year) REFERENCES tax_years(year)
+            FOREIGN KEY (year) REFERENCES tax_years(year),
+            FOREIGN KEY (filing_status) REFERENCES filing_statuses(code)
         );
 
         CREATE TABLE IF NOT EXISTS federal_tax_brackets (
@@ -84,14 +91,34 @@ def seed_default_tax_data(connection: sqlite3.Connection) -> None:
         """,
         (2026, "Tax Year 2026"),
     )
-    connection.execute(
+    connection.executemany(
+        """
+        INSERT INTO filing_statuses (code, label, sort_order)
+        VALUES (?, ?, ?)
+        ON CONFLICT(code) DO UPDATE SET
+            label = excluded.label,
+            sort_order = excluded.sort_order
+        """,
+        [
+            ("single", "Single", 1),
+            ("married_joint", "Married filing jointly", 2),
+            ("married_separate", "Married filing separately", 3),
+            ("head_of_household", "Head of household", 4),
+        ],
+    )
+    connection.executemany(
         """
         INSERT INTO federal_tax_parameters (year, filing_status, standard_deduction)
         VALUES (?, ?, ?)
         ON CONFLICT(year, filing_status) DO UPDATE
         SET standard_deduction = excluded.standard_deduction
         """,
-        (2026, "single", "16100.00"),
+        [
+            (2026, "single", "16100.00"),
+            (2026, "married_joint", "32200.00"),
+            (2026, "married_separate", "16100.00"),
+            (2026, "head_of_household", "24150.00"),
+        ],
     )
     connection.executemany(
         """
@@ -108,6 +135,27 @@ def seed_default_tax_data(connection: sqlite3.Connection) -> None:
             (2026, "single", "201775.00", "0.32"),
             (2026, "single", "256225.00", "0.35"),
             (2026, "single", "640600.00", "0.37"),
+            (2026, "married_joint", "0.00", "0.10"),
+            (2026, "married_joint", "24800.00", "0.12"),
+            (2026, "married_joint", "100800.00", "0.22"),
+            (2026, "married_joint", "211400.00", "0.24"),
+            (2026, "married_joint", "403550.00", "0.32"),
+            (2026, "married_joint", "512450.00", "0.35"),
+            (2026, "married_joint", "768700.00", "0.37"),
+            (2026, "married_separate", "0.00", "0.10"),
+            (2026, "married_separate", "12400.00", "0.12"),
+            (2026, "married_separate", "50400.00", "0.22"),
+            (2026, "married_separate", "105700.00", "0.24"),
+            (2026, "married_separate", "201775.00", "0.32"),
+            (2026, "married_separate", "256225.00", "0.35"),
+            (2026, "married_separate", "384350.00", "0.37"),
+            (2026, "head_of_household", "0.00", "0.10"),
+            (2026, "head_of_household", "17700.00", "0.12"),
+            (2026, "head_of_household", "67450.00", "0.22"),
+            (2026, "head_of_household", "105700.00", "0.24"),
+            (2026, "head_of_household", "201750.00", "0.32"),
+            (2026, "head_of_household", "256200.00", "0.35"),
+            (2026, "head_of_household", "640600.00", "0.37"),
         ],
     )
     connection.execute(
@@ -137,6 +185,23 @@ def seed_default_tax_data(connection: sqlite3.Connection) -> None:
 def get_available_tax_years(connection: sqlite3.Connection) -> list[int]:
     rows = connection.execute("SELECT year FROM tax_years ORDER BY year").fetchall()
     return [int(row["year"]) for row in rows]
+
+
+def get_filing_statuses(
+    connection: sqlite3.Connection, year: int
+) -> list[dict[str, str]]:
+    rows = connection.execute(
+        """
+        SELECT DISTINCT statuses.code, statuses.label, statuses.sort_order
+        FROM filing_statuses AS statuses
+        INNER JOIN federal_tax_parameters AS federal
+            ON federal.filing_status = statuses.code
+        WHERE federal.year = ?
+        ORDER BY statuses.sort_order
+        """,
+        (year,),
+    ).fetchall()
+    return [{"code": str(row["code"]), "label": str(row["label"])} for row in rows]
 
 
 def load_federal_tax_parameters(

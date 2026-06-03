@@ -3,7 +3,6 @@ import {
   Area,
   CartesianGrid,
   ComposedChart,
-  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -17,20 +16,20 @@ import {
   ShieldCheck
 } from "lucide-react";
 import {
+  fetchFilingStatuses,
   fetchIncomeSeries,
   fetchTaxParameters,
   fetchTaxYears
 } from "./api";
-import type { TaxBurden, TaxParameters } from "./types";
+import type { FilingStatus, TaxBurden, TaxParameters } from "./types";
 
 type ChartRow = TaxBurden & {
   incomeNumber: number;
-  employeeTaxNumber: number;
-  effectiveRatePercent: number;
-  employerInclusiveTaxNumber: number;
+  totalTaxNumber: number;
+  totalTaxRatePercent: number;
 };
 
-const filingStatus = "single";
+type ChartMode = "rate" | "absolute";
 
 function toCurrency(value: string | number): string {
   return new Intl.NumberFormat("en-US", {
@@ -42,6 +41,10 @@ function toCurrency(value: string | number): string {
 
 function toPercent(value: string | number): string {
   return `${(Number(value) * 100).toFixed(2)}%`;
+}
+
+function formatPercentValue(value: string | number): string {
+  return `${Number(value).toFixed(2)}%`;
 }
 
 function nearestRow(rows: ChartRow[], income: number): ChartRow | undefined {
@@ -56,12 +59,15 @@ function nearestRow(rows: ChartRow[], income: number): ChartRow | undefined {
 
 function App() {
   const [taxYears, setTaxYears] = useState<number[]>([]);
+  const [filingStatuses, setFilingStatuses] = useState<FilingStatus[]>([]);
   const [year, setYear] = useState(2026);
+  const [filingStatus, setFilingStatus] = useState("single");
   const [start, setStart] = useState("0");
   const [stop, setStop] = useState("500000");
   const [step, setStep] = useState("10000");
   const [selectedIncome, setSelectedIncome] = useState(100000);
   const [includeEmployer, setIncludeEmployer] = useState(false);
+  const [chartMode, setChartMode] = useState<ChartMode>("rate");
   const [parameters, setParameters] = useState<TaxParameters | null>(null);
   const [rows, setRows] = useState<TaxBurden[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +83,25 @@ function App() {
       })
       .catch((nextError: Error) => setError(nextError.message));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchFilingStatuses(year)
+      .then((statuses) => {
+        if (cancelled) return;
+        setFilingStatuses(statuses);
+        if (!statuses.some((status) => status.code === filingStatus)) {
+          setFilingStatus(statuses[0]?.code ?? "single");
+        }
+      })
+      .catch((nextError: Error) => {
+        if (!cancelled) setError(nextError.message);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [year, filingStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,18 +134,25 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [year, start, stop, step, includeEmployer]);
+  }, [year, filingStatus, start, stop, step, includeEmployer]);
 
   const chartRows = useMemo<ChartRow[]>(
     () =>
-      rows.map((row) => ({
-        ...row,
-        incomeNumber: Number(row.gross_income),
-        employeeTaxNumber: Number(row.total_employee_tax),
-        effectiveRatePercent: Number(row.effective_employee_tax_rate) * 100,
-        employerInclusiveTaxNumber: Number(row.total_tax_with_employer_payroll)
-      })),
-    [rows]
+      rows.map((row) => {
+        const incomeNumber = Number(row.gross_income);
+        const totalTaxNumber = includeEmployer
+          ? Number(row.total_tax_with_employer_payroll)
+          : Number(row.total_employee_tax);
+
+        return {
+          ...row,
+          incomeNumber,
+          totalTaxNumber,
+          totalTaxRatePercent:
+            incomeNumber === 0 ? 0 : (totalTaxNumber / incomeNumber) * 100
+        };
+      }),
+    [rows, includeEmployer]
   );
 
   const selectedRow = useMemo(
@@ -134,6 +166,14 @@ function App() {
     return chartRows.filter((_, index) => index % stride === 0);
   }, [chartRows]);
 
+  const selectedFilingStatus = filingStatuses.find(
+    (status) => status.code === filingStatus
+  );
+  const chartDataKey =
+    chartMode === "rate" ? "totalTaxRatePercent" : "totalTaxNumber";
+  const chartLabel =
+    chartMode === "rate" ? "Total tax as % of W-2 income" : "Total tax paid";
+
   return (
     <main className="app-shell">
       <header className="top-bar">
@@ -143,7 +183,7 @@ function App() {
           </div>
           <div>
             <h1>Tax Explorer</h1>
-            <p>US single filer, standard deduction, wage income</p>
+            <p>2026 federal W-2 income, standard deduction only</p>
           </div>
         </div>
         <div className="status-pill" title="Parameters loaded from SQLite">
@@ -168,6 +208,20 @@ function App() {
               {taxYears.map((taxYear) => (
                 <option key={taxYear} value={taxYear}>
                   {taxYear}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span>Filing status</span>
+            <select
+              value={filingStatus}
+              onChange={(event) => setFilingStatus(event.target.value)}
+            >
+              {filingStatuses.map((status) => (
+                <option key={status.code} value={status.code}>
+                  {status.label}
                 </option>
               ))}
             </select>
@@ -226,6 +280,26 @@ function App() {
             <span>Employer payroll taxes</span>
           </label>
 
+          <div className="mode-control" aria-label="Chart Y-axis mode">
+            <span>Chart value</span>
+            <div>
+              <button
+                type="button"
+                className={chartMode === "rate" ? "active" : ""}
+                onClick={() => setChartMode("rate")}
+              >
+                Percent
+              </button>
+              <button
+                type="button"
+                className={chartMode === "absolute" ? "active" : ""}
+                onClick={() => setChartMode("absolute")}
+              >
+                Dollars
+              </button>
+            </div>
+          </div>
+
           <button
             type="button"
             className="refresh-button"
@@ -242,7 +316,7 @@ function App() {
             <div>
               <h2>Tax Burden Curve</h2>
               <p>
-                Federal income tax, employee FICA, and Additional Medicare Tax
+                {chartLabel}; federal income tax plus W-2 payroll taxes
               </p>
             </div>
             <div className="data-status">
@@ -264,46 +338,32 @@ function App() {
                   minTickGap={24}
                 />
                 <YAxis
-                  yAxisId="tax"
-                  tickFormatter={(value) => `$${Number(value) / 1000}k`}
-                  stroke="#706b60"
-                />
-                <YAxis
-                  yAxisId="rate"
-                  orientation="right"
-                  tickFormatter={(value) => `${Number(value).toFixed(0)}%`}
+                  tickFormatter={(value) =>
+                    chartMode === "rate"
+                      ? `${Number(value).toFixed(0)}%`
+                      : `$${Number(value) / 1000}k`
+                  }
                   stroke="#706b60"
                 />
                 <Tooltip
-                  formatter={(value, name) => {
-                    if (name === "effectiveRatePercent") {
-                      return [`${Number(value).toFixed(2)}%`, "Effective rate"];
+                  formatter={(value) => {
+                    if (chartMode === "rate") {
+                      return [
+                        `${Number(value).toFixed(2)}%`,
+                        "Total tax rate"
+                      ];
                     }
-                    return [toCurrency(Number(value)), "Total tax"];
+                    return [toCurrency(Number(value)), "Total tax paid"];
                   }}
                   labelFormatter={(value) => `Income ${toCurrency(Number(value))}`}
                 />
                 <Area
-                  yAxisId="tax"
                   type="monotone"
-                  dataKey={
-                    includeEmployer
-                      ? "employerInclusiveTaxNumber"
-                      : "employeeTaxNumber"
-                  }
+                  dataKey={chartDataKey}
                   fill="#d9eadf"
                   stroke="#237a5b"
                   fillOpacity={0.65}
-                  name="totalTax"
-                />
-                <Line
-                  yAxisId="rate"
-                  type="monotone"
-                  dataKey="effectiveRatePercent"
-                  stroke="#ba6b25"
-                  strokeWidth={2.5}
-                  dot={false}
-                  name="effectiveRatePercent"
+                  name={chartDataKey}
                 />
               </ComposedChart>
             </ResponsiveContainer>
@@ -336,7 +396,7 @@ function App() {
               label="Effective rate"
               value={
                 selectedRow
-                  ? toPercent(selectedRow.effective_employee_tax_rate)
+                  ? formatPercentValue(selectedRow.totalTaxRatePercent)
                   : "-"
               }
             />
@@ -350,6 +410,10 @@ function App() {
           {parameters ? (
             <>
               <dl>
+                <div>
+                  <dt>Filing status</dt>
+                  <dd>{selectedFilingStatus?.label ?? parameters.federal.filing_status}</dd>
+                </div>
                 <div>
                   <dt>Standard deduction</dt>
                   <dd>{toCurrency(parameters.federal.standard_deduction)}</dd>
@@ -407,14 +471,8 @@ function App() {
                   <td>{toCurrency(row.gross_income)}</td>
                   <td>{toCurrency(row.federal_income_tax)}</td>
                   <td>{toCurrency(row.total_employee_payroll_tax)}</td>
-                  <td>
-                    {toCurrency(
-                      includeEmployer
-                        ? row.total_tax_with_employer_payroll
-                        : row.total_employee_tax
-                    )}
-                  </td>
-                  <td>{toPercent(row.effective_employee_tax_rate)}</td>
+                  <td>{toCurrency(row.totalTaxNumber)}</td>
+                  <td>{formatPercentValue(row.totalTaxRatePercent)}</td>
                 </tr>
               ))}
             </tbody>

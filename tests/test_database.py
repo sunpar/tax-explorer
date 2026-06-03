@@ -3,6 +3,7 @@ from decimal import Decimal
 from tax_explorer import TaxScenario, calculate_tax_burden
 from tax_explorer.database import (
     get_available_tax_years,
+    get_filing_statuses,
     initialize_database,
     load_federal_tax_parameters,
     load_payroll_tax_parameters,
@@ -31,6 +32,48 @@ def test_loads_2026_single_filer_federal_parameters_from_sqlite(tmp_path):
     assert federal.brackets[0].rate == Decimal("0.10")
     assert federal.brackets[-1].lower_bound == Decimal("640600.00")
     assert federal.brackets[-1].rate == Decimal("0.37")
+
+
+def test_loads_all_supported_2026_filing_statuses_from_sqlite(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        statuses = get_filing_statuses(connection, 2026)
+        federal_by_status = {
+            status["code"]: load_federal_tax_parameters(connection, 2026, status["code"])
+            for status in statuses
+        }
+
+    assert statuses == [
+        {"code": "single", "label": "Single"},
+        {"code": "married_joint", "label": "Married filing jointly"},
+        {"code": "married_separate", "label": "Married filing separately"},
+        {"code": "head_of_household", "label": "Head of household"},
+    ]
+    assert federal_by_status["single"].standard_deduction == Decimal("16100.00")
+    assert federal_by_status["single"].brackets[-1].lower_bound == Decimal("640600.00")
+    assert federal_by_status["married_joint"].standard_deduction == Decimal("32200.00")
+    assert federal_by_status["married_joint"].brackets[1].lower_bound == Decimal(
+        "24800.00"
+    )
+    assert federal_by_status["married_joint"].brackets[-1].lower_bound == Decimal(
+        "768700.00"
+    )
+    assert federal_by_status["married_separate"].standard_deduction == Decimal(
+        "16100.00"
+    )
+    assert federal_by_status["married_separate"].brackets[-1].lower_bound == Decimal(
+        "384350.00"
+    )
+    assert federal_by_status["head_of_household"].standard_deduction == Decimal(
+        "24150.00"
+    )
+    assert federal_by_status["head_of_household"].brackets[1].lower_bound == Decimal(
+        "17700.00"
+    )
+    assert federal_by_status["head_of_household"].brackets[-1].lower_bound == Decimal(
+        "640600.00"
+    )
 
 
 def test_loads_2026_payroll_parameters_from_sqlite(tmp_path):

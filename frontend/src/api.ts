@@ -1,4 +1,4 @@
-import type { IncomeSeriesResponse, TaxParameters } from "./types";
+import type { FilingStatus, IncomeSeriesResponse, TaxParameters } from "./types";
 
 export type SeriesRequest = {
   year: number;
@@ -21,6 +21,13 @@ async function requestJson<T>(url: string): Promise<T> {
 export async function fetchTaxYears(): Promise<number[]> {
   const response = await requestJson<{ years: number[] }>("/api/tax-years");
   return response.years;
+}
+
+export async function fetchFilingStatuses(year: number): Promise<FilingStatus[]> {
+  const response = await requestJson<{ statuses: FilingStatus[] }>(
+    `/api/tax-years/${year}/filing-statuses`
+  );
+  return response.statuses;
 }
 
 export function fetchTaxParameters(
