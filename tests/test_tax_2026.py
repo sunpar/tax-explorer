@@ -4,6 +4,7 @@ import pytest
 
 from tax_explorer import (
     FEDERAL_2026_SINGLE,
+    PayrollTaxParameters,
     TaxScenario,
     build_income_series,
     calculate_tax_burden,
@@ -39,6 +40,25 @@ def test_social_security_tax_is_capped_at_2026_wage_base():
 
     assert result.employee_social_security_tax == money("11439.00")
     assert result.employee_medicare_tax == money("3625.00")
+    assert result.employee_additional_medicare_tax == money("450.00")
+
+
+def test_payroll_parameters_accept_legacy_single_additional_medicare_threshold():
+    payroll = PayrollTaxParameters(
+        tax_year=2026,
+        social_security_rate=Decimal("0.062"),
+        social_security_wage_base=money("184500.00"),
+        medicare_rate=Decimal("0.0145"),
+        additional_medicare_rate=Decimal("0.009"),
+        additional_medicare_threshold_single=money("200000.00"),
+    )
+
+    result = calculate_tax_burden(
+        TaxScenario(gross_income=money("250000")),
+        payroll=payroll,
+    )
+
+    assert payroll.additional_medicare_thresholds == {}
     assert result.employee_additional_medicare_tax == money("450.00")
 
 

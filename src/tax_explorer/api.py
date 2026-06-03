@@ -177,7 +177,7 @@ def _payroll_to_response(parameters: PayrollTaxParameters) -> dict[str, Any]:
 
 def _tax_burden_to_response(result: TaxBurden) -> dict[str, Any]:
     response = {
-        key: _decimal_to_string(value) if isinstance(value, Decimal) else str(value)
+        key: _value_to_response(value)
         for key, value in asdict(result).items()
     }
     response["tax_breakdown"] = _tax_breakdown_to_response(result)

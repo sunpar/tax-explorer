@@ -4,8 +4,20 @@ from tax_explorer.api import create_app
 from tax_explorer.database import connect
 
 
+def create_test_client(tmp_path):
+    return TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+
+
+EXPECTED_ADDITIONAL_MEDICARE_THRESHOLDS = {
+    "single": "200000.00",
+    "married_joint": "250000.00",
+    "married_separate": "125000.00",
+    "head_of_household": "200000.00",
+}
+
+
 def test_lists_available_tax_years(tmp_path):
-    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+    client = create_test_client(tmp_path)
 
     response = client.get("/api/tax-years")
 
@@ -14,7 +26,7 @@ def test_lists_available_tax_years(tmp_path):
 
 
 def test_lists_filing_statuses_for_tax_year(tmp_path):
-    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+    client = create_test_client(tmp_path)
 
     response = client.get("/api/tax-years/2026/filing-statuses")
 
@@ -30,7 +42,7 @@ def test_lists_filing_statuses_for_tax_year(tmp_path):
 
 
 def test_returns_parameters_for_tax_year(tmp_path):
-    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+    client = create_test_client(tmp_path)
 
     response = client.get("/api/tax-years/2026/parameters")
 
@@ -44,10 +56,15 @@ def test_returns_parameters_for_tax_year(tmp_path):
         "rate": "0.10",
     }
     assert body["payroll"]["social_security_wage_base"] == "184500.00"
+    assert body["payroll"]["additional_medicare_threshold_single"] == "200000.00"
+    assert (
+        body["payroll"]["additional_medicare_thresholds"]
+        == EXPECTED_ADDITIONAL_MEDICARE_THRESHOLDS
+    )
 
 
 def test_returns_parameters_for_selected_filing_status(tmp_path):
-    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+    client = create_test_client(tmp_path)
 
     response = client.get(
         "/api/tax-years/2026/parameters",
@@ -65,7 +82,7 @@ def test_returns_parameters_for_selected_filing_status(tmp_path):
 
 
 def test_calculates_tax_burden_from_database_parameters(tmp_path):
-    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+    client = create_test_client(tmp_path)
 
     response = client.post(
         "/api/calculate",
@@ -86,7 +103,7 @@ def test_calculates_tax_burden_from_database_parameters(tmp_path):
 
 
 def test_calculate_response_breaks_tax_down_by_component(tmp_path):
-    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+    client = create_test_client(tmp_path)
 
     response = client.post(
         "/api/calculate",
@@ -124,7 +141,7 @@ def test_calculate_response_breaks_tax_down_by_component(tmp_path):
 
 
 def test_returns_income_series_from_database_parameters(tmp_path):
-    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+    client = create_test_client(tmp_path)
 
     response = client.get(
         "/api/income-series",
@@ -148,7 +165,7 @@ def test_returns_income_series_from_database_parameters(tmp_path):
 
 
 def test_income_series_rejects_reversed_income_range(tmp_path):
-    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+    client = create_test_client(tmp_path)
 
     response = client.get(
         "/api/income-series",
@@ -166,7 +183,7 @@ def test_income_series_rejects_reversed_income_range(tmp_path):
 
 
 def test_income_series_rejects_excessive_row_count(tmp_path):
-    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+    client = create_test_client(tmp_path)
 
     response = client.get(
         "/api/income-series",
@@ -186,7 +203,7 @@ def test_income_series_rejects_excessive_row_count(tmp_path):
 def test_income_series_breakdown_includes_employer_components_when_selected(
     tmp_path,
 ):
-    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+    client = create_test_client(tmp_path)
 
     response = client.get(
         "/api/income-series",
@@ -240,7 +257,7 @@ def test_income_series_breakdown_includes_employer_components_when_selected(
 def test_income_series_uses_selected_filing_status_standard_deduction_and_brackets(
     tmp_path,
 ):
-    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+    client = create_test_client(tmp_path)
 
     response = client.get(
         "/api/income-series",
@@ -262,7 +279,7 @@ def test_income_series_uses_selected_filing_status_standard_deduction_and_bracke
 
 
 def test_rejects_unknown_tax_year(tmp_path):
-    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+    client = create_test_client(tmp_path)
 
     response = client.get("/api/tax-years/2030/parameters")
 

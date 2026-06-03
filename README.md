@@ -63,6 +63,12 @@ npm run build
 - `POST /api/calculate`
 - `GET /api/income-series?year=2026&filing_status=married_joint&start=0&stop=500000&step=10000`
 
+API request and response field names use snake_case. Monetary and rate values
+are serialized as strings to preserve decimal precision. Payroll parameter
+responses include both `additional_medicare_threshold_single` for legacy callers
+and `additional_medicare_thresholds`, keyed by filing status, for selected-status
+Additional Medicare Tax calculations.
+
 The local SQLite database is created and seeded at `data/tax_explorer.sqlite3`
 when the API starts. Set `TAX_EXPLORER_DB=/path/to/file.sqlite3` to override the
 database path.

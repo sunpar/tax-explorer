@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable, Mapping
 
@@ -40,7 +40,7 @@ class PayrollTaxParameters:
     medicare_rate: Decimal
     additional_medicare_rate: Decimal
     additional_medicare_threshold_single: Decimal
-    additional_medicare_thresholds: Mapping[str, Decimal]
+    additional_medicare_thresholds: Mapping[str, Decimal] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
