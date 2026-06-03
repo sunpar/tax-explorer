@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 from tax_explorer import (
     FederalTaxParameters,
     PayrollTaxParameters,
+    PRETAX_DEDUCTION_MODE_CHOICES,
+    PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
     PretaxDeductionParameters,
     TaxBurden,
     TaxScenario,
@@ -31,12 +33,20 @@ from tax_explorer.database import (
 )
 
 
+PRETAX_DEDUCTION_MODE_SCHEMA = {
+    "enum": list(PRETAX_DEDUCTION_MODE_CHOICES)
+}
+
+
 class CalculateRequest(BaseModel):
     year: int
     filing_status: str = "single"
     gross_income: Decimal = Field(ge=0)
     include_employer_payroll_tax: bool = False
-    pretax_deduction_mode: str = "max_available"
+    pretax_deduction_mode: str = Field(
+        default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
+        json_schema_extra=PRETAX_DEDUCTION_MODE_SCHEMA,
+    )
 
 
 def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
@@ -86,8 +96,8 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
 
         return {
             "federal": _federal_to_response(federal),
-            "payroll": _payroll_to_response(payroll),
-            "pretax_deductions": _pretax_to_response(pretax),
+            "payroll": _dataclass_to_response(payroll),
+            "pretax_deductions": _dataclass_to_response(pretax),
         }
 
     @app.post("/api/calculate")
@@ -123,7 +133,10 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
         step: Decimal = Query(default=Decimal("10000"), gt=0),
         include_employer_payroll_tax: bool = Query(default=False),
         include_marginal_breakpoints: bool = Query(default=False),
-        pretax_deduction_mode: str = Query(default="max_available"),
+        pretax_deduction_mode: str = Query(
+            default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
+            json_schema_extra=PRETAX_DEDUCTION_MODE_SCHEMA,
+        ),
     ) -> dict[str, list[dict[str, Any]]]:
         try:
             federal, payroll, pretax = _load_parameters(app, year, filing_status)
@@ -184,14 +197,7 @@ def _federal_to_response(parameters: FederalTaxParameters) -> dict[str, Any]:
     }
 
 
-def _payroll_to_response(parameters: PayrollTaxParameters) -> dict[str, Any]:
-    return {
-        key: _value_to_response(value)
-        for key, value in asdict(parameters).items()
-    }
-
-
-def _pretax_to_response(parameters: PretaxDeductionParameters) -> dict[str, Any]:
+def _dataclass_to_response(parameters: Any) -> dict[str, Any]:
     return {
         key: _value_to_response(value)
         for key, value in asdict(parameters).items()

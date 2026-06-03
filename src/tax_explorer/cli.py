@@ -4,7 +4,12 @@ import argparse
 import csv
 import sys
 
-from tax_explorer import TaxBurden, build_income_series
+from tax_explorer import (
+    PRETAX_DEDUCTION_MODE_CHOICES,
+    PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
+    TaxBurden,
+    build_income_series,
+)
 
 
 CSV_FIELDS = (
@@ -44,8 +49,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--pretax-deduction-mode",
-        choices=("max_available", "gradual_phase_in"),
-        default="max_available",
+        choices=PRETAX_DEDUCTION_MODE_CHOICES,
+        default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
         help="Pre-tax payroll deduction usage model.",
     )
     args = parser.parse_args(argv)

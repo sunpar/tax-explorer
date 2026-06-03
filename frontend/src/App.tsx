@@ -171,19 +171,22 @@ function chartValueAtIncome(
   income: number,
   chartMode: ChartMode
 ): ChartPointValue | null {
-  const exact = rows.find((row) => row.incomeNumber === income);
-  if (exact) return chartPointValue(exact, chartMode);
+  let low = 0;
+  let high = rows.length - 1;
 
-  let lower: ChartRow | undefined;
-  let upper: ChartRow | undefined;
-  for (const row of rows) {
-    if (row.incomeNumber < income) lower = row;
-    if (row.incomeNumber > income) {
-      upper = row;
-      break;
+  while (low <= high) {
+    const midpoint = Math.floor((low + high) / 2);
+    const row = rows[midpoint];
+    if (row.incomeNumber === income) return chartPointValue(row, chartMode);
+    if (row.incomeNumber < income) {
+      low = midpoint + 1;
+    } else {
+      high = midpoint - 1;
     }
   }
 
+  const lower = rows[high];
+  const upper = rows[low];
   if (!lower || !upper) return null;
 
   const progress =
@@ -368,8 +371,8 @@ function roundMoneyNumber(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function pretaxDeductionModeLabel(mode: PretaxDeductionMode): string {
-  return mode === "gradual_phase_in" ? "Gradual phase-in" : "Max available";
+function sortedUniqueNumbers(values: Iterable<number>): number[] {
+  return [...new Set(values)].sort((left, right) => left - right);
 }
 
 function defaultStopThousands(
@@ -708,18 +711,12 @@ function App() {
   }, [chartRows, parameters, pretaxDeductionMode, start, stop]);
 
   const sampledIncomeOptions = useMemo(
-    () =>
-      [...new Set(tableRows.map((row) => row.incomeNumber))].sort(
-        (left, right) => left - right
-      ),
+    () => sortedUniqueNumbers(tableRows.map((row) => row.incomeNumber)),
     [tableRows]
   );
 
   const quickStartOptions = useMemo(
-    () =>
-      [...new Set([0, ...sampledIncomeOptions])].sort(
-        (left, right) => left - right
-      ),
+    () => sortedUniqueNumbers([0, ...sampledIncomeOptions]),
     [sampledIncomeOptions]
   );
 
@@ -736,7 +733,7 @@ function App() {
       }
     }
 
-    return [...incomes].sort((left, right) => left - right).map((income) => {
+    return sortedUniqueNumbers(incomes).map((income) => {
       const point = { incomeNumber: income } as ComparisonChartPoint;
       for (const series of comparisonSeries) {
         const keys = chartPayloadKeys(series.key);

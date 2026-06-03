@@ -113,6 +113,35 @@ def test_calculates_tax_burden_from_database_parameters(tmp_path):
     assert body["effective_employee_tax_rate"] == "0.1442"
 
 
+def test_openapi_documents_pretax_deduction_modes(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    openapi = response.json()
+    calculate_mode_schema = openapi["components"]["schemas"]["CalculateRequest"][
+        "properties"
+    ]["pretax_deduction_mode"]
+    assert calculate_mode_schema["enum"] == [
+        "max_available",
+        "gradual_phase_in",
+    ]
+
+    income_series_parameters = openapi["paths"]["/api/income-series"]["get"][
+        "parameters"
+    ]
+    income_series_mode = next(
+        parameter
+        for parameter in income_series_parameters
+        if parameter["name"] == "pretax_deduction_mode"
+    )
+    assert income_series_mode["schema"]["enum"] == [
+        "max_available",
+        "gradual_phase_in",
+    ]
+
+
 def test_calculate_response_breaks_tax_down_by_component(tmp_path):
     client = create_test_client(tmp_path)
 
