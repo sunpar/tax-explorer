@@ -63,6 +63,16 @@ def test_build_income_series_samples_inclusive_income_range():
     ]
 
 
+def test_build_income_series_rejects_reversed_income_range():
+    with pytest.raises(ValueError, match="start must be less than or equal to stop"):
+        build_income_series(start=100000, stop=0, step=10000)
+
+
+def test_build_income_series_rejects_excessive_row_count():
+    with pytest.raises(ValueError, match="at most 2001 rows"):
+        build_income_series(start=0, stop=2001000, step=1000)
+
+
 @pytest.mark.parametrize("income", [money("-1"), money("-0.01")])
 def test_negative_income_is_rejected(income):
     with pytest.raises(ValueError, match="gross_income"):

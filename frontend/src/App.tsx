@@ -174,6 +174,9 @@ function App() {
   const selectedFilingStatus = filingStatuses.find(
     (status) => status.code === filingStatus
   );
+  const selectedAdditionalMedicareThreshold =
+    parameters?.payroll.additional_medicare_thresholds[filingStatus] ??
+    parameters?.payroll.additional_medicare_threshold_single;
   const chartDataKey =
     chartMode === "rate" ? "totalTaxRatePercent" : "totalTaxNumber";
   const chartLabel =
@@ -473,9 +476,7 @@ function App() {
                 <div>
                   <dt>Additional Medicare threshold</dt>
                   <dd>
-                    {toCurrency(
-                      parameters.payroll.additional_medicare_threshold_single
-                    )}
+                    {toCurrency(selectedAdditionalMedicareThreshold ?? "0")}
                   </dd>
                 </div>
               </dl>

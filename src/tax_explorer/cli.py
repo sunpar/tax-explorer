@@ -26,7 +26,7 @@ CSV_FIELDS = (
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Generate 2026 US single-filer tax burden rows by income."
+        description="Generate default 2026 US W-2 tax burden rows by income."
     )
     parser.add_argument("--start", type=str, default="0")
     parser.add_argument("--stop", type=str, default="500000")

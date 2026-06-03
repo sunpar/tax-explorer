@@ -20,6 +20,7 @@ from tax_explorer import (
 )
 from tax_explorer.database import (
     DEFAULT_DATABASE_PATH,
+    connect,
     get_available_tax_years,
     get_filing_statuses,
     initialize_database,
@@ -114,6 +115,10 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
     ) -> dict[str, list[dict[str, Any]]]:
         try:
             federal, payroll = _load_parameters(app, year, filing_status)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        try:
             rows = build_income_series(
                 start=start,
                 stop=stop,
@@ -123,7 +128,7 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
                 payroll=payroll,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         return {"rows": [_tax_burden_to_response(row) for row in rows]}
 
@@ -132,7 +137,7 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
 
 @contextmanager
 def _database(app: FastAPI) -> Iterator[Any]:
-    connection = initialize_database(app.state.database_path)
+    connection = connect(app.state.database_path)
     try:
         yield connection
     finally:
@@ -165,7 +170,7 @@ def _federal_to_response(parameters: FederalTaxParameters) -> dict[str, Any]:
 
 def _payroll_to_response(parameters: PayrollTaxParameters) -> dict[str, Any]:
     return {
-        key: _decimal_to_string(value) if isinstance(value, Decimal) else value
+        key: _value_to_response(value)
         for key, value in asdict(parameters).items()
     }
 
@@ -218,6 +223,17 @@ def _tax_breakdown_to_response(result: TaxBurden) -> list[dict[str, str]]:
 
 def _decimal_to_string(value: Decimal) -> str:
     return format(value, "f")
+
+
+def _value_to_response(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return _decimal_to_string(value)
+    if isinstance(value, dict):
+        return {
+            key: _value_to_response(nested_value)
+            for key, nested_value in value.items()
+        }
+    return value
 
 
 app = create_app()

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Iterable
+from typing import Iterable, Mapping
 
 
 MONEY = Decimal("0.01")
 RATE_PRECISION = Decimal("0.0001")
+MAX_INCOME_SERIES_ROWS = 2001
 
 
 def _decimal(value: Decimal | int | float | str) -> Decimal:
@@ -39,6 +40,7 @@ class PayrollTaxParameters:
     medicare_rate: Decimal
     additional_medicare_rate: Decimal
     additional_medicare_threshold_single: Decimal
+    additional_medicare_thresholds: Mapping[str, Decimal]
 
 
 @dataclass(frozen=True)
@@ -86,6 +88,12 @@ PAYROLL_2026 = PayrollTaxParameters(
     medicare_rate=Decimal("0.0145"),
     additional_medicare_rate=Decimal("0.009"),
     additional_medicare_threshold_single=_money("200000"),
+    additional_medicare_thresholds={
+        "single": _money("200000"),
+        "married_joint": _money("250000"),
+        "married_separate": _money("125000"),
+        "head_of_household": _money("200000"),
+    },
 )
 
 
@@ -106,8 +114,9 @@ def calculate_tax_burden(
         social_security_wages * payroll.social_security_rate
     )
     employee_medicare_tax = _money(gross_income * payroll.medicare_rate)
+    additional_medicare_threshold = _additional_medicare_threshold(federal, payroll)
     additional_medicare_wages = max(
-        _money("0"), gross_income - payroll.additional_medicare_threshold_single
+        _money("0"), gross_income - additional_medicare_threshold
     )
     employee_additional_medicare_tax = _money(
         additional_medicare_wages * payroll.additional_medicare_rate
@@ -165,9 +174,15 @@ def build_income_series(
         raise ValueError("step must be positive")
     if current < 0 or stop_amount < 0:
         raise ValueError("income bounds must be non-negative")
+    if current > stop_amount:
+        raise ValueError("start must be less than or equal to stop")
 
     rows: list[TaxBurden] = []
     while current <= stop_amount:
+        if len(rows) >= MAX_INCOME_SERIES_ROWS:
+            raise ValueError(
+                f"income-series supports at most {MAX_INCOME_SERIES_ROWS} rows"
+            )
         rows.append(
             calculate_tax_burden(
                 TaxScenario(
@@ -203,6 +218,14 @@ def _calculate_progressive_tax(
             break
 
     return _money(tax)
+
+
+def _additional_medicare_threshold(
+    federal: FederalTaxParameters, payroll: PayrollTaxParameters
+) -> Decimal:
+    return payroll.additional_medicare_thresholds.get(
+        federal.filing_status, payroll.additional_medicare_threshold_single
+    )
 
 
 def _rate(numerator: Decimal, denominator: Decimal) -> Decimal:

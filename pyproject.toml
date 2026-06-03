@@ -1,7 +1,7 @@
 [project]
 name = "tax-explorer"
 version = "0.1.0"
-description = "Explore tax burden across income levels for US single filers."
+description = "Explore tax burden across income levels for US W-2 filers."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

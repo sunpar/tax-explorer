@@ -17,6 +17,7 @@ export type PayrollParameters = {
   medicare_rate: string;
   additional_medicare_rate: string;
   additional_medicare_threshold_single: string;
+  additional_medicare_thresholds: Record<string, string>;
 };
 
 export type TaxParameters = {

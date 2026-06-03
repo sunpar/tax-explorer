@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from decimal import Decimal
 from pathlib import Path
 
 from tax_explorer import (
@@ -10,7 +11,6 @@ from tax_explorer import (
     TaxBracket,
     _money,
 )
-from decimal import Decimal
 
 
 DEFAULT_DATABASE_PATH = Path(
@@ -77,6 +77,15 @@ def create_schema(connection: sqlite3.Connection) -> None:
             additional_medicare_threshold_single TEXT NOT NULL,
             FOREIGN KEY (year) REFERENCES tax_years(year)
         );
+
+        CREATE TABLE IF NOT EXISTS additional_medicare_thresholds (
+            year INTEGER NOT NULL,
+            filing_status TEXT NOT NULL,
+            threshold TEXT NOT NULL,
+            PRIMARY KEY (year, filing_status),
+            FOREIGN KEY (year) REFERENCES tax_years(year),
+            FOREIGN KEY (filing_status) REFERENCES filing_statuses(code)
+        );
         """
     )
     connection.commit()
@@ -87,7 +96,7 @@ def seed_default_tax_data(connection: sqlite3.Connection) -> None:
         """
         INSERT INTO tax_years (year, label)
         VALUES (?, ?)
-        ON CONFLICT(year) DO UPDATE SET label = excluded.label
+        ON CONFLICT(year) DO NOTHING
         """,
         (2026, "Tax Year 2026"),
     )
@@ -95,9 +104,7 @@ def seed_default_tax_data(connection: sqlite3.Connection) -> None:
         """
         INSERT INTO filing_statuses (code, label, sort_order)
         VALUES (?, ?, ?)
-        ON CONFLICT(code) DO UPDATE SET
-            label = excluded.label,
-            sort_order = excluded.sort_order
+        ON CONFLICT(code) DO NOTHING
         """,
         [
             ("single", "Single", 1),
@@ -110,8 +117,7 @@ def seed_default_tax_data(connection: sqlite3.Connection) -> None:
         """
         INSERT INTO federal_tax_parameters (year, filing_status, standard_deduction)
         VALUES (?, ?, ?)
-        ON CONFLICT(year, filing_status) DO UPDATE
-        SET standard_deduction = excluded.standard_deduction
+        ON CONFLICT(year, filing_status) DO NOTHING
         """,
         [
             (2026, "single", "16100.00"),
@@ -124,8 +130,7 @@ def seed_default_tax_data(connection: sqlite3.Connection) -> None:
         """
         INSERT INTO federal_tax_brackets (year, filing_status, lower_bound, rate)
         VALUES (?, ?, ?, ?)
-        ON CONFLICT(year, filing_status, lower_bound) DO UPDATE
-        SET rate = excluded.rate
+        ON CONFLICT(year, filing_status, lower_bound) DO NOTHING
         """,
         [
             (2026, "single", "0.00", "0.10"),
@@ -169,15 +174,22 @@ def seed_default_tax_data(connection: sqlite3.Connection) -> None:
             additional_medicare_threshold_single
         )
         VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(year) DO UPDATE SET
-            social_security_rate = excluded.social_security_rate,
-            social_security_wage_base = excluded.social_security_wage_base,
-            medicare_rate = excluded.medicare_rate,
-            additional_medicare_rate = excluded.additional_medicare_rate,
-            additional_medicare_threshold_single =
-                excluded.additional_medicare_threshold_single
+        ON CONFLICT(year) DO NOTHING
         """,
         (2026, "0.062", "184500.00", "0.0145", "0.009", "200000.00"),
+    )
+    connection.executemany(
+        """
+        INSERT INTO additional_medicare_thresholds (year, filing_status, threshold)
+        VALUES (?, ?, ?)
+        ON CONFLICT(year, filing_status) DO NOTHING
+        """,
+        [
+            (2026, "single", "200000.00"),
+            (2026, "married_joint", "250000.00"),
+            (2026, "married_separate", "125000.00"),
+            (2026, "head_of_household", "200000.00"),
+        ],
     )
     connection.commit()
 
@@ -264,6 +276,22 @@ def load_payroll_tax_parameters(
     if row is None:
         raise ValueError(f"No payroll tax parameters for {year}")
 
+    threshold_rows = connection.execute(
+        """
+        SELECT filing_status, threshold
+        FROM additional_medicare_thresholds
+        WHERE year = ?
+        """,
+        (year,),
+    ).fetchall()
+    additional_medicare_thresholds = {
+        str(threshold_row["filing_status"]): _money(threshold_row["threshold"])
+        for threshold_row in threshold_rows
+    }
+    additional_medicare_thresholds.setdefault(
+        "single", _money(row["additional_medicare_threshold_single"])
+    )
+
     return PayrollTaxParameters(
         tax_year=int(row["year"]),
         social_security_rate=Decimal(str(row["social_security_rate"])),
@@ -273,4 +301,5 @@ def load_payroll_tax_parameters(
         additional_medicare_threshold_single=_money(
             row["additional_medicare_threshold_single"]
         ),
+        additional_medicare_thresholds=additional_medicare_thresholds,
     )

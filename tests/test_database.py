@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from tax_explorer import TaxScenario, calculate_tax_burden
 from tax_explorer.database import (
+    connect,
     get_available_tax_years,
     get_filing_statuses,
     initialize_database,
@@ -87,6 +88,58 @@ def test_loads_2026_payroll_parameters_from_sqlite(tmp_path):
     assert payroll.medicare_rate == Decimal("0.0145")
     assert payroll.additional_medicare_rate == Decimal("0.009")
     assert payroll.additional_medicare_threshold_single == Decimal("200000.00")
+    assert payroll.additional_medicare_thresholds == {
+        "single": Decimal("200000.00"),
+        "married_joint": Decimal("250000.00"),
+        "married_separate": Decimal("125000.00"),
+        "head_of_household": Decimal("200000.00"),
+    }
+
+
+def test_additional_medicare_threshold_depends_on_filing_status(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        payroll = load_payroll_tax_parameters(connection, 2026)
+        married_joint = load_federal_tax_parameters(connection, 2026, "married_joint")
+        married_separate = load_federal_tax_parameters(
+            connection, 2026, "married_separate"
+        )
+
+    joint_result = calculate_tax_burden(
+        TaxScenario(gross_income=Decimal("225000")),
+        federal=married_joint,
+        payroll=payroll,
+    )
+    separate_result = calculate_tax_burden(
+        TaxScenario(gross_income=Decimal("150000")),
+        federal=married_separate,
+        payroll=payroll,
+    )
+
+    assert joint_result.employee_additional_medicare_tax == Decimal("0.00")
+    assert separate_result.employee_additional_medicare_tax == Decimal("225.00")
+
+
+def test_seed_default_tax_data_preserves_existing_parameter_edits(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    initialize_database(db_path).close()
+    with connect(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE federal_tax_parameters
+            SET standard_deduction = ?
+            WHERE year = ? AND filing_status = ?
+            """,
+            ("17000.00", 2026, "single"),
+        )
+        connection.commit()
+
+    with initialize_database(db_path) as connection:
+        federal = load_federal_tax_parameters(connection, 2026, "single")
+
+    assert federal.standard_deduction == Decimal("17000.00")
 
 
 def test_calculator_accepts_database_loaded_parameters(tmp_path):

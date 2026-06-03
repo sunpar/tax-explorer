@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from tax_explorer.api import create_app
+from tax_explorer.database import connect
 
 
 def test_lists_available_tax_years(tmp_path):
@@ -146,6 +147,42 @@ def test_returns_income_series_from_database_parameters(tmp_path):
     assert rows[-1]["total_employee_tax"] == "20820.00"
 
 
+def test_income_series_rejects_reversed_income_range(tmp_path):
+    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "100000",
+            "stop": "0",
+            "step": "10000",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "start must be less than or equal to stop"
+
+
+def test_income_series_rejects_excessive_row_count(tmp_path):
+    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "0",
+            "stop": "2001000",
+            "step": "1000",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "income-series supports at most 2001 rows"
+
+
 def test_income_series_breakdown_includes_employer_components_when_selected(
     tmp_path,
 ):
@@ -231,3 +268,23 @@ def test_rejects_unknown_tax_year(tmp_path):
 
     assert response.status_code == 404
     assert response.json()["detail"] == "No federal tax parameters for 2030 single"
+
+
+def test_api_requests_do_not_reseed_existing_parameters(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = TestClient(create_app(database_path=database_path))
+    with connect(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE federal_tax_parameters
+            SET standard_deduction = ?
+            WHERE year = ? AND filing_status = ?
+            """,
+            ("17000.00", 2026, "single"),
+        )
+        connection.commit()
+
+    response = client.get("/api/tax-years/2026/parameters")
+
+    assert response.status_code == 200
+    assert response.json()["federal"]["standard_deduction"] == "17000.00"
