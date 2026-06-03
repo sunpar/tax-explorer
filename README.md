@@ -2,8 +2,8 @@
 
 React and Python tools for exploring US tax burden across income levels.
 
-The initial model targets tax year 2026 for W-2 wage income and supports single,
-married filing jointly, married filing separately, and head of household filing
+The model targets tax year 2026 for W-2 wage income and supports single, married
+filing jointly, married filing separately, and head of household filing
 statuses. It applies the standard deduction for the selected filing status,
 models employee pre-tax deductions, calculates federal income tax, employee FICA
 taxes, Additional Medicare Tax, and an optional employer payroll tax view. Tax
