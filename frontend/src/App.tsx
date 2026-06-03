@@ -79,7 +79,6 @@ type ChartPointValue = {
 
 type ChartTooltipProps = {
   active?: boolean;
-  chartMode: ChartMode;
   label?: string | number;
   payload?: readonly ChartTooltipPayloadEntry[];
 };
@@ -785,7 +784,6 @@ function marginalRateChangeIncomeSet(
 
 function ChartTooltip({
   active,
-  chartMode,
   label,
   payload = []
 }: ChartTooltipProps) {
@@ -1693,7 +1691,6 @@ function App() {
                   content={(props) => (
                     <ChartTooltip
                       active={props.active}
-                      chartMode={chartMode}
                       label={props.label}
                       payload={
                         props.payload as unknown as readonly ChartTooltipPayloadEntry[]

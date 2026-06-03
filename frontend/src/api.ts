@@ -71,12 +71,8 @@ export function fetchIncomeSeries(
     start: request.start,
     stop: request.stop,
     step: request.step,
-    include_employer_payroll_tax: String(
-      request.includeEmployerPayrollTax
-    ),
-    include_marginal_breakpoints: String(
-      request.includeMarginalBreakpoints ?? false
-    ),
+    include_employer_payroll_tax: String(request.includeEmployerPayrollTax),
+    include_marginal_breakpoints: String(request.includeMarginalBreakpoints ?? false),
     dependent_count: String(request.dependentCount),
     secondary_income: request.secondaryIncome,
     pretax_deduction_mode: request.pretaxDeductionMode
