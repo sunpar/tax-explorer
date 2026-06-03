@@ -222,6 +222,10 @@ input[type="range"] {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.deduction-mode-control {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .segmented-control button {
   min-height: 36px;
   padding: 7px 8px;
@@ -396,7 +400,7 @@ input[type="range"] {
 
 .summary-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
   gap: 10px;
   padding-top: 16px;
   border-top: 1px solid #e5e0d7;

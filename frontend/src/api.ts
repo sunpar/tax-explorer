@@ -8,6 +8,7 @@ export type SeriesRequest = {
   step: string;
   includeEmployerPayrollTax: boolean;
   includeMarginalBreakpoints?: boolean;
+  pretaxDeductionMode: "max_available" | "gradual_phase_in";
 };
 
 async function requestJson<T>(url: string): Promise<T> {
@@ -55,7 +56,8 @@ export function fetchIncomeSeries(
     ),
     include_marginal_breakpoints: String(
       request.includeMarginalBreakpoints ?? false
-    )
+    ),
+    pretax_deduction_mode: request.pretaxDeductionMode
   });
   return requestJson<IncomeSeriesResponse>(
     `/api/income-series?${params.toString()}`

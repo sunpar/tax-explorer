@@ -178,6 +178,13 @@ function taxParameters(
       additional_medicare_thresholds: {
         [filingStatus]: additionalMedicareThreshold
       }
+    },
+    pretax_deductions: {
+      tax_year: 2026,
+      employee_401k_limit: "24500.00",
+      health_fsa_limit: "3400.00",
+      dependent_care_fsa_limit: "0.00",
+      gradual_phase_in_start_rate: "0.01"
     }
   };
 }
@@ -198,6 +205,10 @@ function taxBurden(income: number, filingStatus: string): TaxBurden {
     total_employee_tax: totalTax.toFixed(2),
     effective_employee_tax_rate: married ? "0.1500" : "0.2000",
     marginal_employee_tax_rate: marginalRate,
+    employee_401k_contribution: "24500.00",
+    health_fsa_contribution: "3400.00",
+    dependent_care_fsa_contribution: "0.00",
+    total_pretax_deductions: "27900.00",
     employer_social_security_tax: "0.00",
     employer_medicare_tax: "0.00",
     total_employer_payroll_tax: "0.00",
@@ -233,7 +244,9 @@ function chartData(): Array<Record<string, number | null>> {
 async function renderLoadedApp() {
   render(<App />);
   await screen.findByRole("heading", { name: "Tax Burden Curve" });
-  await waitFor(() => expect(screen.getByLabelText("Stop ($k)")).toHaveValue(110));
+  await waitFor(() =>
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(140.69)
+  );
 }
 
 beforeEach(() => {
@@ -259,7 +272,8 @@ describe("App tax curve controls", () => {
     expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
       expect.objectContaining({
         filingStatus: "single",
-        stop: "110000"
+        pretaxDeductionMode: "max_available",
+        stop: "140690"
       })
     );
 
@@ -270,6 +284,7 @@ describe("App tax curve controls", () => {
       expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
         expect.objectContaining({
           filingStatus: "single",
+          pretaxDeductionMode: "max_available",
           stop: "75000"
         })
       )
@@ -281,6 +296,7 @@ describe("App tax curve controls", () => {
       expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
         expect.objectContaining({
           filingStatus: "married_joint",
+          pretaxDeductionMode: "max_available",
           stop: "75000"
         })
       )
@@ -308,7 +324,7 @@ describe("App tax curve controls", () => {
     expect(screen.getByTestId("x-axis")).toHaveAttribute("data-type", "number");
     expect(screen.getByTestId("x-axis")).toHaveAttribute(
       "data-domain",
-      "[0,110000]"
+      "[0,140690]"
     );
     const seriesNames = screen
       .getAllByTestId("line")
@@ -362,5 +378,31 @@ describe("App tax curve controls", () => {
     expect(
       within(tooltip as HTMLElement).getByText("Marginal rate 30.00%")
     ).toBeInTheDocument();
+    expect(
+      within(tooltip as HTMLElement).getAllByText(
+        "Pre-tax deductions $27,900"
+      ).length
+    ).toBeGreaterThan(0);
+  });
+
+  test("deduction mode selector requests gradual phase-in and displays deductions", async () => {
+    await renderLoadedApp();
+
+    expect(screen.getByText("Max available")).toHaveClass("active");
+    expect(screen.getAllByText("Pre-tax deductions").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("$27,900").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("radio", { name: "Gradual phase-in" }));
+
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pretaxDeductionMode: "gradual_phase_in"
+        })
+      )
+    );
+    expect(screen.getByText("Gradual phase-in")).toHaveClass("active");
+    expect(screen.getByText("401(k) limit")).toBeInTheDocument();
+    expect(screen.getByText("Health FSA limit")).toBeInTheDocument();
   });
 });

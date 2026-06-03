@@ -28,11 +28,13 @@ import type { FilingStatus, TaxBurden, TaxParameters } from "./types";
 type ChartRow = TaxBurden & {
   incomeNumber: number;
   totalTaxNumber: number;
+  totalPretaxDeductionsNumber: number;
   totalTaxRatePercent: number;
   marginalTaxRatePercent: number;
 };
 
 type ChartMode = "effectiveRate" | "marginalRate" | "totalTax";
+type PretaxDeductionMode = "max_available" | "gradual_phase_in";
 
 type CurveSeries = {
   key: string;
@@ -57,6 +59,7 @@ type ChartPointValue = {
   totalRate: number;
   totalTax: number;
   marginal: number;
+  pretax: number;
 };
 
 type ChartTooltipProps = {
@@ -141,6 +144,7 @@ function seriesKey(year: number, filingStatus: string): string {
 function chartPayloadKeys(key: string) {
   return {
     marginal: `${key}_marginal`,
+    pretax: `${key}_pretax`,
     totalRate: `${key}_total_rate`,
     totalTax: `${key}_total_tax`
   };
@@ -157,7 +161,8 @@ function chartPointValue(row: ChartRow, chartMode: ChartMode): ChartPointValue {
     value: chartValue(row, chartMode),
     totalRate: row.totalTaxRatePercent,
     totalTax: row.totalTaxNumber,
-    marginal: row.marginalTaxRatePercent
+    marginal: row.marginalTaxRatePercent,
+    pretax: row.totalPretaxDeductionsNumber
   };
 }
 
@@ -186,6 +191,10 @@ function chartValueAtIncome(
   const totalTax =
     lower.totalTaxNumber +
     (upper.totalTaxNumber - lower.totalTaxNumber) * progress;
+  const pretax =
+    lower.totalPretaxDeductionsNumber +
+    (upper.totalPretaxDeductionsNumber - lower.totalPretaxDeductionsNumber) *
+      progress;
   const totalRate = income === 0 ? 0 : (totalTax / income) * 100;
   const marginal = lower.marginalTaxRatePercent;
 
@@ -198,7 +207,8 @@ function chartValueAtIncome(
           : totalRate,
     totalRate,
     totalTax,
-    marginal
+    marginal,
+    pretax
   };
 }
 
@@ -210,19 +220,165 @@ function additionalMedicareThreshold(parameters: TaxParameters): number {
   );
 }
 
-function marginalRateChangeIncomes(parameters: TaxParameters): number[] {
-  const incomes = parameters.federal.brackets.map(
-    (bracket) =>
-      Number(parameters.federal.standard_deduction) +
-      Number(bracket.lower_bound)
-  );
-  incomes.push(Number(parameters.payroll.social_security_wage_base));
-  incomes.push(additionalMedicareThreshold(parameters));
-  return incomes.filter((income) => Number.isFinite(income));
+function marginalRateChangeIncomes(
+  parameters: TaxParameters,
+  mode: PretaxDeductionMode
+): number[] {
+  const pretaxCap = totalPretaxDeductionCap(parameters);
+  const standardDeduction = Number(parameters.federal.standard_deduction);
+  const incomes: number[] = [];
+
+  if (mode === "max_available") {
+    if (pretaxCap > 0) incomes.push(pretaxCap);
+    for (const bracket of parameters.federal.brackets) {
+      incomes.push(
+        standardDeduction + pretaxCap + Number(bracket.lower_bound)
+      );
+    }
+  } else {
+    incomes.push(standardDeduction);
+    incomes.push(gradualPhaseInEnd(parameters));
+    for (const bracket of parameters.federal.brackets.slice(1)) {
+      const income = solveIncomeForTarget(
+        Number(bracket.lower_bound),
+        (grossIncome) =>
+          taxableIncomeBeforeTax(parameters, mode, grossIncome)
+      );
+      if (income !== null) incomes.push(income);
+    }
+  }
+
+  for (const payrollThreshold of [
+    Number(parameters.payroll.social_security_wage_base),
+    additionalMedicareThreshold(parameters)
+  ]) {
+    const income = solveIncomeForTarget(
+      payrollThreshold,
+      (grossIncome) => payrollWages(parameters, mode, grossIncome)
+    );
+    if (income !== null) incomes.push(income);
+  }
+
+  return incomes
+    .filter((income) => Number.isFinite(income))
+    .map(roundMoneyNumber);
 }
 
-function defaultStopThousands(parameters: TaxParameters): string {
-  const lastChangeIncome = Math.max(...marginalRateChangeIncomes(parameters));
+function totalPretaxDeductionCap(parameters: TaxParameters): number {
+  return (
+    Number(parameters.pretax_deductions.employee_401k_limit) +
+    Number(parameters.pretax_deductions.health_fsa_limit) +
+    Number(parameters.pretax_deductions.dependent_care_fsa_limit)
+  );
+}
+
+function gradualPhaseInEnd(parameters: TaxParameters): number {
+  const nextToLastBracket =
+    parameters.federal.brackets[
+      Math.max(0, parameters.federal.brackets.length - 2)
+    ];
+  return (
+    Number(parameters.federal.standard_deduction) +
+    Number(nextToLastBracket?.lower_bound ?? 0) +
+    totalPretaxDeductionCap(parameters)
+  );
+}
+
+function pretaxDeductionsAtIncome(
+  parameters: TaxParameters,
+  mode: PretaxDeductionMode,
+  grossIncome: number
+) {
+  const totalCap = totalPretaxDeductionCap(parameters);
+  if (totalCap <= 0) return { total: 0, healthFsa: 0 };
+
+  let total: number;
+  if (mode === "max_available") {
+    total = Math.min(grossIncome, totalCap);
+  } else if (grossIncome <= Number(parameters.federal.standard_deduction)) {
+    total = 0;
+  } else {
+    const phaseStart = Number(parameters.federal.standard_deduction);
+    const phaseEnd = gradualPhaseInEnd(parameters);
+    const z = Math.max(
+      0,
+      Math.min(1, (grossIncome - phaseStart) / (phaseEnd - phaseStart))
+    );
+    const startRate = Number(
+      parameters.pretax_deductions.gradual_phase_in_start_rate
+    );
+    const endRate = totalCap / phaseEnd;
+    total = Math.min(totalCap, grossIncome * (startRate + (endRate - startRate) * z));
+  }
+
+  return {
+    total,
+    healthFsa:
+      (total * Number(parameters.pretax_deductions.health_fsa_limit)) / totalCap
+  };
+}
+
+function taxableIncomeBeforeTax(
+  parameters: TaxParameters,
+  mode: PretaxDeductionMode,
+  grossIncome: number
+): number {
+  const pretax = pretaxDeductionsAtIncome(parameters, mode, grossIncome);
+  return Math.max(
+    0,
+    grossIncome - pretax.total - Number(parameters.federal.standard_deduction)
+  );
+}
+
+function payrollWages(
+  parameters: TaxParameters,
+  mode: PretaxDeductionMode,
+  grossIncome: number
+): number {
+  const pretax = pretaxDeductionsAtIncome(parameters, mode, grossIncome);
+  return Math.max(0, grossIncome - pretax.healthFsa);
+}
+
+function solveIncomeForTarget(
+  target: number,
+  valueAtIncome: (grossIncome: number) => number
+): number | null {
+  if (target < 0) return null;
+
+  let lower = 0;
+  let upper = Math.max(1, target);
+  while (valueAtIncome(upper) < target) {
+    upper *= 2;
+    if (upper > 1000000000) return null;
+  }
+
+  for (let index = 0; index < 80; index += 1) {
+    const midpoint = (lower + upper) / 2;
+    if (valueAtIncome(midpoint) < target) {
+      lower = midpoint;
+    } else {
+      upper = midpoint;
+    }
+  }
+
+  return roundMoneyNumber(upper);
+}
+
+function roundMoneyNumber(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function pretaxDeductionModeLabel(mode: PretaxDeductionMode): string {
+  return mode === "gradual_phase_in" ? "Gradual phase-in" : "Max available";
+}
+
+function defaultStopThousands(
+  parameters: TaxParameters,
+  mode: PretaxDeductionMode
+): string {
+  const lastChangeIncome = Math.max(
+    ...marginalRateChangeIncomes(parameters, mode)
+  );
   return dollarsToThousands(lastChangeIncome * 1.1);
 }
 
@@ -235,6 +391,7 @@ function buildChartRows(
     const totalTaxNumber = includeEmployer
       ? Number(row.total_tax_with_employer_payroll)
       : Number(row.total_employee_tax);
+    const totalPretaxDeductionsNumber = Number(row.total_pretax_deductions);
     const marginalTaxRate = includeEmployer
       ? Number(row.marginal_tax_rate_with_employer_payroll)
       : Number(row.marginal_employee_tax_rate);
@@ -243,6 +400,7 @@ function buildChartRows(
       ...row,
       incomeNumber,
       totalTaxNumber,
+      totalPretaxDeductionsNumber,
       totalTaxRatePercent:
         incomeNumber === 0 ? 0 : (totalTaxNumber / incomeNumber) * 100,
       marginalTaxRatePercent: marginalTaxRate * 100
@@ -288,6 +446,7 @@ function readClickedIncome(state: unknown): number | null {
 
 function marginalRateChangeIncomeSet(
   parameters: TaxParameters | null,
+  mode: PretaxDeductionMode,
   start: string,
   stop: string
 ): Set<number> {
@@ -296,7 +455,7 @@ function marginalRateChangeIncomeSet(
   const incomes = new Set<number>([startAmount]);
   if (!parameters) return incomes;
 
-  for (const income of marginalRateChangeIncomes(parameters)) {
+  for (const income of marginalRateChangeIncomes(parameters, mode)) {
     incomes.add(income);
   }
 
@@ -324,6 +483,7 @@ function ChartTooltip({
           const totalRate = point[keys.totalRate];
           const marginalRate = point[keys.marginal];
           const totalTax = point[keys.totalTax];
+          const pretax = point[keys.pretax];
 
           return (
             <li key={key}>
@@ -336,6 +496,7 @@ function ChartTooltip({
               ) : null}
               <span>Total rate {formatPercentValue(totalRate ?? 0)}</span>
               <span>Marginal rate {formatPercentValue(marginalRate ?? 0)}</span>
+              <span>Pre-tax deductions {toCurrency(pretax ?? 0)}</span>
             </li>
           );
         })}
@@ -355,6 +516,8 @@ function App() {
   const [stepThousands, setStepThousands] = useState("10");
   const [selectedIncome, setSelectedIncome] = useState(100000);
   const [includeEmployer, setIncludeEmployer] = useState(false);
+  const [pretaxDeductionMode, setPretaxDeductionMode] =
+    useState<PretaxDeductionMode>("max_available");
   const [compareFilingStatuses, setCompareFilingStatuses] = useState(false);
   const [compareTaxYears, setCompareTaxYears] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>("effectiveRate");
@@ -407,7 +570,10 @@ function App() {
 
     async function loadScenario() {
       const nextParameters = await fetchTaxParameters(year, filingStatus);
-      const nextDefaultStopThousands = defaultStopThousands(nextParameters);
+      const nextDefaultStopThousands = defaultStopThousands(
+        nextParameters,
+        pretaxDeductionMode
+      );
       const resolvedStop = hasCustomStop
         ? stop
         : thousandsToDollars(nextDefaultStopThousands);
@@ -418,7 +584,8 @@ function App() {
         stop: resolvedStop,
         step,
         includeEmployerPayrollTax: includeEmployer,
-        includeMarginalBreakpoints: true
+        includeMarginalBreakpoints: true,
+        pretaxDeductionMode
       };
       const selectedSeries = await fetchIncomeSeries(selectedSeriesRequest);
       const yearsToCompare =
@@ -513,6 +680,7 @@ function App() {
     stopThousands,
     hasCustomStop,
     includeEmployer,
+    pretaxDeductionMode,
     compareFilingStatuses,
     compareTaxYears,
     taxYears,
@@ -530,9 +698,14 @@ function App() {
   );
 
   const tableRows = useMemo(() => {
-    const breakpointIncomes = marginalRateChangeIncomeSet(parameters, start, stop);
+    const breakpointIncomes = marginalRateChangeIncomeSet(
+      parameters,
+      pretaxDeductionMode,
+      start,
+      stop
+    );
     return chartRows.filter((row) => breakpointIncomes.has(row.incomeNumber));
-  }, [chartRows, parameters, start, stop]);
+  }, [chartRows, parameters, pretaxDeductionMode, start, stop]);
 
   const sampledIncomeOptions = useMemo(
     () =>
@@ -572,6 +745,7 @@ function App() {
         point[keys.totalRate] = values?.totalRate ?? null;
         point[keys.totalTax] = values?.totalTax ?? null;
         point[keys.marginal] = values?.marginal ?? null;
+        point[keys.pretax] = values?.pretax ?? null;
       }
       return point;
     });
@@ -622,7 +796,7 @@ function App() {
           </div>
           <div>
             <h1>Tax Explorer</h1>
-            <p>2026 federal W-2 income, standard deduction only</p>
+            <p>2026 federal W-2 income with pre-tax deduction modeling</p>
           </div>
         </div>
         <div className="status-pill" title="Parameters loaded from SQLite">
@@ -769,6 +943,38 @@ function App() {
             />
             <span>Employer payroll taxes</span>
           </label>
+
+          <div className="segmented-field">
+            <span id="deduction-mode-label">Deductions</span>
+            <div
+              className="segmented-control deduction-mode-control"
+              role="radiogroup"
+              aria-labelledby="deduction-mode-label"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={pretaxDeductionMode === "max_available"}
+                className={
+                  pretaxDeductionMode === "max_available" ? "active" : ""
+                }
+                onClick={() => setPretaxDeductionMode("max_available")}
+              >
+                Max available
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={pretaxDeductionMode === "gradual_phase_in"}
+                className={
+                  pretaxDeductionMode === "gradual_phase_in" ? "active" : ""
+                }
+                onClick={() => setPretaxDeductionMode("gradual_phase_in")}
+              >
+                Gradual phase-in
+              </button>
+            </div>
+          </div>
 
           <div className="mode-control" aria-label="Chart Y-axis mode">
             <span>Chart value</span>
@@ -937,6 +1143,14 @@ function App() {
               }
             />
             <Metric
+              label="Pre-tax deductions"
+              value={
+                selectedRow
+                  ? toCurrency(selectedRow.total_pretax_deductions)
+                  : "-"
+              }
+            />
+            <Metric
               label="Effective rate"
               value={
                 selectedRow
@@ -1016,6 +1230,36 @@ function App() {
                     {toCurrency(selectedAdditionalMedicareThreshold ?? "0")}
                   </dd>
                 </div>
+                <div>
+                  <dt>401(k) limit</dt>
+                  <dd>
+                    {toCurrency(
+                      parameters.pretax_deductions.employee_401k_limit
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Health FSA limit</dt>
+                  <dd>
+                    {toCurrency(parameters.pretax_deductions.health_fsa_limit)}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Dependent-care FSA limit</dt>
+                  <dd>
+                    {toCurrency(
+                      parameters.pretax_deductions.dependent_care_fsa_limit
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Phase-in start rate</dt>
+                  <dd>
+                    {toPercent(
+                      parameters.pretax_deductions.gradual_phase_in_start_rate
+                    )}
+                  </dd>
+                </div>
               </dl>
               <table>
                 <thead>
@@ -1043,6 +1287,9 @@ function App() {
             <thead>
               <tr>
                 <th>Income</th>
+                <th>Pre-tax deductions</th>
+                <th>401(k)</th>
+                <th>Health FSA</th>
                 <th>Income tax</th>
                 <th>Social Security</th>
                 <th>Medicare</th>
@@ -1057,6 +1304,9 @@ function App() {
               {tableRows.map((row) => (
                 <tr key={row.gross_income}>
                   <td>{toCurrency(row.gross_income)}</td>
+                  <td>{toCurrency(row.total_pretax_deductions)}</td>
+                  <td>{toCurrency(row.employee_401k_contribution)}</td>
+                  <td>{toCurrency(row.health_fsa_contribution)}</td>
                   <td>{toCurrency(row.federal_income_tax)}</td>
                   <td>{toCurrency(row.employee_social_security_tax)}</td>
                   <td>{toCurrency(row.employee_medicare_tax)}</td>

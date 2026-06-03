@@ -5,9 +5,9 @@ React and Python tools for exploring US tax burden across income levels.
 The initial model targets tax year 2026 for W-2 wage income and supports single,
 married filing jointly, married filing separately, and head of household filing
 statuses. It applies the standard deduction for the selected filing status,
-calculates federal income tax, employee FICA taxes, Additional Medicare Tax, and
-an optional employer payroll tax view. Tax parameters are stored in SQLite and
-served through a FastAPI backend.
+models employee pre-tax deductions, calculates federal income tax, employee FICA
+taxes, Additional Medicare Tax, and an optional employer payroll tax view. Tax
+parameters are stored in SQLite and served through a FastAPI backend.
 The app breaks total tax into federal income tax, Social Security tax, Medicare
 tax, Additional Medicare tax, and optional employer payroll tax components.
 
@@ -30,6 +30,12 @@ Include employer-side Social Security and Medicare taxes:
 
 ```bash
 uv run tax-explorer --start 0 --stop 500000 --step 10000 --include-employer-payroll-tax
+```
+
+Use the gradual deduction phase-in model:
+
+```bash
+uv run tax-explorer --start 0 --stop 500000 --step 10000 --pretax-deduction-mode gradual_phase_in
 ```
 
 Run the API:
@@ -61,13 +67,18 @@ npm run build
 - `GET /api/tax-years/{year}/filing-statuses`
 - `GET /api/tax-years/{year}/parameters?filing_status=head_of_household`
 - `POST /api/calculate`
-- `GET /api/income-series?year=2026&filing_status=married_joint&start=0&stop=500000&step=10000`
+- `GET /api/income-series?year=2026&filing_status=married_joint&start=0&stop=500000&step=10000&pretax_deduction_mode=max_available`
 
 API request and response field names use snake_case. Monetary and rate values
 are serialized as strings to preserve decimal precision. Payroll parameter
 responses include both `additional_medicare_threshold_single` for legacy callers
 and `additional_medicare_thresholds`, keyed by filing status, for selected-status
 Additional Medicare Tax calculations.
+
+The default `pretax_deduction_mode` is `max_available`, which uses the active
+employee 401(k) and health FSA caps as income allows. The alternate
+`gradual_phase_in` mode starts at the selected filing status standard deduction
+and ramps deductions from 1% of gross income until the active caps are maxed.
 
 The local SQLite database is created and seeded at `data/tax_explorer.sqlite3`
 when the API starts. Set `TAX_EXPLORER_DB=/path/to/file.sqlite3` to override the
@@ -81,10 +92,13 @@ The model currently assumes:
 - US federal tax only
 - Filing statuses: single, married filing jointly, married filing separately,
   and head of household
-- Standard deduction only for the selected filing status
+- Standard deduction for the selected filing status
+- Employee 401(k) and health FSA pre-tax deduction modeling
 - Wage income subject to employee FICA payroll taxes
 - No credits, itemized deductions, state taxes, local taxes, AMT, NIIT, or
   self-employment tax
+- Dependent-care FSA, dual-income households, and age-based 401(k) catch-up
+  limits are not modeled yet
 
 ## Sources
 
@@ -94,3 +108,7 @@ The model currently assumes:
   deduction amounts: https://www.irs.gov/pub/irs-drop/rp-25-32.pdf
 - IRS Publication 15 (2026) for Social Security, Medicare, and Additional
   Medicare withholding rates and thresholds: https://www.irs.gov/publications/p15
+- IRS retirement topic on 401(k) elective deferral limits:
+  https://www.irs.gov/retirement-plans/plan-participant-employee/retirement-topics-contributions
+- IRS Internal Revenue Bulletin 2025-45 for 2026 standard deduction and health
+  FSA limits: https://www.irs.gov/irb/2025-45_IRB

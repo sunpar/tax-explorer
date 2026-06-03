@@ -23,6 +23,10 @@ CSV_FIELDS = (
     "total_tax_with_employer_payroll",
     "marginal_employee_tax_rate",
     "marginal_tax_rate_with_employer_payroll",
+    "employee_401k_contribution",
+    "health_fsa_contribution",
+    "dependent_care_fsa_contribution",
+    "total_pretax_deductions",
 )
 
 
@@ -38,6 +42,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Include employer Social Security and Medicare taxes in the output.",
     )
+    parser.add_argument(
+        "--pretax-deduction-mode",
+        choices=("max_available", "gradual_phase_in"),
+        default="max_available",
+        help="Pre-tax payroll deduction usage model.",
+    )
     args = parser.parse_args(argv)
 
     rows = build_income_series(
@@ -45,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
         stop=args.stop,
         step=args.step,
         include_employer_payroll_tax=args.include_employer_payroll_tax,
+        pretax_deduction_mode=args.pretax_deduction_mode,
     )
     write_csv(rows)
     return 0

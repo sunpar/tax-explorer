@@ -8,6 +8,7 @@ from tax_explorer.database import (
     initialize_database,
     load_federal_tax_parameters,
     load_payroll_tax_parameters,
+    load_pretax_deduction_parameters,
 )
 
 
@@ -96,6 +97,19 @@ def test_loads_2026_payroll_parameters_from_sqlite(tmp_path):
     }
 
 
+def test_loads_2026_pretax_deduction_parameters_from_sqlite(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        pretax = load_pretax_deduction_parameters(connection, 2026)
+
+    assert pretax.tax_year == 2026
+    assert pretax.employee_401k_limit == Decimal("24500.00")
+    assert pretax.health_fsa_limit == Decimal("3400.00")
+    assert pretax.dependent_care_fsa_limit == Decimal("0.00")
+    assert pretax.gradual_phase_in_start_rate == Decimal("0.01")
+
+
 def test_additional_medicare_threshold_depends_on_filing_status(tmp_path):
     db_path = tmp_path / "tax.sqlite3"
 
@@ -118,7 +132,7 @@ def test_additional_medicare_threshold_depends_on_filing_status(tmp_path):
     )
 
     assert joint_result.employee_additional_medicare_tax == Decimal("0.00")
-    assert separate_result.employee_additional_medicare_tax == Decimal("225.00")
+    assert separate_result.employee_additional_medicare_tax == Decimal("194.40")
 
 
 def test_seed_default_tax_data_preserves_existing_parameter_edits(tmp_path):
@@ -155,5 +169,5 @@ def test_calculator_accepts_database_loaded_parameters(tmp_path):
         payroll=payroll,
     )
 
-    assert result.taxable_income == Decimal("83900.00")
-    assert result.total_employee_tax == Decimal("20820.00")
+    assert result.taxable_income == Decimal("56000.00")
+    assert result.total_employee_tax == Decimal("14421.90")

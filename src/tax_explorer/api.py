@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from tax_explorer import (
     FederalTaxParameters,
     PayrollTaxParameters,
+    PretaxDeductionParameters,
     TaxBurden,
     TaxScenario,
     build_income_series,
@@ -26,6 +27,7 @@ from tax_explorer.database import (
     initialize_database,
     load_federal_tax_parameters,
     load_payroll_tax_parameters,
+    load_pretax_deduction_parameters,
 )
 
 
@@ -34,6 +36,7 @@ class CalculateRequest(BaseModel):
     filing_status: str = "single"
     gross_income: Decimal = Field(ge=0)
     include_employer_payroll_tax: bool = False
+    pretax_deduction_mode: str = "max_available"
 
 
 def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
@@ -77,31 +80,38 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
             with _database(app) as connection:
                 federal = load_federal_tax_parameters(connection, year, filing_status)
                 payroll = load_payroll_tax_parameters(connection, year)
+                pretax = load_pretax_deduction_parameters(connection, year)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
         return {
             "federal": _federal_to_response(federal),
             "payroll": _payroll_to_response(payroll),
+            "pretax_deductions": _pretax_to_response(pretax),
         }
 
     @app.post("/api/calculate")
     def calculate(request: CalculateRequest) -> dict[str, Any]:
         try:
-            federal, payroll = _load_parameters(
+            federal, payroll, pretax = _load_parameters(
                 app, request.year, request.filing_status
             )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-        result = calculate_tax_burden(
-            TaxScenario(
-                gross_income=request.gross_income,
-                include_employer_payroll_tax=request.include_employer_payroll_tax,
-            ),
-            federal=federal,
-            payroll=payroll,
-        )
+        try:
+            result = calculate_tax_burden(
+                TaxScenario(
+                    gross_income=request.gross_income,
+                    include_employer_payroll_tax=request.include_employer_payroll_tax,
+                    pretax_deduction_mode=request.pretax_deduction_mode,
+                ),
+                federal=federal,
+                payroll=payroll,
+                pretax_deductions=pretax,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return _tax_burden_to_response(result)
 
     @app.get("/api/income-series")
@@ -113,9 +123,10 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
         step: Decimal = Query(default=Decimal("10000"), gt=0),
         include_employer_payroll_tax: bool = Query(default=False),
         include_marginal_breakpoints: bool = Query(default=False),
+        pretax_deduction_mode: str = Query(default="max_available"),
     ) -> dict[str, list[dict[str, Any]]]:
         try:
-            federal, payroll = _load_parameters(app, year, filing_status)
+            federal, payroll, pretax = _load_parameters(app, year, filing_status)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -126,8 +137,10 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
                 step=step,
                 include_employer_payroll_tax=include_employer_payroll_tax,
                 include_marginal_breakpoints=include_marginal_breakpoints,
+                pretax_deduction_mode=pretax_deduction_mode,
                 federal=federal,
                 payroll=payroll,
+                pretax_deductions=pretax,
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -148,11 +161,12 @@ def _database(app: FastAPI) -> Iterator[Any]:
 
 def _load_parameters(
     app: FastAPI, year: int, filing_status: str
-) -> tuple[FederalTaxParameters, PayrollTaxParameters]:
+) -> tuple[FederalTaxParameters, PayrollTaxParameters, PretaxDeductionParameters]:
     with _database(app) as connection:
         federal = load_federal_tax_parameters(connection, year, filing_status)
         payroll = load_payroll_tax_parameters(connection, year)
-    return federal, payroll
+        pretax = load_pretax_deduction_parameters(connection, year)
+    return federal, payroll, pretax
 
 
 def _federal_to_response(parameters: FederalTaxParameters) -> dict[str, Any]:
@@ -171,6 +185,13 @@ def _federal_to_response(parameters: FederalTaxParameters) -> dict[str, Any]:
 
 
 def _payroll_to_response(parameters: PayrollTaxParameters) -> dict[str, Any]:
+    return {
+        key: _value_to_response(value)
+        for key, value in asdict(parameters).items()
+    }
+
+
+def _pretax_to_response(parameters: PretaxDeductionParameters) -> dict[str, Any]:
     return {
         key: _value_to_response(value)
         for key, value in asdict(parameters).items()
