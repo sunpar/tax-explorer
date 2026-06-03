@@ -1,17 +1,19 @@
 # Tax Explorer
 
-Python tools for exploring US tax burden across income levels.
+React and Python tools for exploring US tax burden across income levels.
 
 The initial model targets tax year 2026 for a single filer taking the standard
 deduction. It calculates federal income tax, employee FICA taxes, Additional
-Medicare Tax, and an optional employer payroll tax view.
+Medicare Tax, and an optional employer payroll tax view. Tax parameters are
+stored in SQLite and served through a FastAPI backend.
 
 ## Usage
 
-Run the tests:
+Install backend dependencies and run the tests:
 
 ```bash
-uv run --extra dev pytest
+uv sync --extra dev
+uv run python -m pytest
 ```
 
 Generate sampled income rows as CSV:
@@ -25,6 +27,40 @@ Include employer-side Social Security and Medicare taxes:
 ```bash
 uv run tax-explorer --start 0 --stop 500000 --step 10000 --include-employer-payroll-tax
 ```
+
+Run the API:
+
+```bash
+uv run python -m uvicorn tax_explorer.api:app --reload
+```
+
+Run the React app in a second terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The Vite dev server proxies `/api` requests to `http://127.0.0.1:8000`.
+
+Build the frontend:
+
+```bash
+cd frontend
+npm run build
+```
+
+## API
+
+- `GET /api/tax-years`
+- `GET /api/tax-years/{year}/parameters?filing_status=single`
+- `POST /api/calculate`
+- `GET /api/income-series?year=2026&start=0&stop=500000&step=10000`
+
+The local SQLite database is created and seeded at `data/tax_explorer.sqlite3`
+when the API starts. Set `TAX_EXPLORER_DB=/path/to/file.sqlite3` to override the
+database path.
 
 ## Current Scope
 

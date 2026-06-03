@@ -155,6 +155,8 @@ def build_income_series(
     stop: Decimal | int | float | str,
     step: Decimal | int | float | str,
     include_employer_payroll_tax: bool = False,
+    federal: FederalTaxParameters = FEDERAL_2026_SINGLE,
+    payroll: PayrollTaxParameters = PAYROLL_2026,
 ) -> list[TaxBurden]:
     current = _money(start)
     stop_amount = _money(stop)
@@ -171,7 +173,9 @@ def build_income_series(
                 TaxScenario(
                     gross_income=current,
                     include_employer_payroll_tax=include_employer_payroll_tax,
-                )
+                ),
+                federal=federal,
+                payroll=payroll,
             )
         )
         current = _money(current + step_amount)

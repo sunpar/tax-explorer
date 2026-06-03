@@ -4,10 +4,16 @@ version = "0.1.0"
 description = "Explore tax burden across income levels for US single filers."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "fastapi>=0.124",
+    "uvicorn[standard]>=0.38",
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = [
+    "httpx>=0.28",
+    "pytest>=8.0",
+]
 
 [project.scripts]
 tax-explorer = "tax_explorer.cli:main"
