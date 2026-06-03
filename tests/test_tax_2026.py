@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+import tax_explorer as tax_module
 
 from tax_explorer import (
     FEDERAL_2026_SINGLE,
@@ -33,6 +34,7 @@ def test_federal_income_tax_uses_progressive_2026_single_brackets_after_standard
     assert result.federal_income_tax == money("13170.00")
     assert result.total_employee_tax == money("20820.00")
     assert result.effective_employee_tax_rate == Decimal("0.2082")
+    assert result.marginal_employee_tax_rate == Decimal("0.2965")
 
 
 def test_social_security_tax_is_capped_at_2026_wage_base():
@@ -83,6 +85,28 @@ def test_build_income_series_samples_inclusive_income_range():
     ]
 
 
+def test_build_income_series_can_include_exact_marginal_rate_change_points():
+    rows = build_income_series(
+        start=0,
+        stop=250000,
+        step=100000,
+        include_marginal_breakpoints=True,
+    )
+
+    assert [row.gross_income for row in rows] == [
+        money("0.00"),
+        money("16100.00"),
+        money("28500.00"),
+        money("66500.00"),
+        money("100000.00"),
+        money("121800.00"),
+        money("184500.00"),
+        money("200000.00"),
+        money("217875.00"),
+        money("250000.00"),
+    ]
+
+
 def test_build_income_series_rejects_reversed_income_range():
     with pytest.raises(ValueError, match="start must be less than or equal to stop"):
         build_income_series(start=100000, stop=0, step=10000)
@@ -91,6 +115,26 @@ def test_build_income_series_rejects_reversed_income_range():
 def test_build_income_series_rejects_excessive_row_count():
     with pytest.raises(ValueError, match="at most 2001 rows"):
         build_income_series(start=0, stop=2001000, step=1000)
+
+
+def test_build_income_series_rejects_excessive_row_count_without_scanning_full_range(
+    monkeypatch,
+):
+    original_money = tax_module._money
+    money_calls = 0
+
+    def guarded_money(value):
+        nonlocal money_calls
+        money_calls += 1
+        if money_calls > 12:
+            raise AssertionError("row limit was not enforced promptly")
+        return original_money(value)
+
+    monkeypatch.setattr(tax_module, "MAX_INCOME_SERIES_ROWS", 3)
+    monkeypatch.setattr(tax_module, "_money", guarded_money)
+
+    with pytest.raises(ValueError, match="at most 3 rows"):
+        tax_module.build_income_series(start=0, stop=1000000, step=1)
 
 
 @pytest.mark.parametrize("income", [money("-1"), money("-0.01")])

@@ -46,10 +46,12 @@ export type TaxBurden = {
   total_employee_payroll_tax: string;
   total_employee_tax: string;
   effective_employee_tax_rate: string;
+  marginal_employee_tax_rate: string;
   employer_social_security_tax: string;
   employer_medicare_tax: string;
   total_employer_payroll_tax: string;
   total_tax_with_employer_payroll: string;
+  marginal_tax_rate_with_employer_payroll: string;
   tax_breakdown: TaxBreakdownItem[];
 };
 

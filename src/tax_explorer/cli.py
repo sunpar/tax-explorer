@@ -21,6 +21,8 @@ CSV_FIELDS = (
     "employer_medicare_tax",
     "total_employer_payroll_tax",
     "total_tax_with_employer_payroll",
+    "marginal_employee_tax_rate",
+    "marginal_tax_rate_with_employer_payroll",
 )
 
 

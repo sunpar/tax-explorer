@@ -7,6 +7,7 @@ export type SeriesRequest = {
   stop: string;
   step: string;
   includeEmployerPayrollTax: boolean;
+  includeMarginalBreakpoints?: boolean;
 };
 
 async function requestJson<T>(url: string): Promise<T> {
@@ -51,6 +52,9 @@ export function fetchIncomeSeries(
     step: request.step,
     include_employer_payroll_tax: String(
       request.includeEmployerPayrollTax
+    ),
+    include_marginal_breakpoints: String(
+      request.includeMarginalBreakpoints ?? false
     )
   });
   return requestJson<IncomeSeriesResponse>(
