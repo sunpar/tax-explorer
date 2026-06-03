@@ -47,6 +47,11 @@ function formatPercentValue(value: string | number): string {
   return `${Number(value).toFixed(2)}%`;
 }
 
+function breakdownShare(amount: string, totalTax: number): number {
+  if (totalTax <= 0) return 0;
+  return Math.max(0, Math.min(100, (Number(amount) / totalTax) * 100));
+}
+
 function nearestRow(rows: ChartRow[], income: number): ChartRow | undefined {
   return rows.reduce<ChartRow | undefined>((nearest, row) => {
     if (!nearest) return row;
@@ -173,6 +178,8 @@ function App() {
     chartMode === "rate" ? "totalTaxRatePercent" : "totalTaxNumber";
   const chartLabel =
     chartMode === "rate" ? "Total tax as % of W-2 income" : "Total tax paid";
+  const breakdownRows = selectedRow?.tax_breakdown ?? [];
+  const totalBreakdownTax = selectedRow?.totalTaxNumber ?? 0;
 
   return (
     <main className="app-shell">
@@ -401,6 +408,45 @@ function App() {
               }
             />
           </div>
+
+          <section
+            className="breakdown-section"
+            aria-label="Tax paid by type"
+          >
+            <div className="breakdown-heading">
+              <Calculator size={18} aria-hidden="true" />
+              <div>
+                <h3>Tax Breakdown</h3>
+                <p>
+                  Selected income{" "}
+                  {selectedRow ? toCurrency(selectedRow.gross_income) : "-"}
+                </p>
+              </div>
+            </div>
+            {breakdownRows.length > 0 ? (
+              <ol className="breakdown-list">
+                {breakdownRows.map((item) => {
+                  const share = breakdownShare(item.amount, totalBreakdownTax);
+                  return (
+                    <li key={item.code} className="breakdown-row">
+                      <div className="breakdown-row-top">
+                        <span>{item.label}</span>
+                        <strong>{toCurrency(item.amount)}</strong>
+                      </div>
+                      <div className="breakdown-track" aria-hidden="true">
+                        <div style={{ width: `${share}%` }} />
+                      </div>
+                      <small>
+                        {formatPercentValue(share)} of selected total tax
+                      </small>
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <p className="breakdown-empty">No tax components available.</p>
+            )}
+          </section>
         </section>
       </section>
 
@@ -459,8 +505,11 @@ function App() {
             <thead>
               <tr>
                 <th>Income</th>
-                <th>Federal</th>
-                <th>Payroll</th>
+                <th>Income tax</th>
+                <th>Social Security</th>
+                <th>Medicare</th>
+                <th>Addl Medicare</th>
+                {includeEmployer ? <th>Employer payroll</th> : null}
                 <th>Total</th>
                 <th>Rate</th>
               </tr>
@@ -470,7 +519,12 @@ function App() {
                 <tr key={row.gross_income}>
                   <td>{toCurrency(row.gross_income)}</td>
                   <td>{toCurrency(row.federal_income_tax)}</td>
-                  <td>{toCurrency(row.total_employee_payroll_tax)}</td>
+                  <td>{toCurrency(row.employee_social_security_tax)}</td>
+                  <td>{toCurrency(row.employee_medicare_tax)}</td>
+                  <td>{toCurrency(row.employee_additional_medicare_tax)}</td>
+                  {includeEmployer ? (
+                    <td>{toCurrency(row.total_employer_payroll_tax)}</td>
+                  ) : null}
                   <td>{toCurrency(row.totalTaxNumber)}</td>
                   <td>{formatPercentValue(row.totalTaxRatePercent)}</td>
                 </tr>

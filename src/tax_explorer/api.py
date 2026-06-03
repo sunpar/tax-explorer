@@ -85,7 +85,7 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
         }
 
     @app.post("/api/calculate")
-    def calculate(request: CalculateRequest) -> dict[str, str]:
+    def calculate(request: CalculateRequest) -> dict[str, Any]:
         try:
             federal, payroll = _load_parameters(
                 app, request.year, request.filing_status
@@ -111,7 +111,7 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
         stop: Decimal = Query(default=Decimal("500000"), ge=0),
         step: Decimal = Query(default=Decimal("10000"), gt=0),
         include_employer_payroll_tax: bool = Query(default=False),
-    ) -> dict[str, list[dict[str, str]]]:
+    ) -> dict[str, list[dict[str, Any]]]:
         try:
             federal, payroll = _load_parameters(app, year, filing_status)
             rows = build_income_series(
@@ -170,11 +170,50 @@ def _payroll_to_response(parameters: PayrollTaxParameters) -> dict[str, Any]:
     }
 
 
-def _tax_burden_to_response(result: TaxBurden) -> dict[str, str]:
-    return {
+def _tax_burden_to_response(result: TaxBurden) -> dict[str, Any]:
+    response = {
         key: _decimal_to_string(value) if isinstance(value, Decimal) else str(value)
         for key, value in asdict(result).items()
     }
+    response["tax_breakdown"] = _tax_breakdown_to_response(result)
+    return response
+
+
+def _tax_breakdown_to_response(result: TaxBurden) -> list[dict[str, str]]:
+    components = [
+        ("federal_income_tax", "Federal income tax", result.federal_income_tax),
+        (
+            "employee_social_security_tax",
+            "Social Security tax",
+            result.employee_social_security_tax,
+        ),
+        ("employee_medicare_tax", "Medicare tax", result.employee_medicare_tax),
+        (
+            "employee_additional_medicare_tax",
+            "Additional Medicare tax",
+            result.employee_additional_medicare_tax,
+        ),
+    ]
+    if result.total_employer_payroll_tax > Decimal("0"):
+        components.extend(
+            [
+                (
+                    "employer_social_security_tax",
+                    "Employer Social Security tax",
+                    result.employer_social_security_tax,
+                ),
+                (
+                    "employer_medicare_tax",
+                    "Employer Medicare tax",
+                    result.employer_medicare_tax,
+                ),
+            ]
+        )
+
+    return [
+        {"code": code, "label": label, "amount": _decimal_to_string(amount)}
+        for code, label, amount in components
+    ]
 
 
 def _decimal_to_string(value: Decimal) -> str:

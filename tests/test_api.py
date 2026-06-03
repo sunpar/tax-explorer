@@ -84,6 +84,44 @@ def test_calculates_tax_burden_from_database_parameters(tmp_path):
     assert body["effective_employee_tax_rate"] == "0.2082"
 
 
+def test_calculate_response_breaks_tax_down_by_component(tmp_path):
+    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "single",
+            "gross_income": "100000",
+            "include_employer_payroll_tax": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["tax_breakdown"] == [
+        {
+            "code": "federal_income_tax",
+            "label": "Federal income tax",
+            "amount": "13170.00",
+        },
+        {
+            "code": "employee_social_security_tax",
+            "label": "Social Security tax",
+            "amount": "6200.00",
+        },
+        {
+            "code": "employee_medicare_tax",
+            "label": "Medicare tax",
+            "amount": "1450.00",
+        },
+        {
+            "code": "employee_additional_medicare_tax",
+            "label": "Additional Medicare tax",
+            "amount": "0.00",
+        },
+    ]
+
+
 def test_returns_income_series_from_database_parameters(tmp_path):
     client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
 
@@ -106,6 +144,60 @@ def test_returns_income_series_from_database_parameters(tmp_path):
         "100000.00",
     ]
     assert rows[-1]["total_employee_tax"] == "20820.00"
+
+
+def test_income_series_breakdown_includes_employer_components_when_selected(
+    tmp_path,
+):
+    client = TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "100000",
+            "stop": "100000",
+            "step": "50000",
+            "include_employer_payroll_tax": True,
+        },
+    )
+
+    assert response.status_code == 200
+    row = response.json()["rows"][0]
+    assert row["total_tax_with_employer_payroll"] == "28470.00"
+    assert row["tax_breakdown"] == [
+        {
+            "code": "federal_income_tax",
+            "label": "Federal income tax",
+            "amount": "13170.00",
+        },
+        {
+            "code": "employee_social_security_tax",
+            "label": "Social Security tax",
+            "amount": "6200.00",
+        },
+        {
+            "code": "employee_medicare_tax",
+            "label": "Medicare tax",
+            "amount": "1450.00",
+        },
+        {
+            "code": "employee_additional_medicare_tax",
+            "label": "Additional Medicare tax",
+            "amount": "0.00",
+        },
+        {
+            "code": "employer_social_security_tax",
+            "label": "Employer Social Security tax",
+            "amount": "6200.00",
+        },
+        {
+            "code": "employer_medicare_tax",
+            "label": "Employer Medicare tax",
+            "amount": "1450.00",
+        },
+    ]
 
 
 def test_income_series_uses_selected_filing_status_standard_deduction_and_brackets(

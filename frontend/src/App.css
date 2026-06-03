@@ -58,6 +58,7 @@ select {
 
 h1,
 h2,
+h3,
 p {
   margin: 0;
 }
@@ -76,8 +77,16 @@ h2 {
   line-height: 1.25;
 }
 
+h3 {
+  color: #201d18;
+  font-size: 15px;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
 .brand p,
-.chart-header p {
+.chart-header p,
+.breakdown-heading p {
   margin-top: 4px;
   color: #706b60;
   font-size: 14px;
@@ -304,9 +313,89 @@ input[type="range"] {
   line-height: 1.1;
 }
 
+.breakdown-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e0d7;
+}
+
+.breakdown-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: #245f49;
+}
+
+.breakdown-heading div {
+  min-width: 0;
+}
+
+.breakdown-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breakdown-row {
+  min-width: 0;
+  padding: 12px;
+  background: #fbfaf6;
+  border: 1px solid #e5e0d7;
+  border-radius: 8px;
+}
+
+.breakdown-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.breakdown-row-top span {
+  min-width: 0;
+  color: #24211c;
+  font-size: 13px;
+  font-weight: 720;
+  overflow-wrap: anywhere;
+}
+
+.breakdown-row-top strong {
+  color: #171510;
+  font-size: 14px;
+  font-weight: 780;
+  white-space: nowrap;
+}
+
+.breakdown-track {
+  height: 8px;
+  margin-top: 10px;
+  background: #ebe6dc;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.breakdown-track div {
+  height: 100%;
+  background: #237a5b;
+  border-radius: inherit;
+}
+
+.breakdown-row small,
+.breakdown-empty {
+  display: block;
+  margin-top: 7px;
+  color: #706b60;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .detail-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(280px, 0.55fr) minmax(0, 1.45fr);
   gap: 18px;
   margin-top: 18px;
 }
@@ -314,6 +403,10 @@ input[type="range"] {
 .parameter-panel,
 .table-panel {
   overflow: hidden;
+}
+
+.table-panel {
+  overflow-x: auto;
 }
 
 .parameter-panel h2,
@@ -430,7 +523,8 @@ td {
   }
 
   .field-grid,
-  .summary-strip {
+  .summary-strip,
+  .breakdown-list {
     grid-template-columns: 1fr;
   }
 

@@ -8,6 +8,8 @@ statuses. It applies the standard deduction for the selected filing status,
 calculates federal income tax, employee FICA taxes, Additional Medicare Tax, and
 an optional employer payroll tax view. Tax parameters are stored in SQLite and
 served through a FastAPI backend.
+The app breaks total tax into federal income tax, Social Security tax, Medicare
+tax, Additional Medicare tax, and optional employer payroll tax components.
 
 ## Usage
 

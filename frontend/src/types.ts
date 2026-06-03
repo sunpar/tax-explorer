@@ -29,6 +29,12 @@ export type FilingStatus = {
   label: string;
 };
 
+export type TaxBreakdownItem = {
+  code: string;
+  label: string;
+  amount: string;
+};
+
 export type TaxBurden = {
   gross_income: string;
   taxable_income: string;
@@ -43,6 +49,7 @@ export type TaxBurden = {
   employer_medicare_tax: string;
   total_employer_payroll_tax: string;
   total_tax_with_employer_payroll: string;
+  tax_breakdown: TaxBreakdownItem[];
 };
 
 export type IncomeSeriesResponse = {
