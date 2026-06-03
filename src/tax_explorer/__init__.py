@@ -212,9 +212,7 @@ def build_income_series(
     if include_marginal_breakpoints:
         add_income(stop_amount)
         for income in _marginal_rate_change_incomes(federal, payroll):
-            if current_range_contains(
-                income, start_amount=start_amount, stop_amount=stop_amount
-            ):
+            if start_amount <= income <= stop_amount:
                 add_income(income)
 
     return [
@@ -228,13 +226,6 @@ def build_income_series(
         )
         for income in sorted(incomes)
     ]
-
-
-def current_range_contains(
-    income: Decimal, start_amount: Decimal, stop_amount: Decimal
-) -> bool:
-    return start_amount <= income <= stop_amount
-
 
 def _calculate_progressive_tax(
     taxable_income: Decimal, brackets: Iterable[TaxBracket]

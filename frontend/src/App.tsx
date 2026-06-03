@@ -504,7 +504,8 @@ function App() {
     for (const series of comparisonSeries) {
       for (const row of series.rows) {
         const point =
-          points.get(row.incomeNumber) ?? ({ incomeNumber: row.incomeNumber } as ComparisonChartPoint);
+          points.get(row.incomeNumber) ??
+          ({ incomeNumber: row.incomeNumber } as ComparisonChartPoint);
         const keys = chartPayloadKeys(series.key);
         point[series.key] = chartValue(row, chartMode);
         point[keys.totalRate] = row.totalTaxRatePercent;
@@ -935,7 +936,10 @@ function App() {
               <dl>
                 <div>
                   <dt>Filing status</dt>
-                  <dd>{selectedFilingStatus?.label ?? parameters.federal.filing_status}</dd>
+                  <dd>
+                    {selectedFilingStatus?.label ??
+                      parameters.federal.filing_status}
+                  </dd>
                 </div>
                 <div>
                   <dt>Standard deduction</dt>

@@ -309,16 +309,26 @@ describe("App tax curve controls", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Marginal Rate" }));
     await waitFor(() =>
-      expect(screen.getByText("Marginal tax rate; federal income tax plus W-2 payroll taxes")).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          "Marginal tax rate; federal income tax plus W-2 payroll taxes"
+        )
+      ).toBeInTheDocument()
     );
     income100k = chartData().find((point) => point.incomeNumber === 100000);
     expect(income100k?.curve_2026_single).toBe(30);
     expect(income100k?.curve_2026_married_joint).toBe(20);
-    expect(screen.getAllByText("Marginal rate 30.00%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Marginal rate 30.00%").length).toBeGreaterThan(
+      0
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Total Tax $" }));
     await waitFor(() =>
-      expect(screen.getByText("Total tax paid; federal income tax plus W-2 payroll taxes")).toBeInTheDocument()
+      expect(
+        screen.getByText(
+          "Total tax paid; federal income tax plus W-2 payroll taxes"
+        )
+      ).toBeInTheDocument()
     );
     income100k = chartData().find((point) => point.incomeNumber === 100000);
     expect(income100k?.curve_2026_single).toBe(20000);
@@ -326,8 +336,14 @@ describe("App tax curve controls", () => {
 
     const tooltip = screen.getByText("Income $100,000").closest(".chart-tooltip");
     expect(tooltip).not.toBeNull();
-    expect(within(tooltip as HTMLElement).getByText("Total tax $20,000")).toBeInTheDocument();
-    expect(within(tooltip as HTMLElement).getByText("Total rate 20.00%")).toBeInTheDocument();
-    expect(within(tooltip as HTMLElement).getByText("Marginal rate 30.00%")).toBeInTheDocument();
+    expect(
+      within(tooltip as HTMLElement).getByText("Total tax $20,000")
+    ).toBeInTheDocument();
+    expect(
+      within(tooltip as HTMLElement).getByText("Total rate 20.00%")
+    ).toBeInTheDocument();
+    expect(
+      within(tooltip as HTMLElement).getByText("Marginal rate 30.00%")
+    ).toBeInTheDocument();
   });
 });
