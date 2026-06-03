@@ -117,6 +117,7 @@ class _PretaxDeductions:
     health_fsa_contribution: Decimal
     dependent_care_fsa_contribution: Decimal
     total_pretax_deductions: Decimal
+    payroll_exclusions_by_worker: tuple[Decimal, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -414,6 +415,7 @@ def _calculate_tax_amounts(
 ) -> _TaxAmounts:
     pretax = _calculate_pretax_deductions(
         gross_income,
+        secondary_income=secondary_income,
         federal=federal,
         parameters=pretax_deductions,
         mode=pretax_deduction_mode,
@@ -483,6 +485,13 @@ def _calculate_tax_amounts(
                 pretax.dependent_care_fsa_contribution
             ),
             total_pretax_deductions=_money(pretax.total_pretax_deductions),
+            payroll_exclusions_by_worker=_round_values_to_total(
+                pretax.payroll_exclusions_by_worker,
+                _money(
+                    pretax.health_fsa_contribution
+                    + pretax.dependent_care_fsa_contribution
+                ),
+            ),
         )
         taxable_income = _money(taxable_income)
         federal_income_tax = _money(federal_income_tax)
@@ -691,6 +700,7 @@ def _build_payroll_breakdown(
 
 def _calculate_pretax_deductions(
     gross_income: Decimal,
+    secondary_income: Decimal,
     federal: FederalTaxParameters,
     parameters: PretaxDeductionParameters,
     mode: str,
@@ -699,12 +709,18 @@ def _calculate_pretax_deductions(
 ) -> _PretaxDeductions:
     total_cap = _pretax_deduction_cap(parameters)
     if total_cap <= 0:
-        return _PretaxDeductions(ZERO, ZERO, ZERO, ZERO)
+        return _PretaxDeductions(
+            ZERO,
+            ZERO,
+            ZERO,
+            ZERO,
+            tuple(ZERO for _ in range(worker_count)),
+        )
 
     if mode == PRETAX_DEDUCTION_MODE_MAX_AVAILABLE:
-        total_deduction = min(gross_income, total_cap)
+        requested_deduction = min(gross_income, total_cap)
     elif gross_income <= federal.standard_deduction:
-        total_deduction = ZERO
+        requested_deduction = ZERO
     else:
         phase_start = federal.standard_deduction
         phase_end = _gradual_phase_in_end_income(federal, parameters, worker_count)
@@ -717,22 +733,59 @@ def _calculate_pretax_deductions(
             parameters.gradual_phase_in_start_rate
             + (end_rate - parameters.gradual_phase_in_start_rate) * z
         )
-        total_deduction = min(total_cap, gross_income * deduction_rate)
+        requested_deduction = min(total_cap, gross_income * deduction_rate)
+
+    worker_incomes = _worker_incomes(gross_income, secondary_income, federal)
+    non_dependent_cap = parameters.employee_401k_limit + parameters.health_fsa_limit
+    requested_non_dependent = (
+        requested_deduction * non_dependent_cap / total_cap
+        if non_dependent_cap > 0
+        else ZERO
+    )
+    worker_non_dependent = _worker_non_dependent_pretax_deductions(
+        requested_non_dependent,
+        worker_incomes,
+        parameters,
+    )
+    employee_401k = sum(
+        (deduction.employee_401k_contribution for deduction in worker_non_dependent),
+        ZERO,
+    )
+    health_fsa = sum(
+        (deduction.health_fsa_contribution for deduction in worker_non_dependent),
+        ZERO,
+    )
+    worker_non_dependent_totals = tuple(
+        deduction.total_pretax_deductions for deduction in worker_non_dependent
+    )
+
+    requested_dependent_care = (
+        requested_deduction * parameters.dependent_care_fsa_limit / total_cap
+        if parameters.dependent_care_fsa_limit > 0
+        else ZERO
+    )
+    dependent_care_by_worker = _worker_dependent_care_deductions(
+        requested_dependent_care,
+        worker_incomes,
+        worker_non_dependent_totals,
+        parameters,
+    )
+    dependent_care = sum(dependent_care_by_worker, ZERO)
+    total_deduction = employee_401k + health_fsa + dependent_care
+    payroll_exclusions_by_worker = tuple(
+        worker_non_dependent[index].health_fsa_contribution
+        + dependent_care_by_worker[index]
+        for index in range(len(worker_incomes))
+    )
 
     if rounded:
         total_deduction = _money(total_deduction)
-        employee_401k = _money(
-            total_deduction * parameters.employee_401k_limit / total_cap
-        )
-        dependent_care = _money(
-            total_deduction * parameters.dependent_care_fsa_limit / total_cap
-        )
-        health_fsa = _money(total_deduction - employee_401k - dependent_care)
-    else:
-        employee_401k = total_deduction * parameters.employee_401k_limit / total_cap
-        health_fsa = total_deduction * parameters.health_fsa_limit / total_cap
-        dependent_care = (
-            total_deduction * parameters.dependent_care_fsa_limit / total_cap
+        employee_401k = _money(employee_401k)
+        health_fsa = _money(health_fsa)
+        dependent_care = _money(total_deduction - employee_401k - health_fsa)
+        payroll_exclusions_by_worker = _round_values_to_total(
+            payroll_exclusions_by_worker,
+            _money(health_fsa + dependent_care),
         )
 
     return _PretaxDeductions(
@@ -740,7 +793,67 @@ def _calculate_pretax_deductions(
         health_fsa_contribution=health_fsa,
         dependent_care_fsa_contribution=dependent_care,
         total_pretax_deductions=total_deduction,
+        payroll_exclusions_by_worker=payroll_exclusions_by_worker,
     )
+
+
+def _worker_non_dependent_pretax_deductions(
+    requested_deduction: Decimal,
+    worker_incomes: tuple[Decimal, ...],
+    parameters: PretaxDeductionParameters,
+) -> tuple[_PretaxDeductions, ...]:
+    worker_count = len(worker_incomes)
+    worker_401k_cap = parameters.employee_401k_limit / worker_count
+    worker_health_fsa_cap = parameters.health_fsa_limit / worker_count
+    worker_total_cap = worker_401k_cap + worker_health_fsa_cap
+    if requested_deduction <= 0 or worker_total_cap <= 0:
+        return tuple(
+            _PretaxDeductions(ZERO, ZERO, ZERO, ZERO, (ZERO,))
+            for _ in worker_incomes
+        )
+
+    worker_capacities = tuple(
+        max(ZERO, min(income, worker_total_cap)) for income in worker_incomes
+    )
+    deduction = min(requested_deduction, sum(worker_capacities, ZERO))
+    worker_totals = _allocate_amount_by_weight(deduction, worker_capacities)
+
+    allocations = []
+    for worker_total in worker_totals:
+        employee_401k = worker_total * worker_401k_cap / worker_total_cap
+        health_fsa = worker_total - employee_401k
+        allocations.append(
+            _PretaxDeductions(
+                employee_401k_contribution=employee_401k,
+                health_fsa_contribution=health_fsa,
+                dependent_care_fsa_contribution=ZERO,
+                total_pretax_deductions=worker_total,
+                payroll_exclusions_by_worker=(health_fsa,),
+            )
+        )
+
+    return tuple(allocations)
+
+
+def _worker_dependent_care_deductions(
+    requested_deduction: Decimal,
+    worker_incomes: tuple[Decimal, ...],
+    worker_non_dependent_totals: tuple[Decimal, ...],
+    parameters: PretaxDeductionParameters,
+) -> tuple[Decimal, ...]:
+    if requested_deduction <= 0 or parameters.dependent_care_fsa_limit <= 0:
+        return tuple(ZERO for _ in worker_incomes)
+
+    capacities = tuple(
+        max(ZERO, income - worker_non_dependent_totals[index])
+        for index, income in enumerate(worker_incomes)
+    )
+    deduction = min(
+        requested_deduction,
+        parameters.dependent_care_fsa_limit,
+        sum(capacities, ZERO),
+    )
+    return _allocate_amount_by_weight(deduction, capacities)
 
 
 def _next_to_last_bracket_start(federal: FederalTaxParameters) -> Decimal:
@@ -855,12 +968,6 @@ def _calculate_progressive_tax_raw(
     return tax
 
 
-def _calculate_progressive_tax(
-    taxable_income: Decimal, brackets: Iterable[TaxBracket]
-) -> Decimal:
-    return _money(_calculate_progressive_tax_raw(taxable_income, brackets))
-
-
 def _marginal_rate_change_incomes(
     federal: FederalTaxParameters,
     payroll: PayrollTaxParameters,
@@ -889,6 +996,7 @@ def _marginal_rate_change_incomes(
                 target=bracket.lower_bound,
                 value_at_income=lambda gross_income: _taxable_income_before_tax(
                     gross_income,
+                    min(secondary_income, gross_income),
                     federal,
                     pretax_deductions,
                     pretax_deduction_mode,
@@ -934,6 +1042,7 @@ def _marginal_rate_change_incomes(
 
 def _taxable_income_before_tax(
     gross_income: Decimal,
+    secondary_income: Decimal,
     federal: FederalTaxParameters,
     pretax_deductions: PretaxDeductionParameters,
     pretax_deduction_mode: str,
@@ -941,6 +1050,7 @@ def _taxable_income_before_tax(
 ) -> Decimal:
     pretax = _calculate_pretax_deductions(
         gross_income,
+        secondary_income=secondary_income,
         federal=federal,
         parameters=pretax_deductions,
         mode=pretax_deduction_mode,
@@ -984,6 +1094,7 @@ def _worker_payroll_wages_before_tax(
 ) -> tuple[Decimal, ...]:
     pretax = _calculate_pretax_deductions(
         gross_income,
+        secondary_income=secondary_income,
         federal=federal,
         parameters=pretax_deductions,
         mode=pretax_deduction_mode,
@@ -1000,28 +1111,13 @@ def _worker_payroll_wages(
     pretax: _PretaxDeductions,
 ) -> tuple[Decimal, ...]:
     worker_incomes = _worker_incomes(gross_income, secondary_income, federal)
-    payroll_exclusion = (
-        pretax.health_fsa_contribution + pretax.dependent_care_fsa_contribution
-    )
-    if gross_income <= 0 or payroll_exclusion <= 0:
+    if not pretax.payroll_exclusions_by_worker:
         return tuple(max(ZERO, income) for income in worker_incomes)
 
-    wages = []
-    remaining_exclusion = payroll_exclusion
-    remaining_income = gross_income
-    for income in worker_incomes:
-        if remaining_income <= 0:
-            exclusion = ZERO
-        else:
-            exclusion = min(
-                income,
-                remaining_exclusion * income / remaining_income,
-            )
-        wages.append(max(ZERO, income - exclusion))
-        remaining_exclusion -= exclusion
-        remaining_income -= income
-
-    return tuple(wages)
+    return tuple(
+        max(ZERO, income - pretax.payroll_exclusions_by_worker[index])
+        for index, income in enumerate(worker_incomes)
+    )
 
 
 def _worker_incomes(

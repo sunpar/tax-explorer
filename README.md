@@ -44,6 +44,12 @@ Include dependent-care FSA modeling for filers with dependents:
 uv run tax-explorer --start 0 --stop 500000 --step 10000 --dependent-count 1
 ```
 
+Model married-joint dual earners and include exact marginal-rate change rows:
+
+```bash
+uv run tax-explorer --filing-status married_joint --secondary-income 150000 --include-marginal-breakpoints
+```
+
 Run the API:
 
 ```bash

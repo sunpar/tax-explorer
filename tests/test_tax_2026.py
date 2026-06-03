@@ -181,6 +181,30 @@ def test_dual_earner_payroll_breakdown_shows_employee_and_employer_taxes_by_work
     ]
 
 
+def test_dual_earner_deductions_are_limited_by_each_workers_income():
+    result = calculate_tax_burden(
+        TaxScenario(
+            gross_income=money("300000"),
+            secondary_income=money("5000"),
+            include_employer_payroll_tax=True,
+        ),
+        federal=FEDERAL_2026_MARRIED_JOINT,
+    )
+
+    assert result.employee_401k_contribution == money("28890.68")
+    assert result.health_fsa_contribution == money("4009.32")
+    assert result.total_pretax_deductions == money("32900.00")
+    assert [
+        (row.label, row.gross_income, row.payroll_wages)
+        for row in result.payroll_breakdown
+    ] == [
+        ("Income 1", money("295000.00"), money("291600.00")),
+        ("Income 2", money("5000.00"), money("4390.68")),
+        ("Total", money("300000.00"), money("295990.68")),
+    ]
+    assert result.employee_social_security_tax == money("11711.22")
+
+
 def test_gradual_phase_in_starts_after_standard_deduction_and_reaches_caps():
     at_standard_deduction = calculate_tax_burden(
         TaxScenario(

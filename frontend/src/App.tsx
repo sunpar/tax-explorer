@@ -417,13 +417,21 @@ function pretaxDeductionsAtIncome(
   grossIncome: number
 ) {
   const caps = pretaxDeductionCaps(parameters, dependentCount, secondaryIncome);
-  if (caps.total <= 0) return { total: 0, healthFsa: 0, dependentCareFsa: 0 };
+  const incomes = workerIncomes(parameters, secondaryIncome, grossIncome);
+  if (caps.total <= 0) {
+    return {
+      total: 0,
+      healthFsa: 0,
+      dependentCareFsa: 0,
+      payrollExclusionsByWorker: incomes.map(() => 0)
+    };
+  }
 
-  let total: number;
+  let requestedTotal: number;
   if (mode === "max_available") {
-    total = Math.min(grossIncome, caps.total);
+    requestedTotal = Math.min(grossIncome, caps.total);
   } else if (grossIncome <= Number(parameters.federal.standard_deduction)) {
-    total = 0;
+    requestedTotal = 0;
   } else {
     const phaseStart = Number(parameters.federal.standard_deduction);
     const phaseEnd = gradualPhaseInEnd(
@@ -439,17 +447,101 @@ function pretaxDeductionsAtIncome(
       parameters.pretax_deductions.gradual_phase_in_start_rate
     );
     const endRate = caps.total / phaseEnd;
-    total = Math.min(
+    requestedTotal = Math.min(
       caps.total,
       grossIncome * (startRate + (endRate - startRate) * z)
     );
   }
 
+  const nonDependentCap = caps.employee401k + caps.healthFsa;
+  const requestedNonDependent =
+    nonDependentCap > 0 ? (requestedTotal * nonDependentCap) / caps.total : 0;
+  const workerNonDependent = workerNonDependentPretaxDeductions(
+    requestedNonDependent,
+    incomes,
+    caps
+  );
+  const healthFsa = workerNonDependent.reduce(
+    (total, worker) => total + worker.healthFsa,
+    0
+  );
+  const workerNonDependentTotals = workerNonDependent.map(
+    (worker) => worker.total
+  );
+  const requestedDependentCare =
+    caps.dependentCareFsa > 0
+      ? (requestedTotal * caps.dependentCareFsa) / caps.total
+      : 0;
+  const dependentCareByWorker = workerDependentCareDeductions(
+    requestedDependentCare,
+    incomes,
+    workerNonDependentTotals,
+    caps
+  );
+  const dependentCareFsa = dependentCareByWorker.reduce(
+    (total, deduction) => total + deduction,
+    0
+  );
+  const payrollExclusionsByWorker = workerNonDependent.map(
+    (worker, index) => worker.healthFsa + dependentCareByWorker[index]
+  );
+  const total =
+    workerNonDependentTotals.reduce((sum, deduction) => sum + deduction, 0) +
+    dependentCareFsa;
+
   return {
     total,
-    healthFsa: (total * caps.healthFsa) / caps.total,
-    dependentCareFsa: (total * caps.dependentCareFsa) / caps.total
+    healthFsa,
+    dependentCareFsa,
+    payrollExclusionsByWorker
   };
+}
+
+function workerNonDependentPretaxDeductions(
+  requestedDeduction: number,
+  workerIncomes: number[],
+  caps: PretaxDeductionCaps
+): Array<{ total: number; healthFsa: number }> {
+  const workers = workerIncomes.length;
+  const worker401kCap = caps.employee401k / workers;
+  const workerHealthFsaCap = caps.healthFsa / workers;
+  const workerTotalCap = worker401kCap + workerHealthFsaCap;
+  if (requestedDeduction <= 0 || workerTotalCap <= 0) {
+    return workerIncomes.map(() => ({ total: 0, healthFsa: 0 }));
+  }
+
+  const capacities = workerIncomes.map((income) =>
+    Math.max(0, Math.min(income, workerTotalCap))
+  );
+  const deduction = Math.min(
+    requestedDeduction,
+    capacities.reduce((total, capacity) => total + capacity, 0)
+  );
+  return allocateAmountByWeight(deduction, capacities).map((total) => {
+    const healthFsa = total * (workerHealthFsaCap / workerTotalCap);
+    return { total, healthFsa };
+  });
+}
+
+function workerDependentCareDeductions(
+  requestedDeduction: number,
+  workerIncomes: number[],
+  workerNonDependentTotals: number[],
+  caps: PretaxDeductionCaps
+): number[] {
+  if (requestedDeduction <= 0 || caps.dependentCareFsa <= 0) {
+    return workerIncomes.map(() => 0);
+  }
+
+  const capacities = workerIncomes.map((income, index) =>
+    Math.max(0, income - workerNonDependentTotals[index])
+  );
+  const deduction = Math.min(
+    requestedDeduction,
+    caps.dependentCareFsa,
+    capacities.reduce((total, capacity) => total + capacity, 0)
+  );
+  return allocateAmountByWeight(deduction, capacities);
 }
 
 function taxableIncomeBeforeTax(
@@ -503,22 +595,9 @@ function workerPayrollWages(
     grossIncome
   );
   const incomes = workerIncomes(parameters, secondaryIncome, grossIncome);
-  const payrollExclusion = pretax.healthFsa + pretax.dependentCareFsa;
-  if (grossIncome <= 0 || payrollExclusion <= 0) {
-    return incomes.map((income) => Math.max(0, income));
-  }
-
-  let remainingExclusion = payrollExclusion;
-  let remainingIncome = grossIncome;
-  return incomes.map((income) => {
-    const exclusion =
-      remainingIncome <= 0
-        ? 0
-        : Math.min(income, (remainingExclusion * income) / remainingIncome);
-    remainingExclusion -= exclusion;
-    remainingIncome -= income;
-    return Math.max(0, income - exclusion);
-  });
+  return incomes.map((income, index) =>
+    Math.max(0, income - (pretax.payrollExclusionsByWorker[index] ?? 0))
+  );
 }
 
 function workerIncomes(
@@ -567,6 +646,19 @@ function solveIncomeForTarget(
 
 function roundMoneyNumber(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function allocateAmountByWeight(amount: number, weights: number[]): number[] {
+  const totalWeight = weights.reduce((total, weight) => total + weight, 0);
+  if (amount <= 0 || totalWeight <= 0) return weights.map(() => 0);
+
+  let remainingAmount = amount;
+  return weights.map((weight, index) => {
+    if (index === weights.length - 1) return remainingAmount;
+    const allocation = (amount * weight) / totalWeight;
+    remainingAmount -= allocation;
+    return allocation;
+  });
 }
 
 function sortedUniqueNumbers(values: Iterable<number>): number[] {
@@ -718,10 +810,8 @@ function ChartTooltip({
                 <i style={{ backgroundColor: entry.color }} />
                 {entry.name}
               </span>
-              {chartMode === "totalTax" ? (
-                <span>Total tax {toCurrency(totalTax ?? 0)}</span>
-              ) : null}
-              <span>Total rate {formatPercentValue(totalRate ?? 0)}</span>
+              <span>Total tax {toCurrency(totalTax ?? 0)}</span>
+              <span>Effective rate {formatPercentValue(totalRate ?? 0)}</span>
               <span>Marginal rate {formatPercentValue(marginalRate ?? 0)}</span>
               <span>Pre-tax deductions {toCurrency(pretax ?? 0)}</span>
             </li>
@@ -1131,7 +1221,6 @@ function App() {
   useEffect(() => {
     if (
       filingStatus !== "married_joint" ||
-      secondaryIncome <= 0 ||
       hasCustomIncomeSplitRef.current ||
       hasCustomSelectedIncomeRef.current ||
       selectedIncome <= 0
@@ -1150,7 +1239,6 @@ function App() {
     filingStatus,
     hasCustomIncomeSplit,
     hasCustomSelectedIncome,
-    secondaryIncome,
     selectedIncome
   ]);
 

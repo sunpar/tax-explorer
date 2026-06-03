@@ -537,6 +537,10 @@ describe("App tax curve controls", () => {
     expect(income77900?.curve_2026_single).toBe(20);
     const income83400 = chartData().find((point) => point.incomeNumber === 83400);
     expect(income83400?.curve_2026_married_joint).toBe(15);
+    expect(screen.getAllByText("Total tax $20,000").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Effective rate 20.00%").length).toBeGreaterThan(
+      0
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Marginal Rate" }));
     await waitFor(() =>
@@ -552,6 +556,7 @@ describe("App tax curve controls", () => {
     expect(screen.getAllByText("Marginal rate 30.00%").length).toBeGreaterThan(
       0
     );
+    expect(screen.getAllByText("Total tax $20,000").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Total Tax $" }));
     await waitFor(() =>
@@ -571,7 +576,7 @@ describe("App tax curve controls", () => {
       within(tooltip as HTMLElement).getByText("Total tax $20,000")
     ).toBeInTheDocument();
     expect(
-      within(tooltip as HTMLElement).getByText("Total rate 20.00%")
+      within(tooltip as HTMLElement).getByText("Effective rate 20.00%")
     ).toBeInTheDocument();
     expect(
       within(tooltip as HTMLElement).getByText("Marginal rate 30.00%")
@@ -667,8 +672,13 @@ describe("App tax curve controls", () => {
 
     const income1Input = await screen.findByLabelText("Income 1 ($k)");
     const income2Input = screen.getByLabelText("Income 2 ($k)");
-    expect(income1Input).toHaveValue(127.9);
-    expect(income2Input).toHaveValue(0);
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Selected income/)).toHaveValue("256800")
+    );
+    await waitFor(() => {
+      expect(income1Input).toHaveValue(154.08);
+      expect(income2Input).toHaveValue(102.72);
+    });
 
     fireEvent.change(income2Input, { target: { value: "50" } });
 
@@ -684,9 +694,9 @@ describe("App tax curve controls", () => {
       "50"
     );
     expect(localStorage.getItem("taxExplorer.primaryIncomeThousands")).toBe(
-      "127.9"
+      "154.08"
     );
-    expect(screen.getByLabelText(/Selected income/)).toHaveValue("177900");
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("204080");
     expect(screen.getAllByText("$55,800").length).toBeGreaterThan(0);
     expect(
       screen.getByText("100.00% of $49,000 max")
@@ -746,8 +756,10 @@ describe("App tax curve controls", () => {
     await waitFor(() =>
       expect(screen.getByLabelText(/Selected income/)).toHaveValue("256800")
     );
-    expect(screen.getByLabelText("Income 1 ($k)")).toHaveValue(154.08);
-    expect(screen.getByLabelText("Income 2 ($k)")).toHaveValue(102.72);
+    await waitFor(() => {
+      expect(screen.getByLabelText("Income 1 ($k)")).toHaveValue(154.08);
+      expect(screen.getByLabelText("Income 2 ($k)")).toHaveValue(102.72);
+    });
     await waitFor(() =>
       expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
         expect.objectContaining({
