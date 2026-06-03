@@ -20,9 +20,18 @@ export type PayrollParameters = {
   additional_medicare_thresholds: Record<string, string>;
 };
 
+export type PretaxDeductionParameters = {
+  tax_year: number;
+  employee_401k_limit: string;
+  health_fsa_limit: string;
+  dependent_care_fsa_limit: string;
+  gradual_phase_in_start_rate: string;
+};
+
 export type TaxParameters = {
   federal: FederalParameters;
   payroll: PayrollParameters;
+  pretax_deductions: PretaxDeductionParameters;
 };
 
 export type FilingStatus = {
@@ -47,6 +56,10 @@ export type TaxBurden = {
   total_employee_tax: string;
   effective_employee_tax_rate: string;
   marginal_employee_tax_rate: string;
+  employee_401k_contribution: string;
+  health_fsa_contribution: string;
+  dependent_care_fsa_contribution: string;
+  total_pretax_deductions: string;
   employer_social_security_tax: string;
   employer_medicare_tax: string;
   total_employer_payroll_tax: string;

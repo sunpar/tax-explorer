@@ -19,21 +19,28 @@ def money(value: str) -> Decimal:
 def test_standard_deduction_eliminates_income_tax_below_threshold():
     result = calculate_tax_burden(TaxScenario(gross_income=money("10000")))
 
+    assert result.employee_401k_contribution == money("8781.36")
+    assert result.health_fsa_contribution == money("1218.64")
+    assert result.dependent_care_fsa_contribution == money("0.00")
+    assert result.total_pretax_deductions == money("10000.00")
     assert result.federal_income_tax == money("0.00")
-    assert result.employee_social_security_tax == money("620.00")
-    assert result.employee_medicare_tax == money("145.00")
+    assert result.employee_social_security_tax == money("544.44")
+    assert result.employee_medicare_tax == money("127.33")
     assert result.employee_additional_medicare_tax == money("0.00")
-    assert result.total_employee_tax == money("765.00")
+    assert result.total_employee_tax == money("671.77")
 
 
 def test_federal_income_tax_uses_progressive_2026_single_brackets_after_standard_deduction():
     result = calculate_tax_burden(TaxScenario(gross_income=money("100000")))
 
     assert FEDERAL_2026_SINGLE.standard_deduction == money("16100.00")
-    assert result.taxable_income == money("83900.00")
-    assert result.federal_income_tax == money("13170.00")
-    assert result.total_employee_tax == money("20820.00")
-    assert result.effective_employee_tax_rate == Decimal("0.2082")
+    assert result.employee_401k_contribution == money("24500.00")
+    assert result.health_fsa_contribution == money("3400.00")
+    assert result.total_pretax_deductions == money("27900.00")
+    assert result.taxable_income == money("56000.00")
+    assert result.federal_income_tax == money("7032.00")
+    assert result.total_employee_tax == money("14421.90")
+    assert result.effective_employee_tax_rate == Decimal("0.1442")
     assert result.marginal_employee_tax_rate == Decimal("0.2965")
 
 
@@ -41,8 +48,8 @@ def test_social_security_tax_is_capped_at_2026_wage_base():
     result = calculate_tax_burden(TaxScenario(gross_income=money("250000")))
 
     assert result.employee_social_security_tax == money("11439.00")
-    assert result.employee_medicare_tax == money("3625.00")
-    assert result.employee_additional_medicare_tax == money("450.00")
+    assert result.employee_medicare_tax == money("3575.70")
+    assert result.employee_additional_medicare_tax == money("419.40")
 
 
 def test_payroll_parameters_accept_legacy_single_additional_medicare_threshold():
@@ -61,7 +68,7 @@ def test_payroll_parameters_accept_legacy_single_additional_medicare_threshold()
     )
 
     assert payroll.additional_medicare_thresholds == {}
-    assert result.employee_additional_medicare_tax == money("450.00")
+    assert result.employee_additional_medicare_tax == money("419.40")
 
 
 def test_can_include_employer_payroll_tax_for_economic_burden_view():
@@ -70,9 +77,51 @@ def test_can_include_employer_payroll_tax_for_economic_burden_view():
     )
 
     assert result.employer_social_security_tax == money("11439.00")
-    assert result.employer_medicare_tax == money("3625.00")
-    assert result.total_employer_payroll_tax == money("15064.00")
-    assert result.total_tax_with_employer_payroll == money("81882.00")
+    assert result.employer_medicare_tax == money("3575.70")
+    assert result.total_employer_payroll_tax == money("15014.70")
+    assert result.total_tax_with_employer_payroll == money("72824.80")
+
+
+def test_gradual_phase_in_starts_after_standard_deduction_and_reaches_caps():
+    at_standard_deduction = calculate_tax_burden(
+        TaxScenario(
+            gross_income=money("16100"),
+            pretax_deduction_mode="gradual_phase_in",
+        )
+    )
+    partial = calculate_tax_burden(
+        TaxScenario(
+            gross_income=money("100000"),
+            pretax_deduction_mode="gradual_phase_in",
+        )
+    )
+    fully_phased_in = calculate_tax_burden(
+        TaxScenario(
+            gross_income=money("300225"),
+            pretax_deduction_mode="gradual_phase_in",
+        )
+    )
+
+    assert at_standard_deduction.total_pretax_deductions == money("0.00")
+    assert partial.total_pretax_deductions == money("3448.87")
+    assert partial.employee_401k_contribution == money("3028.58")
+    assert partial.health_fsa_contribution == money("420.29")
+    assert partial.taxable_income == money("80451.13")
+    assert partial.total_employee_tax == money("20029.10")
+    assert partial.marginal_employee_tax_rate == Decimal("0.2819")
+    assert fully_phased_in.employee_401k_contribution == money("24500.00")
+    assert fully_phased_in.health_fsa_contribution == money("3400.00")
+    assert fully_phased_in.total_pretax_deductions == money("27900.00")
+
+
+def test_unknown_pretax_deduction_mode_is_rejected():
+    with pytest.raises(ValueError, match="pretax_deduction_mode"):
+        calculate_tax_burden(
+            TaxScenario(
+                gross_income=money("100000"),
+                pretax_deduction_mode="unknown",
+            )
+        )
 
 
 def test_build_income_series_samples_inclusive_income_range():
@@ -95,14 +144,40 @@ def test_build_income_series_can_include_exact_marginal_rate_change_points():
 
     assert [row.gross_income for row in rows] == [
         money("0.00"),
-        money("16100.00"),
-        money("28500.00"),
-        money("66500.00"),
+        money("27900.00"),
+        money("44000.00"),
+        money("56400.00"),
+        money("94400.00"),
         money("100000.00"),
-        money("121800.00"),
-        money("184500.00"),
+        money("149700.00"),
+        money("187900.00"),
         money("200000.00"),
-        money("217875.00"),
+        money("203400.00"),
+        money("245775.00"),
+        money("250000.00"),
+    ]
+
+
+def test_build_income_series_can_include_gradual_phase_in_breakpoints():
+    rows = build_income_series(
+        start=0,
+        stop=250000,
+        step=100000,
+        include_marginal_breakpoints=True,
+        pretax_deduction_mode="gradual_phase_in",
+    )
+
+    assert [row.gross_income for row in rows] == [
+        money("0.00"),
+        money("16100.00"),
+        money("28896.90"),
+        money("68220.02"),
+        money("100000.00"),
+        money("127196.54"),
+        money("185848.61"),
+        money("200000.00"),
+        money("201575.50"),
+        money("235279.59"),
         money("250000.00"),
     ]
 

@@ -1,8 +1,10 @@
 import csv
 import io
 
+import pytest
+
 from tax_explorer import TaxScenario, calculate_tax_burden
-from tax_explorer.cli import CSV_FIELDS, write_csv
+from tax_explorer.cli import CSV_FIELDS, main, write_csv
 
 
 LEGACY_CSV_FIELDS = (
@@ -34,7 +36,46 @@ def test_csv_export_preserves_existing_columns_and_appends_marginal_rates(
     assert CSV_FIELDS[len(LEGACY_CSV_FIELDS) :] == (
         "marginal_employee_tax_rate",
         "marginal_tax_rate_with_employer_payroll",
+        "employee_401k_contribution",
+        "health_fsa_contribution",
+        "dependent_care_fsa_contribution",
+        "total_pretax_deductions",
     )
     row = next(csv.DictReader(io.StringIO(output.getvalue())))
     assert row["marginal_employee_tax_rate"] == "0.2965"
     assert row["marginal_tax_rate_with_employer_payroll"] == "0.2965"
+    assert row["employee_401k_contribution"] == "24500.00"
+    assert row["health_fsa_contribution"] == "3400.00"
+    assert row["dependent_care_fsa_contribution"] == "0.00"
+    assert row["total_pretax_deductions"] == "27900.00"
+
+
+def test_cli_accepts_gradual_pretax_deduction_mode(monkeypatch):
+    output = io.StringIO()
+    monkeypatch.setattr("sys.stdout", output)
+
+    result = main(
+        [
+            "--start",
+            "100000",
+            "--stop",
+            "100000",
+            "--step",
+            "50000",
+            "--pretax-deduction-mode",
+            "gradual_phase_in",
+        ]
+    )
+
+    row = next(csv.DictReader(io.StringIO(output.getvalue())))
+    assert result == 0
+    assert row["total_pretax_deductions"] == "3448.87"
+    assert row["employee_401k_contribution"] == "3028.58"
+    assert row["health_fsa_contribution"] == "420.29"
+
+
+def test_cli_rejects_unknown_pretax_deduction_mode():
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--pretax-deduction-mode", "unknown"])
+
+    assert exc_info.value.code == 2

@@ -8,6 +8,7 @@ from pathlib import Path
 from tax_explorer import (
     FederalTaxParameters,
     PayrollTaxParameters,
+    PretaxDeductionParameters,
     TaxBracket,
     _money,
 )
@@ -85,6 +86,15 @@ def create_schema(connection: sqlite3.Connection) -> None:
             PRIMARY KEY (year, filing_status),
             FOREIGN KEY (year) REFERENCES tax_years(year),
             FOREIGN KEY (filing_status) REFERENCES filing_statuses(code)
+        );
+
+        CREATE TABLE IF NOT EXISTS pretax_deduction_parameters (
+            year INTEGER PRIMARY KEY,
+            employee_401k_limit TEXT NOT NULL,
+            health_fsa_limit TEXT NOT NULL,
+            dependent_care_fsa_limit TEXT NOT NULL,
+            gradual_phase_in_start_rate TEXT NOT NULL,
+            FOREIGN KEY (year) REFERENCES tax_years(year)
         );
         """
     )
@@ -190,6 +200,20 @@ def seed_default_tax_data(connection: sqlite3.Connection) -> None:
             (2026, "married_separate", "125000.00"),
             (2026, "head_of_household", "200000.00"),
         ],
+    )
+    connection.execute(
+        """
+        INSERT INTO pretax_deduction_parameters (
+            year,
+            employee_401k_limit,
+            health_fsa_limit,
+            dependent_care_fsa_limit,
+            gradual_phase_in_start_rate
+        )
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(year) DO NOTHING
+        """,
+        (2026, "24500.00", "3400.00", "0.00", "0.01"),
     )
     connection.commit()
 
@@ -302,4 +326,34 @@ def load_payroll_tax_parameters(
             row["additional_medicare_threshold_single"]
         ),
         additional_medicare_thresholds=additional_medicare_thresholds,
+    )
+
+
+def load_pretax_deduction_parameters(
+    connection: sqlite3.Connection, year: int
+) -> PretaxDeductionParameters:
+    row = connection.execute(
+        """
+        SELECT
+            year,
+            employee_401k_limit,
+            health_fsa_limit,
+            dependent_care_fsa_limit,
+            gradual_phase_in_start_rate
+        FROM pretax_deduction_parameters
+        WHERE year = ?
+        """,
+        (year,),
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"No pre-tax deduction parameters for {year}")
+
+    return PretaxDeductionParameters(
+        tax_year=int(row["year"]),
+        employee_401k_limit=_money(row["employee_401k_limit"]),
+        health_fsa_limit=_money(row["health_fsa_limit"]),
+        dependent_care_fsa_limit=_money(row["dependent_care_fsa_limit"]),
+        gradual_phase_in_start_rate=Decimal(
+            str(row["gradual_phase_in_start_rate"])
+        ),
     )
