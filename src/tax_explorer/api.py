@@ -43,6 +43,8 @@ class CalculateRequest(BaseModel):
     filing_status: str = "single"
     gross_income: Decimal = Field(ge=0)
     include_employer_payroll_tax: bool = False
+    dependent_count: int = Field(default=0, ge=0)
+    secondary_income: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     pretax_deduction_mode: str = Field(
         default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
         json_schema_extra=PRETAX_DEDUCTION_MODE_SCHEMA,
@@ -115,6 +117,8 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
                     gross_income=request.gross_income,
                     include_employer_payroll_tax=request.include_employer_payroll_tax,
                     pretax_deduction_mode=request.pretax_deduction_mode,
+                    dependent_count=request.dependent_count,
+                    secondary_income=request.secondary_income,
                 ),
                 federal=federal,
                 payroll=payroll,
@@ -133,6 +137,8 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
         step: Decimal = Query(default=Decimal("10000"), gt=0),
         include_employer_payroll_tax: bool = Query(default=False),
         include_marginal_breakpoints: bool = Query(default=False),
+        dependent_count: int = Query(default=0, ge=0),
+        secondary_income: Decimal = Query(default=Decimal("0"), ge=0),
         pretax_deduction_mode: str = Query(
             default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
             json_schema_extra=PRETAX_DEDUCTION_MODE_SCHEMA,
@@ -151,6 +157,8 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
                 include_employer_payroll_tax=include_employer_payroll_tax,
                 include_marginal_breakpoints=include_marginal_breakpoints,
                 pretax_deduction_mode=pretax_deduction_mode,
+                dependent_count=dependent_count,
+                secondary_income=secondary_income,
                 federal=federal,
                 payroll=payroll,
                 pretax_deductions=pretax,
@@ -262,6 +270,8 @@ def _value_to_response(value: Any) -> Any:
             key: _value_to_response(nested_value)
             for key, nested_value in value.items()
         }
+    if isinstance(value, (list, tuple)):
+        return [_value_to_response(nested_value) for nested_value in value]
     return value
 
 

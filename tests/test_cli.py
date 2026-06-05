@@ -50,7 +50,7 @@ def test_csv_export_preserves_existing_columns_and_appends_marginal_rates(
     assert row["total_pretax_deductions"] == "27900.00"
 
 
-def test_cli_accepts_gradual_pretax_deduction_mode(monkeypatch):
+def test_cli_accepts_gradual_pretax_deduction_mode(monkeypatch, tmp_path):
     output = io.StringIO()
     monkeypatch.setattr("sys.stdout", output)
 
@@ -64,6 +64,8 @@ def test_cli_accepts_gradual_pretax_deduction_mode(monkeypatch):
             "50000",
             "--pretax-deduction-mode",
             "gradual_phase_in",
+            "--database-path",
+            str(tmp_path / "tax.sqlite3"),
         ]
     )
 
@@ -74,8 +76,119 @@ def test_cli_accepts_gradual_pretax_deduction_mode(monkeypatch):
     assert row["health_fsa_contribution"] == "420.29"
 
 
+def test_cli_accepts_dependent_count(monkeypatch, tmp_path):
+    output = io.StringIO()
+    monkeypatch.setattr("sys.stdout", output)
+
+    result = main(
+        [
+            "--start",
+            "100000",
+            "--stop",
+            "100000",
+            "--step",
+            "50000",
+            "--dependent-count",
+            "1",
+            "--database-path",
+            str(tmp_path / "tax.sqlite3"),
+        ]
+    )
+
+    row = next(csv.DictReader(io.StringIO(output.getvalue())))
+    assert result == 0
+    assert row["dependent_care_fsa_contribution"] == "7500.00"
+    assert row["total_pretax_deductions"] == "35400.00"
+    assert row["total_employee_tax"] == "12388.15"
+
+
+def test_cli_rejects_negative_dependent_count():
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--dependent-count", "-1"])
+
+    assert exc_info.value.code == 2
+
+
 def test_cli_rejects_unknown_pretax_deduction_mode():
     with pytest.raises(SystemExit) as exc_info:
         main(["--pretax-deduction-mode", "unknown"])
 
     assert exc_info.value.code == 2
+
+
+def test_cli_reports_invalid_secondary_income_as_usage_error(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--secondary-income",
+                "1",
+                "--database-path",
+                str(tmp_path / "tax.sqlite3"),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert (
+        "secondary_income is only supported for married_joint" in capsys.readouterr().err
+    )
+
+
+def test_cli_accepts_year_filing_status_and_secondary_income(monkeypatch, tmp_path):
+    output = io.StringIO()
+    monkeypatch.setattr("sys.stdout", output)
+
+    result = main(
+        [
+            "--year",
+            "2026",
+            "--filing-status",
+            "married_joint",
+            "--start",
+            "300000",
+            "--stop",
+            "300000",
+            "--step",
+            "50000",
+            "--secondary-income",
+            "150000",
+            "--database-path",
+            str(tmp_path / "tax.sqlite3"),
+        ]
+    )
+
+    row = next(csv.DictReader(io.StringIO(output.getvalue())))
+    assert result == 0
+    assert row["employee_401k_contribution"] == "49000.00"
+    assert row["health_fsa_contribution"] == "6800.00"
+    assert row["total_pretax_deductions"] == "55800.00"
+    assert row["employee_social_security_tax"] == "18178.40"
+
+
+def test_cli_can_include_marginal_breakpoint_rows(monkeypatch, tmp_path):
+    output = io.StringIO()
+    monkeypatch.setattr("sys.stdout", output)
+
+    result = main(
+        [
+            "--start",
+            "0",
+            "--stop",
+            "100000",
+            "--step",
+            "100000",
+            "--include-marginal-breakpoints",
+            "--database-path",
+            str(tmp_path / "tax.sqlite3"),
+        ]
+    )
+
+    rows = list(csv.DictReader(io.StringIO(output.getvalue())))
+    assert result == 0
+    assert [row["gross_income"] for row in rows] == [
+        "0.00",
+        "27900.00",
+        "44000.00",
+        "56400.00",
+        "94400.00",
+        "100000.00",
+    ]

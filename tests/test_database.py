@@ -1,5 +1,7 @@
 from decimal import Decimal
 
+import pytest
+
 from tax_explorer import TaxScenario, calculate_tax_burden
 from tax_explorer.database import (
     connect,
@@ -106,7 +108,7 @@ def test_loads_2026_pretax_deduction_parameters_from_sqlite(tmp_path):
     assert pretax.tax_year == 2026
     assert pretax.employee_401k_limit == Decimal("24500.00")
     assert pretax.health_fsa_limit == Decimal("3400.00")
-    assert pretax.dependent_care_fsa_limit == Decimal("0.00")
+    assert pretax.dependent_care_fsa_limit == Decimal("7500.00")
     assert pretax.gradual_phase_in_start_rate == Decimal("0.01")
 
 
@@ -156,6 +158,28 @@ def test_seed_default_tax_data_preserves_existing_parameter_edits(tmp_path):
     assert federal.standard_deduction == Decimal("17000.00")
 
 
+def test_seed_updates_legacy_pretax_dependent_care_limit(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    initialize_database(db_path).close()
+    with connect(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE pretax_deduction_parameters
+            SET employee_401k_limit = ?, dependent_care_fsa_limit = ?
+            WHERE year = ?
+            """,
+            ("25000.00", "0.00", 2026),
+        )
+        connection.commit()
+
+    with initialize_database(db_path) as connection:
+        pretax = load_pretax_deduction_parameters(connection, 2026)
+
+    assert pretax.employee_401k_limit == Decimal("25000.00")
+    assert pretax.dependent_care_fsa_limit == Decimal("7500.00")
+
+
 def test_calculator_accepts_database_loaded_parameters(tmp_path):
     db_path = tmp_path / "tax.sqlite3"
 
@@ -171,3 +195,113 @@ def test_calculator_accepts_database_loaded_parameters(tmp_path):
 
     assert result.taxable_income == Decimal("56000.00")
     assert result.total_employee_tax == Decimal("14421.90")
+
+
+def test_database_loaded_parameters_apply_dependent_care_fsa(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        federal = load_federal_tax_parameters(connection, 2026, "married_separate")
+        payroll = load_payroll_tax_parameters(connection, 2026)
+        pretax = load_pretax_deduction_parameters(connection, 2026)
+
+    result = calculate_tax_burden(
+        TaxScenario(gross_income=Decimal("100000"), dependent_count=1),
+        federal=federal,
+        payroll=payroll,
+        pretax_deductions=pretax,
+    )
+
+    assert result.dependent_care_fsa_contribution == Decimal("3750.00")
+    assert result.total_pretax_deductions == Decimal("31650.00")
+    assert result.taxable_income == Decimal("52250.00")
+    assert result.total_employee_tax == Decimal("13310.03")
+
+
+def test_married_joint_secondary_income_uses_per_worker_social_security_caps(
+    tmp_path,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        federal = load_federal_tax_parameters(connection, 2026, "married_joint")
+        payroll = load_payroll_tax_parameters(connection, 2026)
+        pretax = load_pretax_deduction_parameters(connection, 2026)
+
+    result = calculate_tax_burden(
+        TaxScenario(
+            gross_income=Decimal("300000"),
+            secondary_income=Decimal("150000"),
+        ),
+        federal=federal,
+        payroll=payroll,
+        pretax_deductions=pretax,
+    )
+
+    assert result.employee_401k_contribution == Decimal("49000.00")
+    assert result.health_fsa_contribution == Decimal("6800.00")
+    assert result.dependent_care_fsa_contribution == Decimal("0.00")
+    assert result.total_pretax_deductions == Decimal("55800.00")
+    assert result.taxable_income == Decimal("212000.00")
+    assert result.federal_income_tax == Decimal("36076.00")
+    assert result.employee_social_security_tax == Decimal("18178.40")
+    assert result.employee_medicare_tax == Decimal("4251.40")
+    assert result.employee_additional_medicare_tax == Decimal("388.80")
+    assert result.total_employee_tax == Decimal("58894.60")
+
+
+def test_married_joint_secondary_income_extends_gradual_deduction_phase_in(
+    tmp_path,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        federal = load_federal_tax_parameters(connection, 2026, "married_joint")
+        payroll = load_payroll_tax_parameters(connection, 2026)
+        pretax = load_pretax_deduction_parameters(connection, 2026)
+
+    old_dual_cap_endpoint = calculate_tax_burden(
+        TaxScenario(
+            gross_income=Decimal("600450"),
+            secondary_income=Decimal("300225"),
+            pretax_deduction_mode="gradual_phase_in",
+        ),
+        federal=federal,
+        payroll=payroll,
+        pretax_deductions=pretax,
+    )
+    extended_endpoint = calculate_tax_burden(
+        TaxScenario(
+            gross_income=Decimal("858825"),
+            secondary_income=Decimal("429412.50"),
+            pretax_deduction_mode="gradual_phase_in",
+        ),
+        federal=federal,
+        payroll=payroll,
+        pretax_deductions=pretax,
+    )
+
+    assert old_dual_cap_endpoint.total_pretax_deductions < Decimal("55800.00")
+    assert extended_endpoint.employee_401k_contribution == Decimal("49000.00")
+    assert extended_endpoint.health_fsa_contribution == Decimal("6800.00")
+    assert extended_endpoint.total_pretax_deductions == Decimal("55800.00")
+
+
+def test_secondary_income_requires_married_joint_filing_status(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        federal = load_federal_tax_parameters(connection, 2026, "single")
+        payroll = load_payroll_tax_parameters(connection, 2026)
+        pretax = load_pretax_deduction_parameters(connection, 2026)
+
+    with pytest.raises(ValueError, match="secondary_income"):
+        calculate_tax_burden(
+            TaxScenario(
+                gross_income=Decimal("100000"),
+                secondary_income=Decimal("25000"),
+            ),
+            federal=federal,
+            payroll=payroll,
+            pretax_deductions=pretax,
+        )

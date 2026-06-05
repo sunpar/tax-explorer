@@ -3,12 +3,20 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
+from pathlib import Path
 
 from tax_explorer import (
     PRETAX_DEDUCTION_MODE_CHOICES,
     PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
     TaxBurden,
     build_income_series,
+)
+from tax_explorer.database import (
+    DEFAULT_DATABASE_PATH,
+    initialize_database,
+    load_federal_tax_parameters,
+    load_payroll_tax_parameters,
+    load_pretax_deduction_parameters,
 )
 
 
@@ -35,13 +43,28 @@ CSV_FIELDS = (
 )
 
 
+def non_negative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return parsed
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Generate default 2026 US W-2 tax burden rows by income."
+        description="Generate US W-2 tax burden rows by income."
     )
     parser.add_argument("--start", type=str, default="0")
     parser.add_argument("--stop", type=str, default="500000")
     parser.add_argument("--step", type=str, default="10000")
+    parser.add_argument("--year", type=int, default=2026)
+    parser.add_argument("--filing-status", default="single")
+    parser.add_argument("--secondary-income", type=str, default="0")
+    parser.add_argument(
+        "--include-marginal-breakpoints",
+        action="store_true",
+        help="Include income rows where marginal tax rates change.",
+    )
     parser.add_argument(
         "--include-employer-payroll-tax",
         action="store_true",
@@ -53,15 +76,45 @@ def main(argv: list[str] | None = None) -> int:
         default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
         help="Pre-tax payroll deduction usage model.",
     )
+    parser.add_argument(
+        "--dependent-count",
+        type=non_negative_int,
+        default=0,
+        help="Number of dependents eligible for dependent-care FSA modeling.",
+    )
+    parser.add_argument(
+        "--database-path",
+        type=Path,
+        default=DEFAULT_DATABASE_PATH,
+        help="SQLite database path for tax parameters.",
+    )
     args = parser.parse_args(argv)
 
-    rows = build_income_series(
-        start=args.start,
-        stop=args.stop,
-        step=args.step,
-        include_employer_payroll_tax=args.include_employer_payroll_tax,
-        pretax_deduction_mode=args.pretax_deduction_mode,
-    )
+    try:
+        with initialize_database(args.database_path) as connection:
+            federal = load_federal_tax_parameters(
+                connection, args.year, args.filing_status
+            )
+            payroll = load_payroll_tax_parameters(connection, args.year)
+            pretax_deductions = load_pretax_deduction_parameters(
+                connection, args.year
+            )
+        rows = build_income_series(
+            start=args.start,
+            stop=args.stop,
+            step=args.step,
+            include_employer_payroll_tax=args.include_employer_payroll_tax,
+            include_marginal_breakpoints=args.include_marginal_breakpoints,
+            pretax_deduction_mode=args.pretax_deduction_mode,
+            dependent_count=args.dependent_count,
+            secondary_income=args.secondary_income,
+            federal=federal,
+            payroll=payroll,
+            pretax_deductions=pretax_deductions,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
+
     write_csv(rows)
     return 0
 
