@@ -545,6 +545,34 @@ describe("App tax curve controls", () => {
     );
   });
 
+  test("keeps scenario loading errors visible after selected income recovery", async () => {
+    await renderLoadedApp();
+    mockFetchTaxParameters.mockRejectedValueOnce(
+      new Error("scenario parameters unavailable")
+    );
+
+    fireEvent.change(screen.getByLabelText("Step ($k)"), {
+      target: { value: "5" }
+    });
+
+    expect(
+      await screen.findByText("scenario parameters unavailable")
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "130000" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grossIncome: "130000"
+        })
+      )
+    );
+    expect(screen.getByText("scenario parameters unavailable")).toBeInTheDocument();
+  });
+
   test("comparison chart modes plot effective, marginal, and total-tax values with tooltip detail", async () => {
     await renderLoadedApp();
 
