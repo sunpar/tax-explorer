@@ -335,21 +335,34 @@ def load_payroll_tax_parameters(
         (year,),
     ).fetchall()
     additional_medicare_thresholds = {
-        str(threshold_row["filing_status"]): _money(threshold_row["threshold"])
+        str(threshold_row["filing_status"]): _non_negative_money(
+            threshold_row["threshold"], "additional_medicare_threshold"
+        )
         for threshold_row in threshold_rows
     }
     additional_medicare_thresholds.setdefault(
-        "single", _money(row["additional_medicare_threshold_single"])
+        "single",
+        _non_negative_money(
+            row["additional_medicare_threshold_single"],
+            "additional_medicare_threshold_single",
+        ),
     )
 
     return PayrollTaxParameters(
         tax_year=int(row["year"]),
-        social_security_rate=Decimal(str(row["social_security_rate"])),
-        social_security_wage_base=_money(row["social_security_wage_base"]),
-        medicare_rate=Decimal(str(row["medicare_rate"])),
-        additional_medicare_rate=Decimal(str(row["additional_medicare_rate"])),
-        additional_medicare_threshold_single=_money(
-            row["additional_medicare_threshold_single"]
+        social_security_rate=_rate(
+            row["social_security_rate"], "social_security_rate"
+        ),
+        social_security_wage_base=_non_negative_money(
+            row["social_security_wage_base"], "social_security_wage_base"
+        ),
+        medicare_rate=_rate(row["medicare_rate"], "medicare_rate"),
+        additional_medicare_rate=_rate(
+            row["additional_medicare_rate"], "additional_medicare_rate"
+        ),
+        additional_medicare_threshold_single=_non_negative_money(
+            row["additional_medicare_threshold_single"],
+            "additional_medicare_threshold_single",
         ),
         additional_medicare_thresholds=additional_medicare_thresholds,
     )
@@ -376,10 +389,16 @@ def load_pretax_deduction_parameters(
 
     return PretaxDeductionParameters(
         tax_year=int(row["year"]),
-        employee_401k_limit=_money(row["employee_401k_limit"]),
-        health_fsa_limit=_money(row["health_fsa_limit"]),
-        dependent_care_fsa_limit=_money(row["dependent_care_fsa_limit"]),
-        gradual_phase_in_start_rate=Decimal(
-            str(row["gradual_phase_in_start_rate"])
+        employee_401k_limit=_non_negative_money(
+            row["employee_401k_limit"], "employee_401k_limit"
+        ),
+        health_fsa_limit=_non_negative_money(
+            row["health_fsa_limit"], "health_fsa_limit"
+        ),
+        dependent_care_fsa_limit=_non_negative_money(
+            row["dependent_care_fsa_limit"], "dependent_care_fsa_limit"
+        ),
+        gradual_phase_in_start_rate=_rate(
+            row["gradual_phase_in_start_rate"], "gradual_phase_in_start_rate"
         ),
     )

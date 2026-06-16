@@ -196,6 +196,76 @@ def test_loads_2026_payroll_parameters_from_sqlite(tmp_path):
     }
 
 
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("social_security_rate", "-0.10"),
+        ("social_security_rate", "1.10"),
+        ("social_security_wage_base", "-1.00"),
+        ("social_security_wage_base", "-0.004"),
+        ("medicare_rate", "-0.10"),
+        ("medicare_rate", "1.10"),
+        ("additional_medicare_rate", "-0.10"),
+        ("additional_medicare_rate", "1.10"),
+        ("additional_medicare_threshold_single", "-1.00"),
+        ("additional_medicare_threshold_single", "-0.004"),
+    ],
+)
+def test_rejects_invalid_payroll_parameters_from_sqlite(tmp_path, column, value):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            f"""
+            UPDATE payroll_tax_parameters
+            SET {column} = ?
+            WHERE year = ?
+            """,
+            (value, 2026),
+        )
+        connection.commit()
+
+        messages = {
+            "social_security_rate": "social_security_rate must be between 0 and 1",
+            "social_security_wage_base": (
+                "social_security_wage_base must be non-negative"
+            ),
+            "medicare_rate": "medicare_rate must be between 0 and 1",
+            "additional_medicare_rate": (
+                "additional_medicare_rate must be between 0 and 1"
+            ),
+            "additional_medicare_threshold_single": (
+                "additional_medicare_threshold_single must be non-negative"
+            ),
+        }
+        with pytest.raises(ValueError, match=messages[column]):
+            load_payroll_tax_parameters(connection, 2026)
+
+
+@pytest.mark.parametrize("threshold", ["-1.00", "-0.004"])
+def test_rejects_invalid_additional_medicare_thresholds_from_sqlite(
+    tmp_path,
+    threshold,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE additional_medicare_thresholds
+            SET threshold = ?
+            WHERE year = ? AND filing_status = ?
+            """,
+            (threshold, 2026, "single"),
+        )
+        connection.commit()
+
+        with pytest.raises(
+            ValueError, match="additional_medicare_threshold must be non-negative"
+        ):
+            load_payroll_tax_parameters(connection, 2026)
+
+
 def test_loads_2026_pretax_deduction_parameters_from_sqlite(tmp_path):
     db_path = tmp_path / "tax.sqlite3"
 
@@ -207,6 +277,51 @@ def test_loads_2026_pretax_deduction_parameters_from_sqlite(tmp_path):
     assert pretax.health_fsa_limit == Decimal("3400.00")
     assert pretax.dependent_care_fsa_limit == Decimal("7500.00")
     assert pretax.gradual_phase_in_start_rate == Decimal("0.01")
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("employee_401k_limit", "-1.00"),
+        ("employee_401k_limit", "-0.004"),
+        ("health_fsa_limit", "-1.00"),
+        ("health_fsa_limit", "-0.004"),
+        ("dependent_care_fsa_limit", "-1.00"),
+        ("dependent_care_fsa_limit", "-0.004"),
+        ("gradual_phase_in_start_rate", "-0.10"),
+        ("gradual_phase_in_start_rate", "1.10"),
+    ],
+)
+def test_rejects_invalid_pretax_deduction_parameters_from_sqlite(
+    tmp_path,
+    column,
+    value,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            f"""
+            UPDATE pretax_deduction_parameters
+            SET {column} = ?
+            WHERE year = ?
+            """,
+            (value, 2026),
+        )
+        connection.commit()
+
+        messages = {
+            "employee_401k_limit": "employee_401k_limit must be non-negative",
+            "health_fsa_limit": "health_fsa_limit must be non-negative",
+            "dependent_care_fsa_limit": (
+                "dependent_care_fsa_limit must be non-negative"
+            ),
+            "gradual_phase_in_start_rate": (
+                "gradual_phase_in_start_rate must be between 0 and 1"
+            ),
+        }
+        with pytest.raises(ValueError, match=messages[column]):
+            load_pretax_deduction_parameters(connection, 2026)
 
 
 def test_additional_medicare_threshold_depends_on_filing_status(tmp_path):
