@@ -35,9 +35,29 @@ async function requestJson<T>(
   const response = await fetch(url, init);
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(message || `Request failed with ${response.status}`);
+    throw new Error(errorMessageFromResponse(message, response.status));
   }
   return response.json() as Promise<T>;
+}
+
+function errorMessageFromResponse(message: string, status: number): string {
+  if (!message) return `Request failed with ${status}`;
+
+  try {
+    const body = JSON.parse(message) as unknown;
+    if (
+      body &&
+      typeof body === "object" &&
+      "detail" in body &&
+      typeof body.detail === "string"
+    ) {
+      return body.detail;
+    }
+  } catch {
+    return message;
+  }
+
+  return message;
 }
 
 export async function fetchTaxYears(): Promise<number[]> {
