@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { fetchTaxBurden } from "./api";
+import { fetchTaxBurden, fetchTaxYears } from "./api";
 
 describe("api requests", () => {
   afterEach(() => {
@@ -26,6 +26,26 @@ describe("api requests", () => {
       })
     ).rejects.toMatchObject({
       message: "gross_income must be non-negative"
+    });
+  });
+
+  test("keeps plain text from failed responses", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("database unavailable", { status: 503 })
+    );
+
+    await expect(fetchTaxYears()).rejects.toMatchObject({
+      message: "database unavailable"
+    });
+  });
+
+  test("uses status fallback for empty failed responses", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("", { status: 500 })
+    );
+
+    await expect(fetchTaxYears()).rejects.toMatchObject({
+      message: "Request failed with 500"
     });
   });
 });

@@ -42,6 +42,7 @@ async function requestJson<T>(
 
 function errorMessageFromResponse(message: string, status: number): string {
   if (!message) return `Request failed with ${status}`;
+  if (!startsWithJsonObject(message)) return message;
 
   try {
     const body = JSON.parse(message) as unknown;
@@ -58,6 +59,21 @@ function errorMessageFromResponse(message: string, status: number): string {
   }
 
   return message;
+}
+
+function startsWithJsonObject(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (
+      character !== " " &&
+      character !== "\n" &&
+      character !== "\r" &&
+      character !== "\t"
+    ) {
+      return character === "{";
+    }
+  }
+  return false;
 }
 
 export async function fetchTaxYears(): Promise<number[]> {
