@@ -8,7 +8,7 @@ from typing import Any, Iterator, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from tax_explorer import (
     FederalTaxParameters,
@@ -47,6 +47,12 @@ class CalculateRequest(BaseModel):
     dependent_count: int = Field(default=0, ge=0)
     secondary_income: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     pretax_deduction_mode: PretaxDeductionMode = PRETAX_DEDUCTION_MODE_MAX_AVAILABLE
+
+    @model_validator(mode="after")
+    def validate_income_split(self) -> "CalculateRequest":
+        if self.secondary_income > self.gross_income:
+            raise ValueError("secondary_income cannot exceed gross_income")
+        return self
 
 
 def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:

@@ -259,6 +259,28 @@ def test_calculate_rejects_secondary_income_for_non_joint_filers(tmp_path):
     )
 
 
+def test_calculate_rejects_secondary_income_above_gross_income_as_request_validation(
+    tmp_path,
+):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "married_joint",
+            "gross_income": "100000",
+            "secondary_income": "120000",
+        },
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    assert detail[0]["loc"] == ["body"]
+    assert "secondary_income cannot exceed gross_income" in detail[0]["msg"]
+
+
 def test_calculate_rejects_negative_dependent_count(tmp_path):
     client = create_test_client(tmp_path)
 
