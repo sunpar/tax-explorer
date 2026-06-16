@@ -211,12 +211,13 @@ def calculate_tax_burden(
     gross_income = _validated_non_negative_money(
         scenario.gross_income, "gross_income"
     )
+    secondary_income = _validated_non_negative_money(
+        scenario.secondary_income, "secondary_income"
+    )
     dependent_count = _validate_dependent_count(scenario.dependent_count)
     secondary_income = _validate_secondary_income(
         gross_income,
-        _validated_non_negative_money(
-            scenario.secondary_income, "secondary_income"
-        ),
+        secondary_income,
         federal,
     )
     worker_count = _worker_count(federal, secondary_income)
@@ -302,8 +303,8 @@ def build_income_series(
     if start_decimal < 0 or stop_decimal < 0:
         raise ValueError("income bounds must be non-negative")
 
-    current = _money(start_decimal)
-    start_amount = current
+    start_amount = _money(start_decimal)
+    current = start_amount
     stop_amount = _money(stop_decimal)
     step_amount = _money(step_decimal)
     if step_amount <= 0:
