@@ -513,6 +513,38 @@ describe("App tax curve controls", () => {
     expect(screen.getAllByText("$3,000,000").length).toBeGreaterThan(0);
   });
 
+  test("clears selected income calculation errors after a successful retry", async () => {
+    await renderLoadedApp();
+    mockFetchTaxBurden.mockRejectedValueOnce(
+      new Error("temporary calculation failure")
+    );
+
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "120000" }
+    });
+
+    expect(
+      await screen.findByText("temporary calculation failure")
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "130000" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grossIncome: "130000"
+        })
+      )
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByText("temporary calculation failure")
+      ).not.toBeInTheDocument()
+    );
+  });
+
   test("comparison chart modes plot effective, marginal, and total-tax values with tooltip detail", async () => {
     await renderLoadedApp();
 
