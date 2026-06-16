@@ -35,9 +35,78 @@ async function requestJson<T>(
   const response = await fetch(url, init);
   if (!response.ok) {
     const message = await response.text();
-    throw new Error(message || `Request failed with ${response.status}`);
+    throw new Error(errorMessageFromResponse(message, response.status));
   }
   return response.json() as Promise<T>;
+}
+
+function errorMessageFromResponse(message: string, status: number): string {
+  if (!message) return `Request failed with ${status}`;
+  if (!startsWithJsonObject(message)) return message;
+
+  try {
+    const body = JSON.parse(message) as unknown;
+    if (
+      body &&
+      typeof body === "object" &&
+      "detail" in body &&
+      typeof body.detail === "string"
+    ) {
+      return body.detail;
+    }
+    if (
+      body &&
+      typeof body === "object" &&
+      "detail" in body &&
+      Array.isArray(body.detail)
+    ) {
+      const messages = body.detail
+        .map(validationDetailMessage)
+        .filter((message): message is string => Boolean(message));
+      if (messages.length > 0) return messages.join("; ");
+    }
+  } catch {
+    return message;
+  }
+
+  return message;
+}
+
+function validationDetailMessage(detail: unknown): string | null {
+  if (!detail || typeof detail !== "object") return null;
+
+  const record = detail as Record<string, unknown>;
+  if (typeof record.msg !== "string") return null;
+
+  const field = validationDetailField(record.loc);
+  return field ? `${field}: ${record.msg}` : record.msg;
+}
+
+function validationDetailField(location: unknown): string | null {
+  if (!Array.isArray(location)) return null;
+
+  for (let index = location.length - 1; index >= 0; index -= 1) {
+    const part = location[index];
+    if (typeof part === "string" && part !== "body" && part !== "query") {
+      return part;
+    }
+  }
+  return null;
+}
+
+function startsWithJsonObject(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (
+      character !== " " &&
+      character !== "\n" &&
+      character !== "\r" &&
+      character !== "\t"
+    ) {
+      return character === "{";
+    }
+  }
+  return false;
 }
 
 export async function fetchTaxYears(): Promise<number[]> {
