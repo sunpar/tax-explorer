@@ -278,15 +278,33 @@ def load_federal_tax_parameters(
     return FederalTaxParameters(
         tax_year=int(parameter_row["year"]),
         filing_status=str(parameter_row["filing_status"]),
-        standard_deduction=_money(parameter_row["standard_deduction"]),
+        standard_deduction=_non_negative_money(
+            parameter_row["standard_deduction"], "standard_deduction"
+        ),
         brackets=tuple(
             TaxBracket(
-                lower_bound=_money(row["lower_bound"]),
-                rate=Decimal(str(row["rate"])),
+                lower_bound=_non_negative_money(
+                    row["lower_bound"], "bracket lower_bound"
+                ),
+                rate=_rate(row["rate"], "bracket rate"),
             )
             for row in bracket_rows
         ),
     )
+
+
+def _non_negative_money(value: object, field_name: str) -> Decimal:
+    amount = _money(value)
+    if amount < 0:
+        raise ValueError(f"{field_name} must be non-negative")
+    return amount
+
+
+def _rate(value: object, field_name: str) -> Decimal:
+    rate = Decimal(str(value))
+    if rate < 0 or rate > 1:
+        raise ValueError(f"{field_name} must be between 0 and 1")
+    return rate
 
 
 def load_payroll_tax_parameters(
