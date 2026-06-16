@@ -1,3 +1,4 @@
+import sqlite3
 from decimal import Decimal
 
 import pytest
@@ -21,6 +22,24 @@ def test_initializes_seeded_tax_years(tmp_path):
         years = get_available_tax_years(connection)
 
     assert years == [2026]
+
+
+def test_connection_enforces_foreign_keys(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        foreign_keys_enabled = connection.execute("PRAGMA foreign_keys").fetchone()[0]
+
+        assert foreign_keys_enabled == 1
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """
+                INSERT INTO federal_tax_parameters
+                    (year, filing_status, standard_deduction)
+                VALUES (?, ?, ?)
+                """,
+                (2099, "single", "0.00"),
+            )
 
 
 def test_loads_2026_single_filer_federal_parameters_from_sqlite(tmp_path):

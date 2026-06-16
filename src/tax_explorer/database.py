@@ -23,6 +23,7 @@ def connect(database_path: str | Path = DEFAULT_DATABASE_PATH) -> sqlite3.Connec
     path = Path(database_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
+    connection.execute("PRAGMA foreign_keys = ON")
     connection.row_factory = sqlite3.Row
     return connection
 
