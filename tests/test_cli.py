@@ -117,22 +117,26 @@ def test_cli_rejects_unknown_pretax_deduction_mode():
 
 
 @pytest.mark.parametrize(
-    ("flag", "args"),
+    ("flag", "value"),
     [
-        ("--start", ["--start", "abc"]),
-        ("--stop", ["--stop", "abc"]),
-        ("--step", ["--step", "abc"]),
-        ("--secondary-income", ["--secondary-income", "abc"]),
+        ("--start", "abc"),
+        ("--stop", "abc"),
+        ("--step", "abc"),
+        ("--secondary-income", "abc"),
+        ("--start", "NaN"),
+        ("--stop", "Infinity"),
+        ("--step", "Infinity"),
+        ("--secondary-income", "NaN"),
     ],
 )
-def test_cli_reports_malformed_decimal_arguments_as_usage_errors(
+def test_cli_reports_invalid_decimal_arguments_as_usage_errors(
     flag,
-    args,
+    value,
     tmp_path,
     capsys,
 ):
     with pytest.raises(SystemExit) as exc_info:
-        main([*args, "--database-path", str(tmp_path / "tax.sqlite3")])
+        main([flag, value, "--database-path", str(tmp_path / "tax.sqlite3")])
 
     assert exc_info.value.code == 2
     assert f"argument {flag}: must be a decimal number" in capsys.readouterr().err
