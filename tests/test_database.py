@@ -142,6 +142,30 @@ def test_rejects_negative_federal_standard_deduction_from_sqlite(
             load_federal_tax_parameters(connection, 2026, "single")
 
 
+@pytest.mark.parametrize("standard_deduction", ["NaN", "Infinity"])
+def test_rejects_non_finite_federal_standard_deduction_from_sqlite(
+    tmp_path,
+    standard_deduction,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE federal_tax_parameters
+            SET standard_deduction = ?
+            WHERE year = ? AND filing_status = ?
+            """,
+            (standard_deduction, 2026, "single"),
+        )
+        connection.commit()
+
+        with pytest.raises(
+            ValueError, match="standard_deduction must be a finite decimal"
+        ):
+            load_federal_tax_parameters(connection, 2026, "single")
+
+
 @pytest.mark.parametrize(
     ("column", "value"),
     [
@@ -174,6 +198,37 @@ def test_rejects_invalid_federal_brackets_from_sqlite(
             "rate": "bracket rate must be between 0 and 1",
         }
         with pytest.raises(ValueError, match=messages[column]):
+            load_federal_tax_parameters(connection, 2026, "single")
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "message"),
+    [
+        ("lower_bound", "NaN", "bracket lower_bound must be a finite decimal"),
+        ("rate", "NaN", "bracket rate must be a finite decimal"),
+        ("rate", "Infinity", "bracket rate must be a finite decimal"),
+    ],
+)
+def test_rejects_non_finite_federal_brackets_from_sqlite(
+    tmp_path,
+    column,
+    value,
+    message,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            f"""
+            UPDATE federal_tax_brackets
+            SET {column} = ?
+            WHERE year = ? AND filing_status = ? AND lower_bound = ?
+            """,
+            (value, 2026, "single", "0.00"),
+        )
+        connection.commit()
+
+        with pytest.raises(ValueError, match=message):
             load_federal_tax_parameters(connection, 2026, "single")
 
 
@@ -210,6 +265,11 @@ def test_loads_2026_payroll_parameters_from_sqlite(tmp_path):
             "social_security_rate must be between 0 and 1",
         ),
         (
+            "social_security_rate",
+            "NaN",
+            "social_security_rate must be a finite decimal",
+        ),
+        (
             "social_security_wage_base",
             "-1.00",
             "social_security_wage_base must be non-negative",
@@ -218,6 +278,11 @@ def test_loads_2026_payroll_parameters_from_sqlite(tmp_path):
             "social_security_wage_base",
             "-0.004",
             "social_security_wage_base must be non-negative",
+        ),
+        (
+            "social_security_wage_base",
+            "Infinity",
+            "social_security_wage_base must be a finite decimal",
         ),
         ("medicare_rate", "-0.10", "medicare_rate must be between 0 and 1"),
         ("medicare_rate", "1.10", "medicare_rate must be between 0 and 1"),
@@ -240,6 +305,11 @@ def test_loads_2026_payroll_parameters_from_sqlite(tmp_path):
             "additional_medicare_threshold_single",
             "-0.004",
             "additional_medicare_threshold_single must be non-negative",
+        ),
+        (
+            "additional_medicare_threshold_single",
+            "NaN",
+            "additional_medicare_threshold_single must be a finite decimal",
         ),
     ],
 )
@@ -266,10 +336,18 @@ def test_rejects_invalid_payroll_parameters_from_sqlite(
             load_payroll_tax_parameters(connection, 2026)
 
 
-@pytest.mark.parametrize("threshold", ["-1.00", "-0.004"])
+@pytest.mark.parametrize(
+    ("threshold", "message"),
+    [
+        ("-1.00", "additional_medicare_threshold must be non-negative"),
+        ("-0.004", "additional_medicare_threshold must be non-negative"),
+        ("NaN", "additional_medicare_threshold must be a finite decimal"),
+    ],
+)
 def test_rejects_invalid_additional_medicare_thresholds_from_sqlite(
     tmp_path,
     threshold,
+    message,
 ):
     db_path = tmp_path / "tax.sqlite3"
 
@@ -284,9 +362,7 @@ def test_rejects_invalid_additional_medicare_thresholds_from_sqlite(
         )
         connection.commit()
 
-        with pytest.raises(
-            ValueError, match="additional_medicare_threshold must be non-negative"
-        ):
+        with pytest.raises(ValueError, match=message):
             load_payroll_tax_parameters(connection, 2026)
 
 
@@ -316,6 +392,11 @@ def test_loads_2026_pretax_deduction_parameters_from_sqlite(tmp_path):
             "-0.004",
             "employee_401k_limit must be non-negative",
         ),
+        (
+            "employee_401k_limit",
+            "NaN",
+            "employee_401k_limit must be a finite decimal",
+        ),
         ("health_fsa_limit", "-1.00", "health_fsa_limit must be non-negative"),
         ("health_fsa_limit", "-0.004", "health_fsa_limit must be non-negative"),
         (
@@ -337,6 +418,11 @@ def test_loads_2026_pretax_deduction_parameters_from_sqlite(tmp_path):
             "gradual_phase_in_start_rate",
             "1.10",
             "gradual_phase_in_start_rate must be between 0 and 1",
+        ),
+        (
+            "gradual_phase_in_start_rate",
+            "Infinity",
+            "gradual_phase_in_start_rate must be a finite decimal",
         ),
     ],
 )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 from tax_explorer import (
@@ -294,17 +294,27 @@ def load_federal_tax_parameters(
 
 
 def _non_negative_money(value: object, field_name: str) -> Decimal:
-    amount = Decimal(str(value))
+    amount = _finite_decimal(value, field_name)
     if amount < 0:
         raise ValueError(f"{field_name} must be non-negative")
     return amount.quantize(MONEY, rounding=ROUND_HALF_UP)
 
 
 def _rate(value: object, field_name: str) -> Decimal:
-    rate = Decimal(str(value))
+    rate = _finite_decimal(value, field_name)
     if rate < 0 or rate > 1:
         raise ValueError(f"{field_name} must be between 0 and 1")
     return rate
+
+
+def _finite_decimal(value: object, field_name: str) -> Decimal:
+    try:
+        amount = Decimal(str(value))
+    except InvalidOperation:
+        raise ValueError(f"{field_name} must be a finite decimal") from None
+    if not amount.is_finite():
+        raise ValueError(f"{field_name} must be a finite decimal")
+    return amount
 
 
 def load_payroll_tax_parameters(
