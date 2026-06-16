@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Callable, Iterable, Mapping
 
 
@@ -27,6 +27,26 @@ def _decimal(value: Decimal | int | float | str) -> Decimal:
 
 def _money(value: Decimal | int | float | str) -> Decimal:
     return _decimal(value).quantize(MONEY, rounding=ROUND_HALF_UP)
+
+
+def _finite_decimal(value: Decimal | int | float | str, field_name: str) -> Decimal:
+    try:
+        amount = _decimal(value)
+    except InvalidOperation:
+        raise ValueError(f"{field_name} must be a finite decimal") from None
+    if not amount.is_finite():
+        raise ValueError(f"{field_name} must be a finite decimal")
+    return amount
+
+
+def _validated_non_negative_money(
+    value: Decimal | int | float | str,
+    field_name: str,
+) -> Decimal:
+    amount = _finite_decimal(value, field_name)
+    if amount < 0:
+        raise ValueError(f"{field_name} must be non-negative")
+    return amount.quantize(MONEY, rounding=ROUND_HALF_UP)
 
 
 @dataclass(frozen=True)
@@ -188,12 +208,16 @@ def calculate_tax_burden(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> TaxBurden:
-    gross_income = _money(scenario.gross_income)
-    if gross_income < 0:
-        raise ValueError("gross_income must be non-negative")
+    gross_income = _validated_non_negative_money(
+        scenario.gross_income, "gross_income"
+    )
     dependent_count = _validate_dependent_count(scenario.dependent_count)
     secondary_income = _validate_secondary_income(
-        gross_income, _money(scenario.secondary_income), federal
+        gross_income,
+        _validated_non_negative_money(
+            scenario.secondary_income, "secondary_income"
+        ),
+        federal,
     )
     worker_count = _worker_count(federal, secondary_income)
     _validate_pretax_deduction_mode(scenario.pretax_deduction_mode)
@@ -270,19 +294,25 @@ def build_income_series(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> list[TaxBurden]:
-    current = _money(start)
+    start_decimal = _finite_decimal(start, "start")
+    stop_decimal = _finite_decimal(stop, "stop")
+    step_decimal = _finite_decimal(step, "step")
+    if step_decimal <= 0:
+        raise ValueError("step must be positive")
+    if start_decimal < 0 or stop_decimal < 0:
+        raise ValueError("income bounds must be non-negative")
+
+    current = _money(start_decimal)
     start_amount = current
-    stop_amount = _money(stop)
-    step_amount = _money(step)
+    stop_amount = _money(stop_decimal)
+    step_amount = _money(step_decimal)
     if step_amount <= 0:
         raise ValueError("step must be positive")
-    if current < 0 or stop_amount < 0:
-        raise ValueError("income bounds must be non-negative")
     if current > stop_amount:
         raise ValueError("start must be less than or equal to stop")
     dependent_count = _validate_dependent_count(dependent_count)
     configured_secondary_income = _validate_secondary_income_for_series(
-        _money(secondary_income), federal
+        _validated_non_negative_money(secondary_income, "secondary_income"), federal
     )
     worker_count = _worker_count(federal, configured_secondary_income)
     _validate_pretax_deduction_mode(pretax_deduction_mode)
