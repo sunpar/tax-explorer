@@ -4,8 +4,36 @@ from tax_explorer.api import create_app
 from tax_explorer.database import connect
 
 
+INVALID_PERSISTED_PARAMETER_DETAIL = "social_security_rate must be a finite decimal"
+
+
 def create_test_client(tmp_path):
     return TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
+
+
+def create_corrupted_payroll_test_client(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = TestClient(create_app(database_path=database_path))
+    corrupt_payroll_rate(database_path)
+    return client
+
+
+def corrupt_payroll_rate(database_path):
+    with connect(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE payroll_tax_parameters
+            SET social_security_rate = ?
+            WHERE year = ?
+            """,
+            ("NaN", 2026),
+        )
+        connection.commit()
+
+
+def assert_invalid_persisted_parameter_response(response):
+    assert response.status_code == 422
+    assert response.json()["detail"] == INVALID_PERSISTED_PARAMETER_DETAIL
 
 
 EXPECTED_ADDITIONAL_MEDICARE_THRESHOLDS = {
@@ -108,6 +136,14 @@ def test_returns_parameters_for_selected_filing_status(tmp_path):
     }
 
 
+def test_parameters_report_invalid_persisted_values_as_unprocessable(tmp_path):
+    client = create_corrupted_payroll_test_client(tmp_path)
+
+    response = client.get("/api/tax-years/2026/parameters")
+
+    assert_invalid_persisted_parameter_response(response)
+
+
 def test_calculates_tax_burden_from_database_parameters(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -179,6 +215,21 @@ def test_calculate_uses_secondary_income_for_married_joint_dual_earners(tmp_path
     assert body["employee_medicare_tax"] == "4251.40"
     assert body["employee_additional_medicare_tax"] == "388.80"
     assert body["total_employee_tax"] == "58894.60"
+
+
+def test_calculate_reports_invalid_persisted_values_as_unprocessable(tmp_path):
+    client = create_corrupted_payroll_test_client(tmp_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "single",
+            "gross_income": "100000",
+        },
+    )
+
+    assert_invalid_persisted_parameter_response(response)
 
 
 def test_calculate_response_includes_dual_earner_payroll_breakdown(tmp_path):
@@ -425,6 +476,23 @@ def test_returns_income_series_from_database_parameters(tmp_path):
         "100000.00",
     ]
     assert rows[-1]["total_employee_tax"] == "14421.90"
+
+
+def test_income_series_reports_invalid_persisted_values_as_unprocessable(tmp_path):
+    client = create_corrupted_payroll_test_client(tmp_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "0",
+            "stop": "100000",
+            "step": "50000",
+        },
+    )
+
+    assert_invalid_persisted_parameter_response(response)
 
 
 def test_income_series_can_include_marginal_breakpoints_and_rates(tmp_path):

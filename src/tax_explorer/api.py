@@ -37,6 +37,12 @@ PretaxDeductionMode = Literal[
     PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
     PRETAX_DEDUCTION_MODE_GRADUAL_PHASE_IN,
 ]
+MISSING_PARAMETER_MESSAGE_PREFIXES = (
+    "No federal tax parameters",
+    "No federal tax brackets",
+    "No payroll tax parameters",
+    "No pre-tax deduction parameters",
+)
 
 
 class CalculateRequest(BaseModel):
@@ -98,7 +104,7 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
                 payroll = load_payroll_tax_parameters(connection, year)
                 pretax = load_pretax_deduction_parameters(connection, year)
         except ValueError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise _parameter_http_exception(exc) from exc
 
         return {
             "federal": _federal_to_response(federal),
@@ -113,7 +119,7 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
                 app, request.year, request.filing_status
             )
         except ValueError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise _parameter_http_exception(exc) from exc
 
         try:
             result = calculate_tax_burden(
@@ -150,7 +156,7 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
         try:
             federal, payroll, pretax = _load_parameters(app, year, filing_status)
         except ValueError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            raise _parameter_http_exception(exc) from exc
 
         try:
             rows = build_income_series(
@@ -191,6 +197,16 @@ def _load_parameters(
         payroll = load_payroll_tax_parameters(connection, year)
         pretax = load_pretax_deduction_parameters(connection, year)
     return federal, payroll, pretax
+
+
+def _parameter_http_exception(exc: ValueError) -> HTTPException:
+    detail = str(exc)
+    status_code = 404 if _is_missing_parameter_error(detail) else 422
+    return HTTPException(status_code=status_code, detail=detail)
+
+
+def _is_missing_parameter_error(detail: str) -> bool:
+    return detail.startswith(MISSING_PARAMETER_MESSAGE_PREFIXES)
 
 
 def _federal_to_response(parameters: FederalTaxParameters) -> dict[str, Any]:
