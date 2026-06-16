@@ -197,21 +197,58 @@ def test_loads_2026_payroll_parameters_from_sqlite(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("column", "value"),
+    ("column", "value", "message"),
     [
-        ("social_security_rate", "-0.10"),
-        ("social_security_rate", "1.10"),
-        ("social_security_wage_base", "-1.00"),
-        ("social_security_wage_base", "-0.004"),
-        ("medicare_rate", "-0.10"),
-        ("medicare_rate", "1.10"),
-        ("additional_medicare_rate", "-0.10"),
-        ("additional_medicare_rate", "1.10"),
-        ("additional_medicare_threshold_single", "-1.00"),
-        ("additional_medicare_threshold_single", "-0.004"),
+        (
+            "social_security_rate",
+            "-0.10",
+            "social_security_rate must be between 0 and 1",
+        ),
+        (
+            "social_security_rate",
+            "1.10",
+            "social_security_rate must be between 0 and 1",
+        ),
+        (
+            "social_security_wage_base",
+            "-1.00",
+            "social_security_wage_base must be non-negative",
+        ),
+        (
+            "social_security_wage_base",
+            "-0.004",
+            "social_security_wage_base must be non-negative",
+        ),
+        ("medicare_rate", "-0.10", "medicare_rate must be between 0 and 1"),
+        ("medicare_rate", "1.10", "medicare_rate must be between 0 and 1"),
+        (
+            "additional_medicare_rate",
+            "-0.10",
+            "additional_medicare_rate must be between 0 and 1",
+        ),
+        (
+            "additional_medicare_rate",
+            "1.10",
+            "additional_medicare_rate must be between 0 and 1",
+        ),
+        (
+            "additional_medicare_threshold_single",
+            "-1.00",
+            "additional_medicare_threshold_single must be non-negative",
+        ),
+        (
+            "additional_medicare_threshold_single",
+            "-0.004",
+            "additional_medicare_threshold_single must be non-negative",
+        ),
     ],
 )
-def test_rejects_invalid_payroll_parameters_from_sqlite(tmp_path, column, value):
+def test_rejects_invalid_payroll_parameters_from_sqlite(
+    tmp_path,
+    column,
+    value,
+    message,
+):
     db_path = tmp_path / "tax.sqlite3"
 
     with initialize_database(db_path) as connection:
@@ -225,20 +262,7 @@ def test_rejects_invalid_payroll_parameters_from_sqlite(tmp_path, column, value)
         )
         connection.commit()
 
-        messages = {
-            "social_security_rate": "social_security_rate must be between 0 and 1",
-            "social_security_wage_base": (
-                "social_security_wage_base must be non-negative"
-            ),
-            "medicare_rate": "medicare_rate must be between 0 and 1",
-            "additional_medicare_rate": (
-                "additional_medicare_rate must be between 0 and 1"
-            ),
-            "additional_medicare_threshold_single": (
-                "additional_medicare_threshold_single must be non-negative"
-            ),
-        }
-        with pytest.raises(ValueError, match=messages[column]):
+        with pytest.raises(ValueError, match=message):
             load_payroll_tax_parameters(connection, 2026)
 
 
@@ -280,22 +304,47 @@ def test_loads_2026_pretax_deduction_parameters_from_sqlite(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("column", "value"),
+    ("column", "value", "message"),
     [
-        ("employee_401k_limit", "-1.00"),
-        ("employee_401k_limit", "-0.004"),
-        ("health_fsa_limit", "-1.00"),
-        ("health_fsa_limit", "-0.004"),
-        ("dependent_care_fsa_limit", "-1.00"),
-        ("dependent_care_fsa_limit", "-0.004"),
-        ("gradual_phase_in_start_rate", "-0.10"),
-        ("gradual_phase_in_start_rate", "1.10"),
+        (
+            "employee_401k_limit",
+            "-1.00",
+            "employee_401k_limit must be non-negative",
+        ),
+        (
+            "employee_401k_limit",
+            "-0.004",
+            "employee_401k_limit must be non-negative",
+        ),
+        ("health_fsa_limit", "-1.00", "health_fsa_limit must be non-negative"),
+        ("health_fsa_limit", "-0.004", "health_fsa_limit must be non-negative"),
+        (
+            "dependent_care_fsa_limit",
+            "-1.00",
+            "dependent_care_fsa_limit must be non-negative",
+        ),
+        (
+            "dependent_care_fsa_limit",
+            "-0.004",
+            "dependent_care_fsa_limit must be non-negative",
+        ),
+        (
+            "gradual_phase_in_start_rate",
+            "-0.10",
+            "gradual_phase_in_start_rate must be between 0 and 1",
+        ),
+        (
+            "gradual_phase_in_start_rate",
+            "1.10",
+            "gradual_phase_in_start_rate must be between 0 and 1",
+        ),
     ],
 )
 def test_rejects_invalid_pretax_deduction_parameters_from_sqlite(
     tmp_path,
     column,
     value,
+    message,
 ):
     db_path = tmp_path / "tax.sqlite3"
 
@@ -310,17 +359,7 @@ def test_rejects_invalid_pretax_deduction_parameters_from_sqlite(
         )
         connection.commit()
 
-        messages = {
-            "employee_401k_limit": "employee_401k_limit must be non-negative",
-            "health_fsa_limit": "health_fsa_limit must be non-negative",
-            "dependent_care_fsa_limit": (
-                "dependent_care_fsa_limit must be non-negative"
-            ),
-            "gradual_phase_in_start_rate": (
-                "gradual_phase_in_start_rate must be between 0 and 1"
-            ),
-        }
-        with pytest.raises(ValueError, match=messages[column]):
+        with pytest.raises(ValueError, match=message):
             load_pretax_deduction_parameters(connection, 2026)
 
 

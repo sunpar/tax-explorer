@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 from tax_explorer import (
     FederalTaxParameters,
+    MONEY,
     PayrollTaxParameters,
     PretaxDeductionParameters,
     TaxBracket,
-    _money,
 )
 
 
@@ -294,9 +294,10 @@ def load_federal_tax_parameters(
 
 
 def _non_negative_money(value: object, field_name: str) -> Decimal:
-    if Decimal(str(value)) < 0:
+    amount = Decimal(str(value))
+    if amount < 0:
         raise ValueError(f"{field_name} must be non-negative")
-    return _money(value)
+    return amount.quantize(MONEY, rounding=ROUND_HALF_UP)
 
 
 def _rate(value: object, field_name: str) -> Decimal:
@@ -340,12 +341,13 @@ def load_payroll_tax_parameters(
         )
         for threshold_row in threshold_rows
     }
+    additional_medicare_threshold_single = _non_negative_money(
+        row["additional_medicare_threshold_single"],
+        "additional_medicare_threshold_single",
+    )
     additional_medicare_thresholds.setdefault(
         "single",
-        _non_negative_money(
-            row["additional_medicare_threshold_single"],
-            "additional_medicare_threshold_single",
-        ),
+        additional_medicare_threshold_single,
     )
 
     return PayrollTaxParameters(
@@ -360,10 +362,7 @@ def load_payroll_tax_parameters(
         additional_medicare_rate=_rate(
             row["additional_medicare_rate"], "additional_medicare_rate"
         ),
-        additional_medicare_threshold_single=_non_negative_money(
-            row["additional_medicare_threshold_single"],
-            "additional_medicare_threshold_single",
-        ),
+        additional_medicare_threshold_single=additional_medicare_threshold_single,
         additional_medicare_thresholds=additional_medicare_thresholds,
     )
 
