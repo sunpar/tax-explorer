@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from tax_explorer import (
@@ -50,16 +51,26 @@ def non_negative_int(value: str) -> int:
     return parsed
 
 
+def decimal_argument(value: str) -> str:
+    try:
+        parsed = Decimal(value)
+    except InvalidOperation:
+        raise argparse.ArgumentTypeError("must be a decimal number") from None
+    if not parsed.is_finite():
+        raise argparse.ArgumentTypeError("must be a decimal number")
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate US W-2 tax burden rows by income."
     )
-    parser.add_argument("--start", type=str, default="0")
-    parser.add_argument("--stop", type=str, default="500000")
-    parser.add_argument("--step", type=str, default="10000")
+    parser.add_argument("--start", type=decimal_argument, default="0")
+    parser.add_argument("--stop", type=decimal_argument, default="500000")
+    parser.add_argument("--step", type=decimal_argument, default="10000")
     parser.add_argument("--year", type=int, default=2026)
     parser.add_argument("--filing-status", default="single")
-    parser.add_argument("--secondary-income", type=str, default="0")
+    parser.add_argument("--secondary-income", type=decimal_argument, default="0")
     parser.add_argument(
         "--include-marginal-breakpoints",
         action="store_true",
