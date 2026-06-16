@@ -201,12 +201,12 @@ def _load_parameters(
 
 def _parameter_http_exception(exc: ValueError) -> HTTPException:
     detail = str(exc)
-    status_code = (
-        404
-        if detail.startswith(MISSING_PARAMETER_MESSAGE_PREFIXES)
-        else 422
-    )
+    status_code = 404 if _is_missing_parameter_error(detail) else 422
     return HTTPException(status_code=status_code, detail=detail)
+
+
+def _is_missing_parameter_error(detail: str) -> bool:
+    return detail.startswith(MISSING_PARAMETER_MESSAGE_PREFIXES)
 
 
 def _federal_to_response(parameters: FederalTaxParameters) -> dict[str, Any]:
