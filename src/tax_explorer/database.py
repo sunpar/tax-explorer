@@ -294,10 +294,9 @@ def load_federal_tax_parameters(
 
 
 def _non_negative_money(value: object, field_name: str) -> Decimal:
-    amount = _money(value)
-    if amount < 0:
+    if Decimal(str(value)) < 0:
         raise ValueError(f"{field_name} must be non-negative")
-    return amount
+    return _money(value)
 
 
 def _rate(value: object, field_name: str) -> Decimal:
