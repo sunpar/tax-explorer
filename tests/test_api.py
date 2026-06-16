@@ -23,11 +23,17 @@ def numeric_schema(schema):
     )
 
 
-def assert_validation_error_loc(response, expected_loc):
+def assert_pretax_mode_validation_error(response, expected_loc):
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert isinstance(detail, list)
-    assert detail[0]["loc"] == expected_loc
+    assert detail[0] == {
+        "type": "literal_error",
+        "loc": expected_loc,
+        "msg": "Input should be 'max_available' or 'gradual_phase_in'",
+        "input": "unknown",
+        "ctx": {"expected": "'max_available' or 'gradual_phase_in'"},
+    }
 
 
 def test_lists_available_tax_years(tmp_path):
@@ -284,7 +290,7 @@ def test_calculate_rejects_unknown_pretax_deduction_mode_as_request_validation(
         },
     )
 
-    assert_validation_error_loc(response, ["body", "pretax_deduction_mode"])
+    assert_pretax_mode_validation_error(response, ["body", "pretax_deduction_mode"])
 
 
 def test_openapi_documents_pretax_deduction_modes(tmp_path):
@@ -585,7 +591,7 @@ def test_income_series_rejects_unknown_pretax_deduction_mode(tmp_path):
         },
     )
 
-    assert_validation_error_loc(response, ["query", "pretax_deduction_mode"])
+    assert_pretax_mode_validation_error(response, ["query", "pretax_deduction_mode"])
 
 
 def test_income_series_rejects_reversed_income_range(tmp_path):
