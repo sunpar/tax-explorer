@@ -120,6 +120,63 @@ def test_loads_all_supported_2026_filing_statuses_from_sqlite(tmp_path):
     )
 
 
+@pytest.mark.parametrize("standard_deduction", ["-1.00", "-0.004"])
+def test_rejects_negative_federal_standard_deduction_from_sqlite(
+    tmp_path,
+    standard_deduction,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE federal_tax_parameters
+            SET standard_deduction = ?
+            WHERE year = ? AND filing_status = ?
+            """,
+            (standard_deduction, 2026, "single"),
+        )
+        connection.commit()
+
+        with pytest.raises(ValueError, match="standard_deduction must be non-negative"):
+            load_federal_tax_parameters(connection, 2026, "single")
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("lower_bound", "-1.00"),
+        ("lower_bound", "-0.004"),
+        ("rate", "-0.10"),
+        ("rate", "1.10"),
+    ],
+)
+def test_rejects_invalid_federal_brackets_from_sqlite(
+    tmp_path,
+    column,
+    value,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            f"""
+            UPDATE federal_tax_brackets
+            SET {column} = ?
+            WHERE year = ? AND filing_status = ? AND lower_bound = ?
+            """,
+            (value, 2026, "single", "0.00"),
+        )
+        connection.commit()
+
+        messages = {
+            "lower_bound": "bracket lower_bound must be non-negative",
+            "rate": "bracket rate must be between 0 and 1",
+        }
+        with pytest.raises(ValueError, match=messages[column]):
+            load_federal_tax_parameters(connection, 2026, "single")
+
+
 def test_loads_2026_payroll_parameters_from_sqlite(tmp_path):
     db_path = tmp_path / "tax.sqlite3"
 
