@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from tax_explorer import (
     FederalTaxParameters,
     PayrollTaxParameters,
-    PRETAX_DEDUCTION_MODE_CHOICES,
+    PRETAX_DEDUCTION_MODE_GRADUAL_PHASE_IN,
     PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
     PretaxDeductionParameters,
     TaxBurden,
@@ -33,9 +33,10 @@ from tax_explorer.database import (
 )
 
 
-PRETAX_DEDUCTION_MODE_SCHEMA = {
-    "enum": list(PRETAX_DEDUCTION_MODE_CHOICES)
-}
+PretaxDeductionMode = Literal[
+    PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
+    PRETAX_DEDUCTION_MODE_GRADUAL_PHASE_IN,
+]
 
 
 class CalculateRequest(BaseModel):
@@ -45,10 +46,7 @@ class CalculateRequest(BaseModel):
     include_employer_payroll_tax: bool = False
     dependent_count: int = Field(default=0, ge=0)
     secondary_income: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
-    pretax_deduction_mode: str = Field(
-        default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
-        json_schema_extra=PRETAX_DEDUCTION_MODE_SCHEMA,
-    )
+    pretax_deduction_mode: PretaxDeductionMode = PRETAX_DEDUCTION_MODE_MAX_AVAILABLE
 
 
 def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
@@ -139,9 +137,8 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
         include_marginal_breakpoints: bool = Query(default=False),
         dependent_count: int = Query(default=0, ge=0),
         secondary_income: Decimal = Query(default=Decimal("0"), ge=0),
-        pretax_deduction_mode: str = Query(
-            default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
-            json_schema_extra=PRETAX_DEDUCTION_MODE_SCHEMA,
+        pretax_deduction_mode: PretaxDeductionMode = Query(
+            default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE
         ),
     ) -> dict[str, list[dict[str, Any]]]:
         try:

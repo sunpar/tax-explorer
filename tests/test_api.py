@@ -262,6 +262,27 @@ def test_calculate_rejects_negative_dependent_count(tmp_path):
     assert response.status_code == 422
 
 
+def test_calculate_rejects_unknown_pretax_deduction_mode_as_request_validation(
+    tmp_path,
+):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "single",
+            "gross_income": "100000",
+            "pretax_deduction_mode": "unknown",
+        },
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    assert detail[0]["loc"] == ["body", "pretax_deduction_mode"]
+
+
 def test_openapi_documents_pretax_deduction_modes(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -561,7 +582,9 @@ def test_income_series_rejects_unknown_pretax_deduction_mode(tmp_path):
     )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "unknown pretax_deduction_mode: unknown"
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    assert detail[0]["loc"] == ["query", "pretax_deduction_mode"]
 
 
 def test_income_series_rejects_reversed_income_range(tmp_path):
