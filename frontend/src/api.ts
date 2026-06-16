@@ -54,11 +54,44 @@ function errorMessageFromResponse(message: string, status: number): string {
     ) {
       return body.detail;
     }
+    if (
+      body &&
+      typeof body === "object" &&
+      "detail" in body &&
+      Array.isArray(body.detail)
+    ) {
+      const messages = body.detail
+        .map(validationDetailMessage)
+        .filter((message): message is string => Boolean(message));
+      if (messages.length > 0) return messages.join("; ");
+    }
   } catch {
     return message;
   }
 
   return message;
+}
+
+function validationDetailMessage(detail: unknown): string | null {
+  if (!detail || typeof detail !== "object") return null;
+
+  const record = detail as Record<string, unknown>;
+  if (typeof record.msg !== "string") return null;
+
+  const field = validationDetailField(record.loc);
+  return field ? `${field}: ${record.msg}` : record.msg;
+}
+
+function validationDetailField(location: unknown): string | null {
+  if (!Array.isArray(location)) return null;
+
+  for (let index = location.length - 1; index >= 0; index -= 1) {
+    const part = location[index];
+    if (typeof part === "string" && part !== "body" && part !== "query") {
+      return part;
+    }
+  }
+  return null;
 }
 
 function startsWithJsonObject(value: string): boolean {
