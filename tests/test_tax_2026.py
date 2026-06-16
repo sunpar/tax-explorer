@@ -354,6 +354,34 @@ def test_build_income_series_rejects_reversed_income_range():
         build_income_series(start=100000, stop=0, step=10000)
 
 
+def test_build_income_series_rejects_sub_cent_negative_start():
+    with pytest.raises(ValueError, match="income bounds must be non-negative"):
+        build_income_series(start=money("-0.004"), stop=0, step=1)
+
+
+@pytest.mark.parametrize(
+    ("field", "kwargs"),
+    [
+        ("start", {"start": money("NaN"), "stop": 0, "step": 1}),
+        ("stop", {"start": 0, "stop": money("Infinity"), "step": 1}),
+        ("step", {"start": 0, "stop": 1, "step": money("NaN")}),
+        (
+            "secondary_income",
+            {
+                "start": 0,
+                "stop": 1,
+                "step": 1,
+                "secondary_income": money("NaN"),
+                "federal": FEDERAL_2026_MARRIED_JOINT,
+            },
+        ),
+    ],
+)
+def test_build_income_series_rejects_non_finite_money_inputs(field, kwargs):
+    with pytest.raises(ValueError, match=f"{field} must be a finite decimal"):
+        build_income_series(**kwargs)
+
+
 def test_build_income_series_rejects_excessive_row_count():
     with pytest.raises(ValueError, match="at most 2001 rows"):
         build_income_series(start=0, stop=2001000, step=1000)
@@ -379,10 +407,38 @@ def test_build_income_series_rejects_excessive_row_count_without_scanning_full_r
         tax_module.build_income_series(start=0, stop=1000000, step=1)
 
 
-@pytest.mark.parametrize("income", [money("-1"), money("-0.01")])
+@pytest.mark.parametrize("income", [money("-1"), money("-0.01"), money("-0.004")])
 def test_negative_income_is_rejected(income):
     with pytest.raises(ValueError, match="gross_income"):
         calculate_tax_burden(TaxScenario(gross_income=income))
+
+
+@pytest.mark.parametrize("income", [money("NaN"), money("Infinity")])
+def test_non_finite_income_is_rejected(income):
+    with pytest.raises(ValueError, match="gross_income must be a finite decimal"):
+        calculate_tax_burden(TaxScenario(gross_income=income))
+
+
+def test_sub_cent_negative_secondary_income_is_rejected():
+    with pytest.raises(ValueError, match="secondary_income must be non-negative"):
+        calculate_tax_burden(
+            TaxScenario(
+                gross_income=money("100000"),
+                secondary_income=money("-0.004"),
+            ),
+            federal=FEDERAL_2026_MARRIED_JOINT,
+        )
+
+
+def test_non_finite_secondary_income_is_rejected():
+    with pytest.raises(ValueError, match="secondary_income must be a finite decimal"):
+        calculate_tax_burden(
+            TaxScenario(
+                gross_income=money("100000"),
+                secondary_income=money("NaN"),
+            ),
+            federal=FEDERAL_2026_MARRIED_JOINT,
+        )
 
 
 def test_negative_dependent_count_is_rejected():
