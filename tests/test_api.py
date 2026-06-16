@@ -23,6 +23,13 @@ def numeric_schema(schema):
     )
 
 
+def assert_validation_error_loc(response, expected_loc):
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    assert detail[0]["loc"] == expected_loc
+
+
 def test_lists_available_tax_years(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -277,10 +284,7 @@ def test_calculate_rejects_unknown_pretax_deduction_mode_as_request_validation(
         },
     )
 
-    assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert isinstance(detail, list)
-    assert detail[0]["loc"] == ["body", "pretax_deduction_mode"]
+    assert_validation_error_loc(response, ["body", "pretax_deduction_mode"])
 
 
 def test_openapi_documents_pretax_deduction_modes(tmp_path):
@@ -581,10 +585,7 @@ def test_income_series_rejects_unknown_pretax_deduction_mode(tmp_path):
         },
     )
 
-    assert response.status_code == 422
-    detail = response.json()["detail"]
-    assert isinstance(detail, list)
-    assert detail[0]["loc"] == ["query", "pretax_deduction_mode"]
+    assert_validation_error_loc(response, ["query", "pretax_deduction_mode"])
 
 
 def test_income_series_rejects_reversed_income_range(tmp_path):
