@@ -151,6 +151,7 @@ def test_cli_reports_invalid_decimal_arguments_as_usage_errors(
         ("--step", "-1", "must be positive"),
         ("--step", "0.004", "must be positive"),
         ("--secondary-income", "-1", "must be non-negative"),
+        ("--dependent-count", "1.5", "must be a whole number"),
     ],
 )
 def test_cli_rejects_invalid_decimal_bounds_before_database_initialization(
