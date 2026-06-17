@@ -210,7 +210,9 @@ def calculate_tax_burden(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> TaxBurden:
-    federal, payroll = _validated_tax_parameters(federal, payroll, pretax_deductions)
+    federal, payroll, pretax_deductions = _validated_tax_parameters(
+        federal, payroll, pretax_deductions
+    )
     return _calculate_tax_burden(
         scenario,
         federal=federal,
@@ -312,7 +314,9 @@ def build_income_series(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> list[TaxBurden]:
-    federal, payroll = _validated_tax_parameters(federal, payroll, pretax_deductions)
+    federal, payroll, pretax_deductions = _validated_tax_parameters(
+        federal, payroll, pretax_deductions
+    )
     start_decimal = _finite_decimal(start, "start")
     stop_decimal = _finite_decimal(stop, "stop")
     step_decimal = _finite_decimal(step, "step")
@@ -393,11 +397,11 @@ def _validated_tax_parameters(
     federal: FederalTaxParameters,
     payroll: PayrollTaxParameters,
     pretax_deductions: PretaxDeductionParameters,
-) -> tuple[FederalTaxParameters, PayrollTaxParameters]:
+) -> tuple[FederalTaxParameters, PayrollTaxParameters, PretaxDeductionParameters]:
     federal = _validated_federal_tax_parameters(federal)
     payroll = _validated_payroll_tax_parameters(payroll)
-    _validate_pretax_deduction_parameters(pretax_deductions)
-    return federal, payroll
+    pretax_deductions = _validated_pretax_deduction_parameters(pretax_deductions)
+    return federal, payroll, pretax_deductions
 
 
 def _validated_federal_tax_parameters(
@@ -485,21 +489,31 @@ def _validated_payroll_tax_parameters(
     )
 
 
-def _validate_pretax_deduction_parameters(
+def _validated_pretax_deduction_parameters(
     parameters: PretaxDeductionParameters,
-) -> None:
-    _validated_non_negative_money(
+) -> PretaxDeductionParameters:
+    employee_401k_limit = _validated_non_negative_money(
         parameters.employee_401k_limit,
         "employee_401k_limit",
     )
-    _validated_non_negative_money(parameters.health_fsa_limit, "health_fsa_limit")
-    _validated_non_negative_money(
+    health_fsa_limit = _validated_non_negative_money(
+        parameters.health_fsa_limit, "health_fsa_limit"
+    )
+    dependent_care_fsa_limit = _validated_non_negative_money(
         parameters.dependent_care_fsa_limit,
         "dependent_care_fsa_limit",
     )
-    _validated_rate(
+    gradual_phase_in_start_rate = _validated_rate(
         parameters.gradual_phase_in_start_rate,
         "gradual_phase_in_start_rate",
+    )
+
+    return PretaxDeductionParameters(
+        tax_year=parameters.tax_year,
+        employee_401k_limit=employee_401k_limit,
+        health_fsa_limit=health_fsa_limit,
+        dependent_care_fsa_limit=dependent_care_fsa_limit,
+        gradual_phase_in_start_rate=gradual_phase_in_start_rate,
     )
 
 
