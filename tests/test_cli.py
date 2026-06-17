@@ -156,7 +156,7 @@ def test_cli_reports_invalid_decimal_arguments_as_usage_errors(
         ("--year", "-1", "must be non-negative"),
     ],
 )
-def test_cli_rejects_invalid_decimal_bounds_before_database_initialization(
+def test_cli_rejects_invalid_numeric_bounds_before_database_initialization(
     flag,
     value,
     message,
