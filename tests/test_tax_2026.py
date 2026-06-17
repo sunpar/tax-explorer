@@ -1,3 +1,4 @@
+import re
 from decimal import Decimal
 
 import pytest
@@ -77,6 +78,14 @@ def test_federal_income_tax_uses_progressive_2026_single_brackets_after_standard
             ),
             "federal tax bracket lower_bounds must increase",
         ),
+        (
+            (
+                TaxBracket(money("0.00"), Decimal("0.10")),
+                TaxBracket(money("100.00"), Decimal("0.12")),
+                TaxBracket(money("50.00"), Decimal("0.22")),
+            ),
+            "federal tax bracket lower_bounds must increase",
+        ),
     ],
 )
 def test_calculate_tax_burden_rejects_malformed_federal_brackets(
@@ -90,8 +99,26 @@ def test_calculate_tax_burden_rejects_malformed_federal_brackets(
         brackets=brackets,
     )
 
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(ValueError, match=re.escape(message)):
         calculate_tax_burden(TaxScenario(gross_income=money("1000")), federal=federal)
+
+
+def test_build_income_series_rejects_malformed_federal_brackets():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=money("0.00"),
+        brackets=(
+            TaxBracket(money("0.00"), Decimal("0.10")),
+            TaxBracket(money("0.00"), Decimal("0.12")),
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("federal tax bracket lower_bounds must increase"),
+    ):
+        build_income_series(start=0, stop=1000, step=1000, federal=federal)
 
 
 def test_dependent_care_fsa_activates_when_dependents_are_present():
