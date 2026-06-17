@@ -1,4 +1,5 @@
 import re
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -6,6 +7,7 @@ import tax_explorer as tax_module
 
 from tax_explorer import (
     FEDERAL_2026_SINGLE,
+    PAYROLL_2026,
     FederalTaxParameters,
     PayrollTaxParameters,
     TaxBracket,
@@ -120,6 +122,78 @@ def test_build_income_series_rejects_malformed_federal_brackets():
         match=re.escape("federal tax bracket lower_bounds must increase"),
     ):
         build_income_series(start=0, stop=1000, step=1000, federal=federal)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        (
+            "social_security_rate",
+            Decimal("NaN"),
+            "social_security_rate must be a finite decimal",
+        ),
+        (
+            "medicare_rate",
+            Decimal("-0.10"),
+            "medicare_rate must be between 0 and 1",
+        ),
+        (
+            "additional_medicare_rate",
+            Decimal("1.10"),
+            "additional_medicare_rate must be between 0 and 1",
+        ),
+        (
+            "social_security_wage_base",
+            Decimal("-1.00"),
+            "social_security_wage_base must be non-negative",
+        ),
+        (
+            "additional_medicare_threshold_single",
+            Decimal("-1.00"),
+            "additional_medicare_threshold_single must be non-negative",
+        ),
+        (
+            "additional_medicare_thresholds",
+            {"single": Decimal("-1.00")},
+            "additional_medicare_threshold must be non-negative",
+        ),
+    ],
+)
+def test_calculate_tax_burden_rejects_malformed_payroll_parameters(
+    field,
+    value,
+    message,
+):
+    payroll = replace(PAYROLL_2026, **{field: value})
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        calculate_tax_burden(TaxScenario(gross_income=money("1000")), payroll=payroll)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        (
+            "social_security_rate",
+            Decimal("NaN"),
+            "social_security_rate must be a finite decimal",
+        ),
+        (
+            "additional_medicare_thresholds",
+            {"single": Decimal("-1.00")},
+            "additional_medicare_threshold must be non-negative",
+        ),
+    ],
+)
+def test_build_income_series_rejects_malformed_payroll_parameters(
+    field,
+    value,
+    message,
+):
+    payroll = replace(PAYROLL_2026, **{field: value})
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        build_income_series(start=0, stop=1000, step=1000, payroll=payroll)
 
 
 def test_dependent_care_fsa_activates_when_dependents_are_present():
