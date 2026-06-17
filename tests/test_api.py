@@ -49,21 +49,30 @@ EXPECTED_ADDITIONAL_MEDICARE_THRESHOLDS = {
 }
 
 
-def test_importing_api_module_does_not_create_default_sqlite_file(tmp_path):
+def api_subprocess_env() -> dict[str, str]:
     repo_root = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo_root / "src")}
+    env = os.environ.copy()
+    env.pop("TAX_EXPLORER_DB", None)
+    env["PYTHONPATH"] = str(repo_root / "src")
+    return env
+
+
+def test_importing_api_module_does_not_create_default_sqlite_file(tmp_path):
     code = (
         "from pathlib import Path\n"
         "import tax_explorer.api\n"
         "assert not Path('data/tax_explorer.sqlite3').exists()\n"
     )
 
-    subprocess.run([sys.executable, "-c", code], cwd=tmp_path, env=env, check=True)
+    subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        env=api_subprocess_env(),
+        check=True,
+    )
 
 
 def test_module_level_app_initializes_database_on_first_data_request(tmp_path):
-    repo_root = Path(__file__).resolve().parents[1]
-    env = {**os.environ, "PYTHONPATH": str(repo_root / "src")}
     code = (
         "from pathlib import Path\n"
         "from fastapi.testclient import TestClient\n"
@@ -76,7 +85,12 @@ def test_module_level_app_initializes_database_on_first_data_request(tmp_path):
         "assert database_path.exists()\n"
     )
 
-    subprocess.run([sys.executable, "-c", code], cwd=tmp_path, env=env, check=True)
+    subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        env=api_subprocess_env(),
+        check=True,
+    )
 
 
 def numeric_schema(schema):
