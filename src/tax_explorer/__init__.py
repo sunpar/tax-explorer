@@ -541,7 +541,7 @@ def _validated_rate(value: Decimal | int | float | str, field_name: str) -> Deci
     return rate
 
 
-def _validate_boolean_flag(value: bool, field_name: str) -> bool:
+def _validate_boolean_flag(value: object, field_name: str) -> bool:
     if not isinstance(value, bool):
         raise ValueError(f"{field_name} must be boolean")
     return value
