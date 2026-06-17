@@ -1,3 +1,8 @@
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from tax_explorer.api import create_app
@@ -42,6 +47,50 @@ EXPECTED_ADDITIONAL_MEDICARE_THRESHOLDS = {
     "married_separate": "125000.00",
     "head_of_household": "200000.00",
 }
+
+
+def api_subprocess_env() -> dict[str, str]:
+    repo_root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env.pop("TAX_EXPLORER_DB", None)
+    env["PYTHONPATH"] = str(repo_root / "src")
+    return env
+
+
+def test_importing_api_module_does_not_create_default_sqlite_file(tmp_path):
+    code = (
+        "from pathlib import Path\n"
+        "import tax_explorer.api\n"
+        "assert not Path('data/tax_explorer.sqlite3').exists()\n"
+    )
+
+    subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        env=api_subprocess_env(),
+        check=True,
+    )
+
+
+def test_module_level_app_initializes_database_on_first_data_request(tmp_path):
+    code = (
+        "from pathlib import Path\n"
+        "from fastapi.testclient import TestClient\n"
+        "from tax_explorer.api import app\n"
+        "database_path = Path('data/tax_explorer.sqlite3')\n"
+        "assert not database_path.exists()\n"
+        "response = TestClient(app).get('/api/tax-years')\n"
+        "assert response.status_code == 200\n"
+        "assert response.json() == {'years': [2026]}\n"
+        "assert database_path.exists()\n"
+    )
+
+    subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        env=api_subprocess_env(),
+        check=True,
+    )
 
 
 def numeric_schema(schema):

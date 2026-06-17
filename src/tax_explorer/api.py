@@ -61,11 +61,22 @@ class CalculateRequest(BaseModel):
         return self
 
 
-def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
+def create_app(
+    database_path: str | Path = DEFAULT_DATABASE_PATH,
+    *,
+    initialize_database_on_create: bool = True,
+) -> FastAPI:
+    """Create the API app and optionally defer database initialization.
+
+    The default preserves the factory's eager initialization behavior. The
+    module-level ASGI app uses deferred initialization to avoid creating the
+    SQLite database during import.
+    """
     app = FastAPI(title="Tax Explorer API")
     app.state.database_path = Path(database_path)
-    bootstrap = initialize_database(app.state.database_path)
-    bootstrap.close()
+    app.state.database_initialized = False
+    if initialize_database_on_create:
+        _initialize_app_database(app)
 
     app.add_middleware(
         CORSMiddleware,
@@ -182,11 +193,19 @@ def create_app(database_path: str | Path = DEFAULT_DATABASE_PATH) -> FastAPI:
 
 @contextmanager
 def _database(app: FastAPI) -> Iterator[Any]:
+    if not app.state.database_initialized:
+        _initialize_app_database(app)
     connection = connect(app.state.database_path)
     try:
         yield connection
     finally:
         connection.close()
+
+
+def _initialize_app_database(app: FastAPI) -> None:
+    bootstrap = initialize_database(app.state.database_path)
+    bootstrap.close()
+    app.state.database_initialized = True
 
 
 def _load_parameters(
@@ -294,4 +313,4 @@ def _value_to_response(value: Any) -> Any:
     return value
 
 
-app = create_app()
+app = create_app(initialize_database_on_create=False)

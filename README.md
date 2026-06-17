@@ -100,8 +100,8 @@ and the gradual phase-in endpoint for the duplicated worker caps is extended to
 roughly 150% of the one-earner max-out income.
 
 The local SQLite database is created and seeded at `data/tax_explorer.sqlite3`
-when the API starts. Set `TAX_EXPLORER_DB=/path/to/file.sqlite3` to override the
-database path.
+on the first database-backed API request. Set
+`TAX_EXPLORER_DB=/path/to/file.sqlite3` to override the database path.
 
 ## Current Scope
 
