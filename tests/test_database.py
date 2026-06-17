@@ -386,6 +386,26 @@ def test_rejects_invalid_additional_medicare_thresholds_from_sqlite(
             load_payroll_tax_parameters(connection, 2026)
 
 
+def test_rejects_missing_additional_medicare_threshold_for_supported_status(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            """
+            DELETE FROM additional_medicare_thresholds
+            WHERE year = ? AND filing_status = ?
+            """,
+            (2026, "married_joint"),
+        )
+        connection.commit()
+
+        with pytest.raises(
+            ValueError,
+            match="additional_medicare_threshold missing for 2026 married_joint",
+        ):
+            load_payroll_tax_parameters(connection, 2026)
+
+
 def test_loads_2026_pretax_deduction_parameters_from_sqlite(tmp_path):
     db_path = tmp_path / "tax.sqlite3"
 

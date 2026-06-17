@@ -11,6 +11,9 @@ from tax_explorer.database import connect
 
 INVALID_PERSISTED_PARAMETER_DETAIL = "social_security_rate must be a finite decimal"
 INVALID_FEDERAL_BRACKET_START_DETAIL = "federal tax brackets must start at 0.00"
+MISSING_ADDITIONAL_MEDICARE_THRESHOLD_DETAIL = (
+    "additional_medicare_threshold missing for 2026 married_joint"
+)
 
 
 def create_test_client(tmp_path):
@@ -28,6 +31,13 @@ def create_corrupted_federal_bracket_test_client(tmp_path):
     database_path = tmp_path / "tax.sqlite3"
     client = TestClient(create_app(database_path=database_path))
     corrupt_federal_bracket_start(database_path)
+    return client
+
+
+def create_missing_additional_medicare_threshold_test_client(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = TestClient(create_app(database_path=database_path))
+    delete_additional_medicare_threshold(database_path)
     return client
 
 
@@ -53,6 +63,18 @@ def corrupt_federal_bracket_start(database_path):
             WHERE year = ? AND filing_status = ? AND lower_bound = ?
             """,
             ("100.00", 2026, "single", "0.00"),
+        )
+        connection.commit()
+
+
+def delete_additional_medicare_threshold(database_path):
+    with connect(database_path) as connection:
+        connection.execute(
+            """
+            DELETE FROM additional_medicare_thresholds
+            WHERE year = ? AND filing_status = ?
+            """,
+            (2026, "married_joint"),
         )
         connection.commit()
 
@@ -221,6 +243,15 @@ def test_parameters_reject_federal_brackets_without_zero_lower_bound(tmp_path):
 
     assert response.status_code == 422
     assert response.json()["detail"] == INVALID_FEDERAL_BRACKET_START_DETAIL
+
+
+def test_parameters_reject_missing_additional_medicare_threshold(tmp_path):
+    client = create_missing_additional_medicare_threshold_test_client(tmp_path)
+
+    response = client.get("/api/tax-years/2026/parameters")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == MISSING_ADDITIONAL_MEDICARE_THRESHOLD_DETAIL
 
 
 def test_calculates_tax_burden_from_database_parameters(tmp_path):
