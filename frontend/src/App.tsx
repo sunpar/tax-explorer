@@ -988,9 +988,11 @@ function App() {
       .then((statuses) => {
         if (cancelled) return;
         setFilingStatuses(statuses);
-        if (!statuses.some((status) => status.code === filingStatus)) {
-          setFilingStatus(statuses[0]?.code ?? "single");
-        }
+        setFilingStatus((currentStatus) =>
+          statuses.some((status) => status.code === currentStatus)
+            ? currentStatus
+            : (statuses[0]?.code ?? "single")
+        );
       })
       .catch((nextError: Error) => {
         if (!cancelled) setScenarioError(nextError.message);
@@ -999,7 +1001,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [year, filingStatus]);
+  }, [year]);
 
   useEffect(() => {
     let cancelled = false;

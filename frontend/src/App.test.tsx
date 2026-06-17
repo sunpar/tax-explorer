@@ -495,6 +495,26 @@ describe("App tax curve controls", () => {
     expect(selectedIncome).toHaveValue("50000");
   });
 
+  test("selecting an already-loaded filing status does not refetch statuses", async () => {
+    await renderLoadedApp();
+    mockFetchFilingStatuses.mockClear();
+    mockFetchFilingStatuses.mockRejectedValueOnce(
+      new Error("status lookup failed")
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filingStatus: "married_joint"
+        })
+      )
+    );
+    expect(mockFetchFilingStatuses).not.toHaveBeenCalled();
+    expect(screen.queryByText("status lookup failed")).not.toBeInTheDocument();
+  });
+
   test("selected income slider supports exact calculations up to $3m", async () => {
     await renderLoadedApp();
 
