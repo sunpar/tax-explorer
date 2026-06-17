@@ -46,7 +46,10 @@ CSV_FIELDS = (
 
 
 def non_negative_int(value: str) -> int:
-    parsed = int(value)
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a whole number") from None
     if parsed < 0:
         raise argparse.ArgumentTypeError("must be non-negative")
     return parsed
