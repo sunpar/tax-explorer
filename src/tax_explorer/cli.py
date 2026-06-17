@@ -69,7 +69,7 @@ def non_negative_decimal_argument(value: str) -> str:
     return value
 
 
-def positive_decimal_argument(value: str) -> str:
+def positive_money_increment_argument(value: str) -> str:
     parsed = _finite_decimal_argument(value)
     if parsed.quantize(MONEY, rounding=ROUND_HALF_UP) <= 0:
         raise argparse.ArgumentTypeError("must be positive")
@@ -82,7 +82,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--start", type=non_negative_decimal_argument, default="0")
     parser.add_argument("--stop", type=non_negative_decimal_argument, default="500000")
-    parser.add_argument("--step", type=positive_decimal_argument, default="10000")
+    parser.add_argument(
+        "--step", type=positive_money_increment_argument, default="10000"
+    )
     parser.add_argument("--year", type=int, default=2026)
     parser.add_argument("--filing-status", default="single")
     parser.add_argument(
