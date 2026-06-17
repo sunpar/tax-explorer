@@ -534,6 +534,8 @@ def _validated_rate(value: Decimal | int | float | str, field_name: str) -> Deci
 
 
 def _validate_dependent_count(dependent_count: int) -> int:
+    if not isinstance(dependent_count, int) or isinstance(dependent_count, bool):
+        raise ValueError("dependent_count must be an integer")
     if dependent_count < 0:
         raise ValueError("dependent_count must be non-negative")
     return dependent_count

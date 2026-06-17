@@ -910,3 +910,25 @@ def test_negative_dependent_count_is_rejected():
         calculate_tax_burden(
             TaxScenario(gross_income=money("100000"), dependent_count=-1)
         )
+
+
+@pytest.mark.parametrize("dependent_count", ["1", 1.5, Decimal("1"), True])
+def test_calculate_tax_burden_rejects_non_integer_dependent_count(dependent_count):
+    with pytest.raises(ValueError, match="dependent_count must be an integer"):
+        calculate_tax_burden(
+            TaxScenario(
+                gross_income=money("100000"),
+                dependent_count=dependent_count,
+            )
+        )
+
+
+@pytest.mark.parametrize("dependent_count", ["1", 1.5, Decimal("1"), True])
+def test_build_income_series_rejects_non_integer_dependent_count(dependent_count):
+    with pytest.raises(ValueError, match="dependent_count must be an integer"):
+        build_income_series(
+            start=0,
+            stop=1000,
+            step=1000,
+            dependent_count=dependent_count,
+        )
