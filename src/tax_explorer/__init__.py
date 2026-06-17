@@ -348,6 +348,10 @@ def build_income_series(
         include_employer_payroll_tax,
         "include_employer_payroll_tax",
     )
+    include_marginal_breakpoints = _validate_boolean_flag(
+        include_marginal_breakpoints,
+        "include_marginal_breakpoints",
+    )
     dependent_count = _validate_dependent_count(dependent_count)
     configured_secondary_income = _validate_secondary_income_for_series(
         _validated_non_negative_money(secondary_income, "secondary_income"), federal

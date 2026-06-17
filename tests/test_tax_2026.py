@@ -950,17 +950,22 @@ def test_calculate_tax_burden_rejects_non_boolean_employer_payroll_flag(
         )
 
 
-@pytest.mark.parametrize("include_employer_payroll_tax", ["true", "false", 1, 0])
-def test_build_income_series_rejects_non_boolean_employer_payroll_flag(
-    include_employer_payroll_tax,
+@pytest.mark.parametrize(
+    "flag_name",
+    ["include_employer_payroll_tax", "include_marginal_breakpoints"],
+)
+@pytest.mark.parametrize("flag_value", ["true", "false", 1, 0])
+def test_build_income_series_rejects_non_boolean_flags(
+    flag_name,
+    flag_value,
 ):
     with pytest.raises(
         ValueError,
-        match="include_employer_payroll_tax must be boolean",
+        match=f"{flag_name} must be boolean",
     ):
         build_income_series(
             start=0,
             stop=1000,
             step=1000,
-            include_employer_payroll_tax=include_employer_payroll_tax,
+            **{flag_name: flag_value},
         )
