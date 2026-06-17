@@ -353,6 +353,14 @@ def load_payroll_tax_parameters(
         )
         for threshold_row in threshold_rows
     }
+    supported_filing_statuses = [
+        status["code"] for status in get_filing_statuses(connection, year)
+    ]
+    for filing_status in supported_filing_statuses:
+        if filing_status not in additional_medicare_thresholds:
+            raise ValueError(
+                f"additional_medicare_threshold missing for {year} {filing_status}"
+            )
     additional_medicare_threshold_single = _non_negative_money(
         row["additional_medicare_threshold_single"],
         "additional_medicare_threshold_single",
