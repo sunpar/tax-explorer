@@ -201,6 +201,26 @@ def test_rejects_invalid_federal_brackets_from_sqlite(
             load_federal_tax_parameters(connection, 2026, "single")
 
 
+def test_rejects_federal_brackets_without_zero_lower_bound_from_sqlite(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE federal_tax_brackets
+            SET lower_bound = ?
+            WHERE year = ? AND filing_status = ? AND lower_bound = ?
+            """,
+            ("100.00", 2026, "single", "0.00"),
+        )
+        connection.commit()
+
+        with pytest.raises(
+            ValueError, match="federal tax brackets must start at 0.00"
+        ):
+            load_federal_tax_parameters(connection, 2026, "single")
+
+
 @pytest.mark.parametrize(
     ("column", "value", "message"),
     [
