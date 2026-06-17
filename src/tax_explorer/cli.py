@@ -88,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--step", type=positive_money_increment_argument, default="10000"
     )
-    parser.add_argument("--year", type=int, default=2026)
+    parser.add_argument("--year", type=non_negative_int, default=2026)
     parser.add_argument("--filing-status", default="single")
     parser.add_argument(
         "--secondary-income", type=non_negative_decimal_argument, default="0"
