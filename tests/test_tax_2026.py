@@ -447,6 +447,40 @@ def test_build_income_series_rejects_malformed_pretax_parameters(
         )
 
 
+def test_calculate_tax_burden_normalizes_custom_pretax_money_fields():
+    pretax = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=24500.0,
+        health_fsa_limit=3400.0,
+        dependent_care_fsa_limit=7500.0,
+    )
+    scenario = TaxScenario(gross_income=money("100000"), dependent_count=1)
+
+    result = calculate_tax_burden(scenario, pretax_deductions=pretax)
+    expected = calculate_tax_burden(scenario, pretax_deductions=PRETAX_DEDUCTIONS_2026)
+
+    assert result.total_pretax_deductions == expected.total_pretax_deductions
+    assert result.federal_income_tax == expected.federal_income_tax
+    assert result.total_employee_tax == expected.total_employee_tax
+
+
+def test_build_income_series_normalizes_custom_pretax_rate_field():
+    pretax = replace(
+        PRETAX_DEDUCTIONS_2026,
+        gradual_phase_in_start_rate="0.01",
+    )
+
+    rows = build_income_series(
+        start=100000,
+        stop=100000,
+        step=1,
+        pretax_deduction_mode="gradual_phase_in",
+        pretax_deductions=pretax,
+    )
+
+    assert rows[0].total_pretax_deductions == money("3448.87")
+
+
 def test_dependent_care_fsa_activates_when_dependents_are_present():
     result = calculate_tax_burden(
         TaxScenario(gross_income=money("100000"), dependent_count=1)
