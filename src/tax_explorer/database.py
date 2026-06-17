@@ -275,21 +275,23 @@ def load_federal_tax_parameters(
     if not bracket_rows:
         raise ValueError(f"No federal tax brackets for {year} {filing_status}")
 
+    brackets = tuple(
+        TaxBracket(
+            lower_bound=_non_negative_money(row["lower_bound"], "bracket lower_bound"),
+            rate=_rate(row["rate"], "bracket rate"),
+        )
+        for row in bracket_rows
+    )
+    if brackets[0].lower_bound != Decimal("0.00"):
+        raise ValueError("federal tax brackets must start at 0.00")
+
     return FederalTaxParameters(
         tax_year=int(parameter_row["year"]),
         filing_status=str(parameter_row["filing_status"]),
         standard_deduction=_non_negative_money(
             parameter_row["standard_deduction"], "standard_deduction"
         ),
-        brackets=tuple(
-            TaxBracket(
-                lower_bound=_non_negative_money(
-                    row["lower_bound"], "bracket lower_bound"
-                ),
-                rate=_rate(row["rate"], "bracket rate"),
-            )
-            for row in bracket_rows
-        ),
+        brackets=brackets,
     )
 
 

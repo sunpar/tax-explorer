@@ -10,6 +10,7 @@ from tax_explorer.database import connect
 
 
 INVALID_PERSISTED_PARAMETER_DETAIL = "social_security_rate must be a finite decimal"
+INVALID_FEDERAL_BRACKET_START_DETAIL = "federal tax brackets must start at 0.00"
 
 
 def create_test_client(tmp_path):
@@ -23,6 +24,13 @@ def create_corrupted_payroll_test_client(tmp_path):
     return client
 
 
+def create_corrupted_federal_bracket_test_client(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = TestClient(create_app(database_path=database_path))
+    corrupt_federal_bracket_start(database_path)
+    return client
+
+
 def corrupt_payroll_rate(database_path):
     with connect(database_path) as connection:
         connection.execute(
@@ -32,6 +40,19 @@ def corrupt_payroll_rate(database_path):
             WHERE year = ?
             """,
             ("NaN", 2026),
+        )
+        connection.commit()
+
+
+def corrupt_federal_bracket_start(database_path):
+    with connect(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE federal_tax_brackets
+            SET lower_bound = ?
+            WHERE year = ? AND filing_status = ? AND lower_bound = ?
+            """,
+            ("100.00", 2026, "single", "0.00"),
         )
         connection.commit()
 
@@ -191,6 +212,15 @@ def test_parameters_report_invalid_persisted_values_as_unprocessable(tmp_path):
     response = client.get("/api/tax-years/2026/parameters")
 
     assert_invalid_persisted_parameter_response(response)
+
+
+def test_parameters_reject_federal_brackets_without_zero_lower_bound(tmp_path):
+    client = create_corrupted_federal_bracket_test_client(tmp_path)
+
+    response = client.get("/api/tax-years/2026/parameters")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == INVALID_FEDERAL_BRACKET_START_DETAIL
 
 
 def test_calculates_tax_burden_from_database_parameters(tmp_path):
