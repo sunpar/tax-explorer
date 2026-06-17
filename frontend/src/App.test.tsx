@@ -513,6 +513,58 @@ describe("App tax curve controls", () => {
     expect(screen.getAllByText("$3,000,000").length).toBeGreaterThan(0);
   });
 
+  test("clears selected income calculation errors after a successful retry", async () => {
+    await renderLoadedApp();
+    const selectedIncomeError = "temporary calculation failure";
+    mockFetchTaxBurden.mockRejectedValueOnce(new Error(selectedIncomeError));
+
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "120000" }
+    });
+
+    expect(await screen.findByText(selectedIncomeError)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "130000" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grossIncome: "130000"
+        })
+      )
+    );
+    await waitFor(() =>
+      expect(screen.queryByText(selectedIncomeError)).not.toBeInTheDocument()
+    );
+  });
+
+  test("keeps scenario loading errors visible after selected income recovery", async () => {
+    await renderLoadedApp();
+    const scenarioError = "scenario parameters unavailable";
+    mockFetchTaxParameters.mockRejectedValueOnce(new Error(scenarioError));
+
+    fireEvent.change(screen.getByLabelText("Step ($k)"), {
+      target: { value: "5" }
+    });
+
+    expect(await screen.findByText(scenarioError)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "130000" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grossIncome: "130000"
+        })
+      )
+    );
+    expect(screen.getByText(scenarioError)).toBeInTheDocument();
+  });
+
   test("comparison chart modes plot effective, marginal, and total-tax values with tooltip detail", async () => {
     await renderLoadedApp();
 

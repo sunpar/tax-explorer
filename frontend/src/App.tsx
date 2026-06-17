@@ -928,7 +928,10 @@ function App() {
   const [selectedBurden, setSelectedBurden] = useState<TaxBurden | null>(null);
   const [comparisonSeries, setComparisonSeries] = useState<CurveSeries[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [scenarioError, setScenarioError] = useState<string | null>(null);
+  const [selectedIncomeError, setSelectedIncomeError] = useState<string | null>(
+    null
+  );
   const start = thousandsToDollars(startThousands);
   const stop = thousandsToDollars(stopThousands);
   const step = thousandsToDollars(stepThousands);
@@ -944,6 +947,7 @@ function App() {
   const selectedFilingStatus = filingStatuses.find(
     (status) => status.code === filingStatus
   );
+  const displayedError = scenarioError ?? selectedIncomeError;
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -975,7 +979,7 @@ function App() {
           setYear(years[years.length - 1]);
         }
       })
-      .catch((nextError: Error) => setError(nextError.message));
+      .catch((nextError: Error) => setScenarioError(nextError.message));
   }, []);
 
   useEffect(() => {
@@ -989,7 +993,7 @@ function App() {
         }
       })
       .catch((nextError: Error) => {
-        if (!cancelled) setError(nextError.message);
+        if (!cancelled) setScenarioError(nextError.message);
       });
 
     return () => {
@@ -1000,7 +1004,7 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setError(null);
+    setScenarioError(null);
 
     async function loadScenario() {
       const nextParameters = await fetchTaxParameters(year, filingStatus);
@@ -1103,7 +1107,7 @@ function App() {
       .catch((nextError: Error) => {
         if (cancelled) return;
         setComparisonSeries([]);
-        setError(nextError.message);
+        setScenarioError(nextError.message);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -1145,12 +1149,15 @@ function App() {
       pretaxDeductionMode
     })
       .then((burden) => {
-        if (!cancelled) setSelectedBurden(burden);
+        if (!cancelled) {
+          setSelectedBurden(burden);
+          setSelectedIncomeError(null);
+        }
       })
       .catch((nextError: Error) => {
         if (cancelled) return;
         setSelectedBurden(null);
-        setError(nextError.message);
+        setSelectedIncomeError(nextError.message);
       });
 
     return () => {
@@ -1735,7 +1742,9 @@ function App() {
             </div>
           </div>
 
-          {error ? <div className="error-box">{error}</div> : null}
+          {displayedError ? (
+            <div className="error-box">{displayedError}</div>
+          ) : null}
 
           <div className="chart-frame">
             <ResponsiveContainer width="100%" height={360}>
