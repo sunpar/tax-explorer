@@ -365,7 +365,7 @@ async function renderLoadedApp(expectedStop = 140.69, expectedSelected = 127900)
 
 beforeEach(() => {
   localStorage.clear();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   mockFetchTaxYears.mockResolvedValue([2026]);
   mockFetchFilingStatuses.mockResolvedValue(statuses);
   mockFetchTaxParameters.mockImplementation(async (_year, filingStatus) =>
@@ -493,6 +493,104 @@ describe("App tax curve controls", () => {
     fireEvent.click(screen.getByTestId("chart"));
 
     expect(selectedIncome).toHaveValue("50000");
+  });
+
+  test("selecting an already-loaded filing status does not refetch statuses", async () => {
+    await renderLoadedApp();
+    mockFetchFilingStatuses.mockClear();
+    mockFetchFilingStatuses.mockRejectedValueOnce(
+      new Error("status lookup failed")
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filingStatus: "married_joint"
+        })
+      )
+    );
+    expect(mockFetchFilingStatuses).not.toHaveBeenCalled();
+    expect(screen.queryByText("status lookup failed")).not.toBeInTheDocument();
+  });
+
+  test("selecting a filing status with all tax years reuses cached comparison statuses", async () => {
+    mockFetchTaxYears.mockResolvedValue([2025, 2026]);
+    await renderLoadedApp();
+    await screen.findByRole("radio", { name: "Married filing jointly" });
+
+    mockFetchFilingStatuses.mockClear();
+    fireEvent.click(screen.getByLabelText("All tax years"));
+
+    await waitFor(() => expect(mockFetchFilingStatuses).toHaveBeenCalledWith(2025));
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          year: 2025,
+          filingStatus: "single"
+        })
+      )
+    );
+
+    mockFetchFilingStatuses.mockClear();
+    mockFetchFilingStatuses.mockRejectedValueOnce(
+      new Error("status lookup failed")
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          year: 2025,
+          filingStatus: "married_joint"
+        })
+      )
+    );
+    expect(mockFetchFilingStatuses).not.toHaveBeenCalled();
+    expect(screen.queryByText("status lookup failed")).not.toBeInTheDocument();
+  });
+
+  test("changing tax year fetches statuses and resets unavailable selected status", async () => {
+    mockFetchTaxYears.mockResolvedValue([2025, 2026]);
+    mockFetchFilingStatuses.mockImplementation(async (taxYear) =>
+      taxYear === 2025 ? [{ code: "single", label: "Single" }] : statuses
+    );
+    await renderLoadedApp();
+    await screen.findByRole("radio", { name: "Married filing jointly" });
+
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filingStatus: "married_joint"
+        })
+      )
+    );
+
+    mockFetchFilingStatuses.mockClear();
+    fireEvent.change(screen.getByLabelText("Tax year"), {
+      target: { value: "2025" }
+    });
+
+    await waitFor(() => expect(mockFetchFilingStatuses).toHaveBeenCalledWith(2025));
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: "Single" })).toHaveAttribute(
+        "aria-checked",
+        "true"
+      )
+    );
+    expect(
+      screen.queryByRole("radio", { name: "Married filing jointly" })
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          year: 2025,
+          filingStatus: "single"
+        })
+      )
+    );
   });
 
   test("selected income slider supports exact calculations up to $3m", async () => {

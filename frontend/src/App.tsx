@@ -912,6 +912,7 @@ function App() {
   const [dependentCountInput, setDependentCountInput] = useState(
     readStoredDependentCount
   );
+  const filingStatusCacheByYearRef = useRef<Record<number, FilingStatus[]>>({});
   const [storedPrimaryIncomeThousands, setStoredPrimaryIncomeThousands] =
     useState(readStoredPrimaryIncomeThousands);
   const [secondaryIncomeThousands, setSecondaryIncomeThousands] = useState(
@@ -987,10 +988,13 @@ function App() {
     fetchFilingStatuses(year)
       .then((statuses) => {
         if (cancelled) return;
+        filingStatusCacheByYearRef.current[year] = statuses;
         setFilingStatuses(statuses);
-        if (!statuses.some((status) => status.code === filingStatus)) {
-          setFilingStatus(statuses[0]?.code ?? "single");
-        }
+        setFilingStatus((currentStatus) =>
+          statuses.some((status) => status.code === currentStatus)
+            ? currentStatus
+            : (statuses[0]?.code ?? "single")
+        );
       })
       .catch((nextError: Error) => {
         if (!cancelled) setScenarioError(nextError.message);
@@ -999,7 +1003,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [year, filingStatus]);
+  }, [year]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1039,10 +1043,16 @@ function App() {
       }> = [];
 
       for (const comparisonYear of yearsToCompare) {
-        const statuses =
-          comparisonYear === year && filingStatuses.length > 0
-            ? filingStatuses
-            : await fetchFilingStatuses(comparisonYear);
+        let statuses = filingStatusCacheByYearRef.current[comparisonYear];
+        if (!statuses && comparisonYear === year && filingStatuses.length > 0) {
+          statuses = filingStatuses;
+          filingStatusCacheByYearRef.current[comparisonYear] = statuses;
+        }
+        if (!statuses) {
+          statuses = await fetchFilingStatuses(comparisonYear);
+          if (cancelled) return;
+          filingStatusCacheByYearRef.current[comparisonYear] = statuses;
+        }
         const statusesToCompare = compareFilingStatuses
           ? statuses
           : statuses.filter((status) => status.code === filingStatus);
