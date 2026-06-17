@@ -458,6 +458,27 @@ def test_calculate_rejects_negative_dependent_count(tmp_path):
     assert response.status_code == 422
 
 
+def test_calculate_rejects_coerced_dependent_count_request_values(tmp_path):
+    client = create_test_client(tmp_path)
+
+    for dependent_count in (True, False, "1"):
+        response = client.post(
+            "/api/calculate",
+            json={
+                "year": 2026,
+                "filing_status": "single",
+                "gross_income": "100000",
+                "dependent_count": dependent_count,
+            },
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert isinstance(detail, list)
+        assert detail[0]["loc"] == ["body", "dependent_count"]
+        assert detail[0]["type"] == "int_type"
+
+
 def test_calculate_rejects_unknown_pretax_deduction_mode_as_request_validation(
     tmp_path,
 ):
