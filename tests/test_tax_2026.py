@@ -188,6 +188,26 @@ def test_build_income_series_rejects_malformed_federal_fields(
         build_income_series(start=0, stop=1000, step=1000, federal=federal)
 
 
+def test_calculate_tax_burden_rejects_unsupported_federal_filing_status():
+    federal = replace(FEDERAL_2026_SINGLE, filing_status="qualifying_widow")
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("unsupported filing_status: qualifying_widow"),
+    ):
+        calculate_tax_burden(TaxScenario(gross_income=money("1000")), federal=federal)
+
+
+def test_build_income_series_rejects_unsupported_federal_filing_status():
+    federal = replace(FEDERAL_2026_SINGLE, filing_status="qualifying_widow")
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("unsupported filing_status: qualifying_widow"),
+    ):
+        build_income_series(start=0, stop=1000, step=1000, federal=federal)
+
+
 def test_calculate_tax_burden_normalizes_custom_federal_money_fields():
     federal = FederalTaxParameters(
         tax_year=2026,

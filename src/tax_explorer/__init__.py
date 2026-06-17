@@ -21,6 +21,13 @@ PRETAX_DEDUCTION_MODE_CHOICES = (
     PRETAX_DEDUCTION_MODE_GRADUAL_PHASE_IN,
 )
 PRETAX_DEDUCTION_MODES = set(PRETAX_DEDUCTION_MODE_CHOICES)
+FILING_STATUS_CHOICES = (
+    "single",
+    "married_joint",
+    "married_separate",
+    "head_of_household",
+)
+FILING_STATUSES = set(FILING_STATUS_CHOICES)
 
 
 def _decimal(value: Decimal | int | float | str) -> Decimal:
@@ -423,6 +430,8 @@ def _validated_federal_tax_parameters_cached(
 def _validated_federal_tax_parameters_uncached(
     federal: FederalTaxParameters,
 ) -> FederalTaxParameters:
+    if federal.filing_status not in FILING_STATUSES:
+        raise ValueError(f"unsupported filing_status: {federal.filing_status}")
     if not federal.brackets:
         raise ValueError("federal tax brackets are required")
     standard_deduction = _validated_non_negative_money(
