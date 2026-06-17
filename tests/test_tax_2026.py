@@ -964,3 +964,19 @@ def test_build_income_series_rejects_non_boolean_employer_payroll_flag(
             step=1000,
             include_employer_payroll_tax=include_employer_payroll_tax,
         )
+
+
+@pytest.mark.parametrize("include_marginal_breakpoints", ["true", "false", 1, 0])
+def test_build_income_series_rejects_non_boolean_marginal_breakpoints_flag(
+    include_marginal_breakpoints,
+):
+    with pytest.raises(
+        ValueError,
+        match="include_marginal_breakpoints must be boolean",
+    ):
+        build_income_series(
+            start=0,
+            stop=1000,
+            step=1000,
+            include_marginal_breakpoints=include_marginal_breakpoints,
+        )
