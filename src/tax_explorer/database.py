@@ -282,8 +282,7 @@ def load_federal_tax_parameters(
         )
         for row in bracket_rows
     )
-    if brackets[0].lower_bound != Decimal("0.00"):
-        raise ValueError("federal tax brackets must start at 0.00")
+    _validate_federal_tax_brackets(brackets)
 
     return FederalTaxParameters(
         tax_year=int(parameter_row["year"]),
@@ -293,6 +292,17 @@ def load_federal_tax_parameters(
         ),
         brackets=brackets,
     )
+
+
+def _validate_federal_tax_brackets(brackets: tuple[TaxBracket, ...]) -> None:
+    if brackets[0].lower_bound != Decimal("0.00"):
+        raise ValueError("federal tax brackets must start at 0.00")
+
+    previous_lower_bound = brackets[0].lower_bound
+    for bracket in brackets[1:]:
+        if bracket.lower_bound <= previous_lower_bound:
+            raise ValueError("federal tax bracket lower_bounds must increase")
+        previous_lower_bound = bracket.lower_bound
 
 
 def _non_negative_money(value: object, field_name: str) -> Decimal:

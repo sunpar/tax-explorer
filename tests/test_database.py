@@ -221,6 +221,27 @@ def test_rejects_federal_brackets_without_zero_lower_bound_from_sqlite(tmp_path)
             load_federal_tax_parameters(connection, 2026, "single")
 
 
+def test_rejects_duplicate_federal_bracket_lower_bounds_after_rounding_from_sqlite(
+    tmp_path,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO federal_tax_brackets (year, filing_status, lower_bound, rate)
+            VALUES (?, ?, ?, ?)
+            """,
+            (2026, "single", "12400.004", "0.37"),
+        )
+        connection.commit()
+
+        with pytest.raises(
+            ValueError, match="federal tax bracket lower_bounds must increase"
+        ):
+            load_federal_tax_parameters(connection, 2026, "single")
+
+
 @pytest.mark.parametrize(
     ("column", "value", "message"),
     [
