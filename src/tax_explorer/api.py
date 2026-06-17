@@ -66,6 +66,12 @@ def create_app(
     *,
     initialize_database_on_create: bool = True,
 ) -> FastAPI:
+    """Create the API app and optionally defer database initialization.
+
+    The default preserves the factory's eager initialization behavior. The
+    module-level ASGI app uses deferred initialization to avoid creating the
+    SQLite database during import.
+    """
     app = FastAPI(title="Tax Explorer API")
     app.state.database_path = Path(database_path)
     app.state.database_initialized = False
