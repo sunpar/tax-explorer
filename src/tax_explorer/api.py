@@ -49,7 +49,7 @@ class CalculateRequest(BaseModel):
     year: int
     filing_status: str = "single"
     gross_income: Decimal = Field(ge=0)
-    include_employer_payroll_tax: bool = False
+    include_employer_payroll_tax: bool = Field(default=False, strict=True)
     dependent_count: int = Field(default=0, ge=0, strict=True)
     secondary_income: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
     pretax_deduction_mode: PretaxDeductionMode = PRETAX_DEDUCTION_MODE_MAX_AVAILABLE

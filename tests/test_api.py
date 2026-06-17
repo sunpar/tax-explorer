@@ -483,6 +483,31 @@ def test_calculate_rejects_coerced_dependent_count_request_values(tmp_path):
         assert dependent_count_error["type"] == "int_type"
 
 
+def test_calculate_rejects_coerced_employer_payroll_request_values(tmp_path):
+    client = create_test_client(tmp_path)
+
+    for include_employer_payroll_tax in ("true", "false", 1, 0):
+        response = client.post(
+            "/api/calculate",
+            json={
+                "year": 2026,
+                "filing_status": "single",
+                "gross_income": "100000",
+                "include_employer_payroll_tax": include_employer_payroll_tax,
+            },
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert isinstance(detail, list)
+        employer_payroll_error = next(
+            error
+            for error in detail
+            if error["loc"] == ["body", "include_employer_payroll_tax"]
+        )
+        assert employer_payroll_error["type"] == "bool_type"
+
+
 def test_calculate_rejects_unknown_pretax_deduction_mode_as_request_validation(
     tmp_path,
 ):

@@ -932,3 +932,35 @@ def test_build_income_series_rejects_non_integer_dependent_count(dependent_count
             step=1000,
             dependent_count=dependent_count,
         )
+
+
+@pytest.mark.parametrize("include_employer_payroll_tax", ["true", "false", 1, 0])
+def test_calculate_tax_burden_rejects_non_boolean_employer_payroll_flag(
+    include_employer_payroll_tax,
+):
+    with pytest.raises(
+        ValueError,
+        match="include_employer_payroll_tax must be boolean",
+    ):
+        calculate_tax_burden(
+            TaxScenario(
+                gross_income=money("100000"),
+                include_employer_payroll_tax=include_employer_payroll_tax,
+            )
+        )
+
+
+@pytest.mark.parametrize("include_employer_payroll_tax", ["true", "false", 1, 0])
+def test_build_income_series_rejects_non_boolean_employer_payroll_flag(
+    include_employer_payroll_tax,
+):
+    with pytest.raises(
+        ValueError,
+        match="include_employer_payroll_tax must be boolean",
+    ):
+        build_income_series(
+            start=0,
+            stop=1000,
+            step=1000,
+            include_employer_payroll_tax=include_employer_payroll_tax,
+        )

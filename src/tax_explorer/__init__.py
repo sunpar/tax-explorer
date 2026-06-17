@@ -240,6 +240,10 @@ def _calculate_tax_burden(
     secondary_income = _validated_non_negative_money(
         scenario.secondary_income, "secondary_income"
     )
+    include_employer_payroll_tax = _validate_boolean_flag(
+        scenario.include_employer_payroll_tax,
+        "include_employer_payroll_tax",
+    )
     dependent_count = _validate_dependent_count(scenario.dependent_count)
     secondary_income = _validate_secondary_income(
         gross_income,
@@ -255,7 +259,7 @@ def _calculate_tax_burden(
     amounts = _calculate_tax_amounts(
         gross_income,
         secondary_income=secondary_income,
-        include_employer_payroll_tax=scenario.include_employer_payroll_tax,
+        include_employer_payroll_tax=include_employer_payroll_tax,
         pretax_deduction_mode=scenario.pretax_deduction_mode,
         federal=federal,
         payroll=payroll,
@@ -276,7 +280,7 @@ def _calculate_tax_burden(
     marginal_tax_rate_with_employer_payroll = _forward_difference_marginal_rate(
         gross_income,
         secondary_income=secondary_income,
-        include_employer_payroll_tax=scenario.include_employer_payroll_tax,
+        include_employer_payroll_tax=include_employer_payroll_tax,
         pretax_deduction_mode=scenario.pretax_deduction_mode,
         federal=federal,
         payroll=payroll,
@@ -340,6 +344,10 @@ def build_income_series(
         raise ValueError("step must be positive")
     if current > stop_amount:
         raise ValueError("start must be less than or equal to stop")
+    include_employer_payroll_tax = _validate_boolean_flag(
+        include_employer_payroll_tax,
+        "include_employer_payroll_tax",
+    )
     dependent_count = _validate_dependent_count(dependent_count)
     configured_secondary_income = _validate_secondary_income_for_series(
         _validated_non_negative_money(secondary_income, "secondary_income"), federal
@@ -531,6 +539,12 @@ def _validated_rate(value: Decimal | int | float | str, field_name: str) -> Deci
     if rate < 0 or rate > 1:
         raise ValueError(f"{field_name} must be between 0 and 1")
     return rate
+
+
+def _validate_boolean_flag(value: bool, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{field_name} must be boolean")
+    return value
 
 
 def _validate_dependent_count(dependent_count: int) -> int:
