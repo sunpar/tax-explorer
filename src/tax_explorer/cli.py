@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 from tax_explorer import (
+    MONEY,
     PRETAX_DEDUCTION_MODE_CHOICES,
     PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
     TaxBurden,
@@ -51,13 +52,27 @@ def non_negative_int(value: str) -> int:
     return parsed
 
 
-def decimal_argument(value: str) -> str:
+def _finite_decimal_argument(value: str) -> Decimal:
     try:
         parsed = Decimal(value)
     except InvalidOperation:
         raise argparse.ArgumentTypeError("must be a decimal number") from None
     if not parsed.is_finite():
         raise argparse.ArgumentTypeError("must be a decimal number")
+    return parsed
+
+
+def non_negative_decimal_argument(value: str) -> str:
+    parsed = _finite_decimal_argument(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be non-negative")
+    return value
+
+
+def positive_money_increment_argument(value: str) -> str:
+    parsed = _finite_decimal_argument(value)
+    if parsed.quantize(MONEY, rounding=ROUND_HALF_UP) <= 0:
+        raise argparse.ArgumentTypeError("must be positive")
     return value
 
 
@@ -65,12 +80,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate US W-2 tax burden rows by income."
     )
-    parser.add_argument("--start", type=decimal_argument, default="0")
-    parser.add_argument("--stop", type=decimal_argument, default="500000")
-    parser.add_argument("--step", type=decimal_argument, default="10000")
+    parser.add_argument("--start", type=non_negative_decimal_argument, default="0")
+    parser.add_argument("--stop", type=non_negative_decimal_argument, default="500000")
+    parser.add_argument(
+        "--step", type=positive_money_increment_argument, default="10000"
+    )
     parser.add_argument("--year", type=int, default=2026)
     parser.add_argument("--filing-status", default="single")
-    parser.add_argument("--secondary-income", type=decimal_argument, default="0")
+    parser.add_argument(
+        "--secondary-income", type=non_negative_decimal_argument, default="0"
+    )
     parser.add_argument(
         "--include-marginal-breakpoints",
         action="store_true",

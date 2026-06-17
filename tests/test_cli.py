@@ -142,6 +142,34 @@ def test_cli_reports_invalid_decimal_arguments_as_usage_errors(
     assert f"argument {flag}: must be a decimal number" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    ("flag", "value", "message"),
+    [
+        ("--start", "-1", "must be non-negative"),
+        ("--stop", "-1", "must be non-negative"),
+        ("--step", "0", "must be positive"),
+        ("--step", "-1", "must be positive"),
+        ("--step", "0.004", "must be positive"),
+        ("--secondary-income", "-1", "must be non-negative"),
+    ],
+)
+def test_cli_rejects_invalid_decimal_bounds_before_database_initialization(
+    flag,
+    value,
+    message,
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main([flag, value, "--database-path", str(database_path)])
+
+    assert exc_info.value.code == 2
+    assert f"argument {flag}: {message}" in capsys.readouterr().err
+    assert not database_path.exists()
+
+
 def test_cli_reports_invalid_secondary_income_as_usage_error(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc_info:
         main(
