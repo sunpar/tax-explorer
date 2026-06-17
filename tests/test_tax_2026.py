@@ -248,6 +248,29 @@ def test_build_income_series_normalizes_custom_federal_rate_fields():
     assert rows[0].federal_income_tax == money("100.00")
 
 
+def test_calculate_tax_burden_normalizes_custom_federal_money_field_types():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=0.0,
+        brackets=(TaxBracket(0.0, Decimal("0.10")),),
+    )
+    no_pretax_deductions = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=money("0.00"),
+        health_fsa_limit=money("0.00"),
+        dependent_care_fsa_limit=money("0.00"),
+    )
+
+    result = calculate_tax_burden(
+        TaxScenario(gross_income=money("1000")),
+        federal=federal,
+        pretax_deductions=no_pretax_deductions,
+    )
+
+    assert result.federal_income_tax == money("100.00")
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [

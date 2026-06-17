@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from functools import lru_cache
 from itertools import pairwise
 from typing import Callable, Iterable, Mapping
 
@@ -400,6 +401,22 @@ def _validated_tax_parameters(
 
 
 def _validated_federal_tax_parameters(
+    federal: FederalTaxParameters,
+) -> FederalTaxParameters:
+    try:
+        return _validated_federal_tax_parameters_cached(federal)
+    except TypeError:
+        return _validated_federal_tax_parameters_uncached(federal)
+
+
+@lru_cache(maxsize=32)
+def _validated_federal_tax_parameters_cached(
+    federal: FederalTaxParameters,
+) -> FederalTaxParameters:
+    return _validated_federal_tax_parameters_uncached(federal)
+
+
+def _validated_federal_tax_parameters_uncached(
     federal: FederalTaxParameters,
 ) -> FederalTaxParameters:
     if not federal.brackets:
