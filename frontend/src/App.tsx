@@ -947,7 +947,7 @@ function App() {
   const selectedFilingStatus = filingStatuses.find(
     (status) => status.code === filingStatus
   );
-  const error = scenarioError ?? selectedIncomeError;
+  const displayedError = scenarioError ?? selectedIncomeError;
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -1742,7 +1742,9 @@ function App() {
             </div>
           </div>
 
-          {error ? <div className="error-box">{error}</div> : null}
+          {displayedError ? (
+            <div className="error-box">{displayedError}</div>
+          ) : null}
 
           <div className="chart-frame">
             <ResponsiveContainer width="100%" height={360}>
