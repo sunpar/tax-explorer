@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from itertools import pairwise
 from pathlib import Path
 
 from tax_explorer import (
@@ -298,11 +299,10 @@ def _validate_federal_tax_brackets(brackets: tuple[TaxBracket, ...]) -> None:
     if brackets[0].lower_bound != Decimal("0.00"):
         raise ValueError("federal tax brackets must start at 0.00")
 
-    previous_lower_bound = brackets[0].lower_bound
-    for bracket in brackets[1:]:
+    for previous_bracket, bracket in pairwise(brackets):
+        previous_lower_bound = previous_bracket.lower_bound
         if bracket.lower_bound <= previous_lower_bound:
             raise ValueError("federal tax bracket lower_bounds must increase")
-        previous_lower_bound = bracket.lower_bound
 
 
 def _non_negative_money(value: object, field_name: str) -> Decimal:
