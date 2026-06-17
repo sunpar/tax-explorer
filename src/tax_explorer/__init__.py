@@ -209,7 +209,7 @@ def calculate_tax_burden(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> TaxBurden:
-    _validate_tax_parameters(federal, payroll, pretax_deductions)
+    federal = _validated_tax_parameters(federal, payroll, pretax_deductions)
     return _calculate_tax_burden(
         scenario,
         federal=federal,
@@ -311,7 +311,7 @@ def build_income_series(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> list[TaxBurden]:
-    _validate_tax_parameters(federal, payroll, pretax_deductions)
+    federal = _validated_tax_parameters(federal, payroll, pretax_deductions)
     start_decimal = _finite_decimal(start, "start")
     stop_decimal = _finite_decimal(stop, "stop")
     step_decimal = _finite_decimal(step, "step")
@@ -388,30 +388,48 @@ def _validate_pretax_deduction_mode(mode: str) -> None:
         raise ValueError(f"unknown pretax_deduction_mode: {mode}")
 
 
-def _validate_tax_parameters(
+def _validated_tax_parameters(
     federal: FederalTaxParameters,
     payroll: PayrollTaxParameters,
     pretax_deductions: PretaxDeductionParameters,
-) -> None:
-    _validate_federal_tax_parameters(federal)
+) -> FederalTaxParameters:
+    federal = _validated_federal_tax_parameters(federal)
     _validate_payroll_tax_parameters(payroll)
     _validate_pretax_deduction_parameters(pretax_deductions)
+    return federal
 
 
-def _validate_federal_tax_parameters(federal: FederalTaxParameters) -> None:
+def _validated_federal_tax_parameters(
+    federal: FederalTaxParameters,
+) -> FederalTaxParameters:
     if not federal.brackets:
         raise ValueError("federal tax brackets are required")
-    _validated_non_negative_money(federal.standard_deduction, "standard_deduction")
-    for bracket in federal.brackets:
-        _validated_non_negative_money(bracket.lower_bound, "bracket lower_bound")
-        _validated_rate(bracket.rate, "bracket rate")
+    standard_deduction = _validated_non_negative_money(
+        federal.standard_deduction, "standard_deduction"
+    )
+    brackets = tuple(
+        TaxBracket(
+            lower_bound=_validated_non_negative_money(
+                bracket.lower_bound, "bracket lower_bound"
+            ),
+            rate=_validated_rate(bracket.rate, "bracket rate"),
+        )
+        for bracket in federal.brackets
+    )
 
-    if federal.brackets[0].lower_bound != ZERO_MONEY:
+    if brackets[0].lower_bound != ZERO_MONEY:
         raise ValueError("federal tax brackets must start at 0.00")
 
-    for previous_bracket, bracket in pairwise(federal.brackets):
+    for previous_bracket, bracket in pairwise(brackets):
         if bracket.lower_bound <= previous_bracket.lower_bound:
             raise ValueError("federal tax bracket lower_bounds must increase")
+
+    return FederalTaxParameters(
+        tax_year=federal.tax_year,
+        filing_status=federal.filing_status,
+        standard_deduction=standard_deduction,
+        brackets=brackets,
+    )
 
 
 def _validate_payroll_tax_parameters(payroll: PayrollTaxParameters) -> None:

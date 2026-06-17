@@ -188,6 +188,66 @@ def test_build_income_series_rejects_malformed_federal_fields(
         build_income_series(start=0, stop=1000, step=1000, federal=federal)
 
 
+def test_calculate_tax_burden_normalizes_custom_federal_money_fields():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=Decimal("0.005"),
+        brackets=(
+            TaxBracket(Decimal("0.004"), Decimal("0.10")),
+            TaxBracket(Decimal("100.005"), Decimal("0.12")),
+        ),
+    )
+    normalized_federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=money("0.01"),
+        brackets=(
+            TaxBracket(money("0.00"), Decimal("0.10")),
+            TaxBracket(money("100.01"), Decimal("0.12")),
+        ),
+    )
+    no_pretax_deductions = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=money("0.00"),
+        health_fsa_limit=money("0.00"),
+        dependent_care_fsa_limit=money("0.00"),
+    )
+
+    result = calculate_tax_burden(
+        TaxScenario(gross_income=money("200")),
+        federal=federal,
+        pretax_deductions=no_pretax_deductions,
+    )
+    expected = calculate_tax_burden(
+        TaxScenario(gross_income=money("200")),
+        federal=normalized_federal,
+        pretax_deductions=no_pretax_deductions,
+    )
+
+    assert result.federal_income_tax == expected.federal_income_tax
+
+
+def test_build_income_series_normalizes_custom_federal_rate_fields():
+    federal = federal_with_brackets((TaxBracket(money("0.00"), "0.10"),))
+    no_pretax_deductions = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=money("0.00"),
+        health_fsa_limit=money("0.00"),
+        dependent_care_fsa_limit=money("0.00"),
+    )
+
+    rows = build_income_series(
+        start=1000,
+        stop=1000,
+        step=1,
+        federal=federal,
+        pretax_deductions=no_pretax_deductions,
+    )
+
+    assert rows[0].federal_income_tax == money("100.00")
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
