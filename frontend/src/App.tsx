@@ -912,6 +912,7 @@ function App() {
   const [dependentCountInput, setDependentCountInput] = useState(
     readStoredDependentCount
   );
+  const filingStatusesByYearRef = useRef<Record<number, FilingStatus[]>>({});
   const [storedPrimaryIncomeThousands, setStoredPrimaryIncomeThousands] =
     useState(readStoredPrimaryIncomeThousands);
   const [secondaryIncomeThousands, setSecondaryIncomeThousands] = useState(
@@ -987,6 +988,7 @@ function App() {
     fetchFilingStatuses(year)
       .then((statuses) => {
         if (cancelled) return;
+        filingStatusesByYearRef.current[year] = statuses;
         setFilingStatuses(statuses);
         setFilingStatus((currentStatus) =>
           statuses.some((status) => status.code === currentStatus)
@@ -1041,10 +1043,16 @@ function App() {
       }> = [];
 
       for (const comparisonYear of yearsToCompare) {
-        const statuses =
-          comparisonYear === year && filingStatuses.length > 0
-            ? filingStatuses
-            : await fetchFilingStatuses(comparisonYear);
+        let statuses = filingStatusesByYearRef.current[comparisonYear];
+        if (!statuses && comparisonYear === year && filingStatuses.length > 0) {
+          statuses = filingStatuses;
+          filingStatusesByYearRef.current[comparisonYear] = statuses;
+        }
+        if (!statuses) {
+          statuses = await fetchFilingStatuses(comparisonYear);
+          if (cancelled) return;
+          filingStatusesByYearRef.current[comparisonYear] = statuses;
+        }
         const statusesToCompare = compareFilingStatuses
           ? statuses
           : statuses.filter((status) => status.code === filingStatus);
