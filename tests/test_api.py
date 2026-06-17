@@ -475,8 +475,12 @@ def test_calculate_rejects_coerced_dependent_count_request_values(tmp_path):
         assert response.status_code == 422
         detail = response.json()["detail"]
         assert isinstance(detail, list)
-        assert detail[0]["loc"] == ["body", "dependent_count"]
-        assert detail[0]["type"] == "int_type"
+        dependent_count_error = next(
+            error
+            for error in detail
+            if error["loc"] == ["body", "dependent_count"]
+        )
+        assert dependent_count_error["type"] == "int_type"
 
 
 def test_calculate_rejects_unknown_pretax_deduction_mode_as_request_validation(
