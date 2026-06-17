@@ -210,6 +210,20 @@ def calculate_tax_burden(
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> TaxBurden:
     _validate_federal_tax_parameters(federal)
+    return _calculate_tax_burden(
+        scenario,
+        federal=federal,
+        payroll=payroll,
+        pretax_deductions=pretax_deductions,
+    )
+
+
+def _calculate_tax_burden(
+    scenario: TaxScenario,
+    federal: FederalTaxParameters,
+    payroll: PayrollTaxParameters,
+    pretax_deductions: PretaxDeductionParameters,
+) -> TaxBurden:
     gross_income = _validated_non_negative_money(
         scenario.gross_income, "gross_income"
     )
@@ -353,7 +367,7 @@ def build_income_series(
                 add_income(income)
 
     return [
-        calculate_tax_burden(
+        _calculate_tax_burden(
             TaxScenario(
                 gross_income=income,
                 include_employer_payroll_tax=include_employer_payroll_tax,

@@ -19,6 +19,15 @@ def money(value: str) -> Decimal:
     return Decimal(value)
 
 
+def federal_with_brackets(brackets: tuple[TaxBracket, ...]) -> FederalTaxParameters:
+    return FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=money("0.00"),
+        brackets=brackets,
+    )
+
+
 FEDERAL_2026_MARRIED_JOINT = FederalTaxParameters(
     tax_year=2026,
     filing_status="married_joint",
@@ -92,26 +101,18 @@ def test_calculate_tax_burden_rejects_malformed_federal_brackets(
     brackets,
     message,
 ):
-    federal = FederalTaxParameters(
-        tax_year=2026,
-        filing_status="single",
-        standard_deduction=money("0.00"),
-        brackets=brackets,
-    )
+    federal = federal_with_brackets(brackets)
 
     with pytest.raises(ValueError, match=re.escape(message)):
         calculate_tax_burden(TaxScenario(gross_income=money("1000")), federal=federal)
 
 
 def test_build_income_series_rejects_malformed_federal_brackets():
-    federal = FederalTaxParameters(
-        tax_year=2026,
-        filing_status="single",
-        standard_deduction=money("0.00"),
-        brackets=(
+    federal = federal_with_brackets(
+        (
             TaxBracket(money("0.00"), Decimal("0.10")),
             TaxBracket(money("0.00"), Decimal("0.12")),
-        ),
+        )
     )
 
     with pytest.raises(
