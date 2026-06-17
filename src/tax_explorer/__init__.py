@@ -209,9 +209,7 @@ def calculate_tax_burden(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> TaxBurden:
-    _validate_federal_tax_parameters(federal)
-    _validate_payroll_tax_parameters(payroll)
-    _validate_pretax_deduction_parameters(pretax_deductions)
+    _validate_tax_parameters(federal, payroll, pretax_deductions)
     return _calculate_tax_burden(
         scenario,
         federal=federal,
@@ -313,9 +311,7 @@ def build_income_series(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> list[TaxBurden]:
-    _validate_federal_tax_parameters(federal)
-    _validate_payroll_tax_parameters(payroll)
-    _validate_pretax_deduction_parameters(pretax_deductions)
+    _validate_tax_parameters(federal, payroll, pretax_deductions)
     start_decimal = _finite_decimal(start, "start")
     stop_decimal = _finite_decimal(stop, "stop")
     step_decimal = _finite_decimal(step, "step")
@@ -390,6 +386,16 @@ def build_income_series(
 def _validate_pretax_deduction_mode(mode: str) -> None:
     if mode not in PRETAX_DEDUCTION_MODES:
         raise ValueError(f"unknown pretax_deduction_mode: {mode}")
+
+
+def _validate_tax_parameters(
+    federal: FederalTaxParameters,
+    payroll: PayrollTaxParameters,
+    pretax_deductions: PretaxDeductionParameters,
+) -> None:
+    _validate_federal_tax_parameters(federal)
+    _validate_payroll_tax_parameters(payroll)
+    _validate_pretax_deduction_parameters(pretax_deductions)
 
 
 def _validate_federal_tax_parameters(federal: FederalTaxParameters) -> None:
