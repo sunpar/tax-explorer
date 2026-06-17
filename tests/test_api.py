@@ -697,6 +697,25 @@ def test_income_series_rejects_secondary_income_for_non_joint_filers(tmp_path):
     )
 
 
+def test_income_series_rejects_secondary_income_above_stop(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "married_joint",
+            "start": "0",
+            "stop": "100000",
+            "step": "50000",
+            "secondary_income": "120000",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "secondary_income cannot exceed stop"
+
+
 def test_income_series_rejects_negative_dependent_count(tmp_path):
     client = create_test_client(tmp_path)
 

@@ -187,6 +187,25 @@ def test_cli_reports_invalid_secondary_income_as_usage_error(tmp_path, capsys):
     )
 
 
+def test_cli_reports_secondary_income_above_stop_as_usage_error(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--filing-status",
+                "married_joint",
+                "--stop",
+                "100000",
+                "--secondary-income",
+                "120000",
+                "--database-path",
+                str(tmp_path / "tax.sqlite3"),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "secondary_income cannot exceed stop" in capsys.readouterr().err
+
+
 def test_cli_accepts_year_filing_status_and_secondary_income(monkeypatch, tmp_path):
     output = io.StringIO()
     monkeypatch.setattr("sys.stdout", output)
