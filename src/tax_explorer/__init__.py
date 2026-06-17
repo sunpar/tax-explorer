@@ -210,6 +210,7 @@ def calculate_tax_burden(
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> TaxBurden:
     _validate_federal_tax_parameters(federal)
+    _validate_payroll_tax_parameters(payroll)
     return _calculate_tax_burden(
         scenario,
         federal=federal,
@@ -312,6 +313,7 @@ def build_income_series(
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> list[TaxBurden]:
     _validate_federal_tax_parameters(federal)
+    _validate_payroll_tax_parameters(payroll)
     start_decimal = _finite_decimal(start, "start")
     stop_decimal = _finite_decimal(stop, "stop")
     step_decimal = _finite_decimal(step, "step")
@@ -397,6 +399,32 @@ def _validate_federal_tax_parameters(federal: FederalTaxParameters) -> None:
     for previous_bracket, bracket in pairwise(federal.brackets):
         if bracket.lower_bound <= previous_bracket.lower_bound:
             raise ValueError("federal tax bracket lower_bounds must increase")
+
+
+def _validate_payroll_tax_parameters(payroll: PayrollTaxParameters) -> None:
+    _validated_rate(payroll.social_security_rate, "social_security_rate")
+    _validated_non_negative_money(
+        payroll.social_security_wage_base,
+        "social_security_wage_base",
+    )
+    _validated_rate(payroll.medicare_rate, "medicare_rate")
+    _validated_rate(payroll.additional_medicare_rate, "additional_medicare_rate")
+    _validated_non_negative_money(
+        payroll.additional_medicare_threshold_single,
+        "additional_medicare_threshold_single",
+    )
+    for threshold in payroll.additional_medicare_thresholds.values():
+        _validated_non_negative_money(
+            threshold,
+            "additional_medicare_threshold",
+        )
+
+
+def _validated_rate(value: Decimal | int | float | str, field_name: str) -> Decimal:
+    rate = _finite_decimal(value, field_name)
+    if rate < 0 or rate > 1:
+        raise ValueError(f"{field_name} must be between 0 and 1")
+    return rate
 
 
 def _validate_dependent_count(dependent_count: int) -> int:
