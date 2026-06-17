@@ -188,6 +188,28 @@ def test_build_income_series_rejects_malformed_federal_fields(
         build_income_series(start=0, stop=1000, step=1000, federal=federal)
 
 
+@pytest.mark.parametrize(
+    "calculate",
+    [
+        lambda federal: calculate_tax_burden(
+            TaxScenario(gross_income=money("1000")), federal=federal
+        ),
+        lambda federal: build_income_series(
+            start=0, stop=1000, step=1000, federal=federal
+        ),
+    ],
+    ids=["calculate_tax_burden", "build_income_series"],
+)
+def test_public_boundaries_reject_unsupported_federal_filing_status(calculate):
+    federal = replace(FEDERAL_2026_SINGLE, filing_status="qualifying_widow")
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("unsupported filing_status: qualifying_widow"),
+    ):
+        calculate(federal)
+
+
 def test_calculate_tax_burden_normalizes_custom_federal_money_fields():
     federal = FederalTaxParameters(
         tax_year=2026,
