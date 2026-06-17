@@ -126,6 +126,69 @@ def test_build_income_series_rejects_malformed_federal_brackets():
 
 
 @pytest.mark.parametrize(
+    ("federal", "message"),
+    [
+        (
+            replace(FEDERAL_2026_SINGLE, standard_deduction=Decimal("NaN")),
+            "standard_deduction must be a finite decimal",
+        ),
+        (
+            replace(FEDERAL_2026_SINGLE, standard_deduction=Decimal("-1.00")),
+            "standard_deduction must be non-negative",
+        ),
+        (
+            federal_with_brackets(
+                (
+                    TaxBracket(money("0.00"), Decimal("0.10")),
+                    TaxBracket(Decimal("NaN"), Decimal("0.12")),
+                )
+            ),
+            "bracket lower_bound must be a finite decimal",
+        ),
+        (
+            federal_with_brackets((TaxBracket(Decimal("-1.00"), Decimal("0.10")),)),
+            "bracket lower_bound must be non-negative",
+        ),
+        (
+            federal_with_brackets((TaxBracket(money("0.00"), Decimal("NaN")),)),
+            "bracket rate must be a finite decimal",
+        ),
+        (
+            federal_with_brackets((TaxBracket(money("0.00"), Decimal("1.10")),)),
+            "bracket rate must be between 0 and 1",
+        ),
+    ],
+)
+def test_calculate_tax_burden_rejects_malformed_federal_fields(
+    federal,
+    message,
+):
+    with pytest.raises(ValueError, match=re.escape(message)):
+        calculate_tax_burden(TaxScenario(gross_income=money("1000")), federal=federal)
+
+
+@pytest.mark.parametrize(
+    ("federal", "message"),
+    [
+        (
+            replace(FEDERAL_2026_SINGLE, standard_deduction=Decimal("NaN")),
+            "standard_deduction must be a finite decimal",
+        ),
+        (
+            federal_with_brackets((TaxBracket(money("0.00"), Decimal("-0.10")),)),
+            "bracket rate must be between 0 and 1",
+        ),
+    ],
+)
+def test_build_income_series_rejects_malformed_federal_fields(
+    federal,
+    message,
+):
+    with pytest.raises(ValueError, match=re.escape(message)):
+        build_income_series(start=0, stop=1000, step=1000, federal=federal)
+
+
+@pytest.mark.parametrize(
     ("field", "value", "message"),
     [
         (

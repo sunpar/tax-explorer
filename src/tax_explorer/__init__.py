@@ -401,6 +401,11 @@ def _validate_tax_parameters(
 def _validate_federal_tax_parameters(federal: FederalTaxParameters) -> None:
     if not federal.brackets:
         raise ValueError("federal tax brackets are required")
+    _validated_non_negative_money(federal.standard_deduction, "standard_deduction")
+    for bracket in federal.brackets:
+        _validated_non_negative_money(bracket.lower_bound, "bracket lower_bound")
+        _validated_rate(bracket.rate, "bracket rate")
+
     if federal.brackets[0].lower_bound != ZERO_MONEY:
         raise ValueError("federal tax brackets must start at 0.00")
 
