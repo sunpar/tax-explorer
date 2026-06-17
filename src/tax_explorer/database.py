@@ -300,8 +300,7 @@ def _validate_federal_tax_brackets(brackets: tuple[TaxBracket, ...]) -> None:
         raise ValueError("federal tax brackets must start at 0.00")
 
     for previous_bracket, bracket in pairwise(brackets):
-        previous_lower_bound = previous_bracket.lower_bound
-        if bracket.lower_bound <= previous_lower_bound:
+        if bracket.lower_bound <= previous_bracket.lower_bound:
             raise ValueError("federal tax bracket lower_bounds must increase")
 
 
