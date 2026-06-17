@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from itertools import pairwise
 from typing import Callable, Iterable, Mapping
 
 
@@ -208,6 +209,21 @@ def calculate_tax_burden(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> TaxBurden:
+    _validate_federal_tax_parameters(federal)
+    return _calculate_tax_burden(
+        scenario,
+        federal=federal,
+        payroll=payroll,
+        pretax_deductions=pretax_deductions,
+    )
+
+
+def _calculate_tax_burden(
+    scenario: TaxScenario,
+    federal: FederalTaxParameters,
+    payroll: PayrollTaxParameters,
+    pretax_deductions: PretaxDeductionParameters,
+) -> TaxBurden:
     gross_income = _validated_non_negative_money(
         scenario.gross_income, "gross_income"
     )
@@ -295,6 +311,7 @@ def build_income_series(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> list[TaxBurden]:
+    _validate_federal_tax_parameters(federal)
     start_decimal = _finite_decimal(start, "start")
     stop_decimal = _finite_decimal(stop, "stop")
     step_decimal = _finite_decimal(step, "step")
@@ -350,7 +367,7 @@ def build_income_series(
                 add_income(income)
 
     return [
-        calculate_tax_burden(
+        _calculate_tax_burden(
             TaxScenario(
                 gross_income=income,
                 include_employer_payroll_tax=include_employer_payroll_tax,
@@ -369,6 +386,17 @@ def build_income_series(
 def _validate_pretax_deduction_mode(mode: str) -> None:
     if mode not in PRETAX_DEDUCTION_MODES:
         raise ValueError(f"unknown pretax_deduction_mode: {mode}")
+
+
+def _validate_federal_tax_parameters(federal: FederalTaxParameters) -> None:
+    if not federal.brackets:
+        raise ValueError("federal tax brackets are required")
+    if federal.brackets[0].lower_bound != ZERO_MONEY:
+        raise ValueError("federal tax brackets must start at 0.00")
+
+    for previous_bracket, bracket in pairwise(federal.brackets):
+        if bracket.lower_bound <= previous_bracket.lower_bound:
+            raise ValueError("federal tax bracket lower_bounds must increase")
 
 
 def _validate_dependent_count(dependent_count: int) -> int:
