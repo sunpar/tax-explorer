@@ -149,6 +149,7 @@ def test_cli_reports_invalid_decimal_arguments_as_usage_errors(
         ("--stop", "-1", "must be non-negative"),
         ("--step", "0", "must be positive"),
         ("--step", "-1", "must be positive"),
+        ("--step", "0.004", "must be positive"),
         ("--secondary-income", "-1", "must be non-negative"),
     ],
 )

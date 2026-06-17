@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 from tax_explorer import (
+    MONEY,
     PRETAX_DEDUCTION_MODE_CHOICES,
     PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
     TaxBurden,
@@ -70,7 +71,7 @@ def non_negative_decimal_argument(value: str) -> str:
 
 def positive_decimal_argument(value: str) -> str:
     parsed = _finite_decimal_argument(value)
-    if parsed <= 0:
+    if parsed.quantize(MONEY, rounding=ROUND_HALF_UP) <= 0:
         raise argparse.ArgumentTypeError("must be positive")
     return value
 
