@@ -315,6 +315,8 @@ def build_income_series(
     configured_secondary_income = _validate_secondary_income_for_series(
         _validated_non_negative_money(secondary_income, "secondary_income"), federal
     )
+    if configured_secondary_income > stop_amount:
+        raise ValueError("secondary_income cannot exceed stop")
     worker_count = _worker_count(federal, configured_secondary_income)
     _validate_pretax_deduction_mode(pretax_deduction_mode)
     active_pretax_deductions = _active_pretax_deduction_parameters(

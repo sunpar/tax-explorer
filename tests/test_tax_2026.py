@@ -354,6 +354,17 @@ def test_build_income_series_rejects_reversed_income_range():
         build_income_series(start=100000, stop=0, step=10000)
 
 
+def test_build_income_series_rejects_secondary_income_above_stop():
+    with pytest.raises(ValueError, match="secondary_income cannot exceed stop"):
+        build_income_series(
+            start=0,
+            stop=money("100000"),
+            step=money("50000"),
+            secondary_income=money("120000"),
+            federal=FEDERAL_2026_MARRIED_JOINT,
+        )
+
+
 def test_build_income_series_rejects_sub_cent_negative_start():
     with pytest.raises(ValueError, match="income bounds must be non-negative"):
         build_income_series(start=money("-0.004"), stop=0, step=1)
