@@ -469,6 +469,10 @@ def test_build_income_series_normalizes_custom_pretax_rate_field():
         PRETAX_DEDUCTIONS_2026,
         gradual_phase_in_start_rate="0.01",
     )
+    expected = replace(
+        PRETAX_DEDUCTIONS_2026,
+        gradual_phase_in_start_rate=Decimal("0.01"),
+    )
 
     rows = build_income_series(
         start=100000,
@@ -478,7 +482,15 @@ def test_build_income_series_normalizes_custom_pretax_rate_field():
         pretax_deductions=pretax,
     )
 
-    assert rows[0].total_pretax_deductions == money("3448.87")
+    normalized_rows = build_income_series(
+        start=100000,
+        stop=100000,
+        step=1,
+        pretax_deduction_mode="gradual_phase_in",
+        pretax_deductions=expected,
+    )
+
+    assert rows[0].total_pretax_deductions == normalized_rows[0].total_pretax_deductions
 
 
 def test_dependent_care_fsa_activates_when_dependents_are_present():
