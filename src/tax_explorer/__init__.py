@@ -209,8 +209,7 @@ def calculate_tax_burden(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> TaxBurden:
-    _validate_federal_tax_parameters(federal)
-    _validate_payroll_tax_parameters(payroll)
+    _validate_tax_parameters(federal, payroll, pretax_deductions)
     return _calculate_tax_burden(
         scenario,
         federal=federal,
@@ -312,8 +311,7 @@ def build_income_series(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> list[TaxBurden]:
-    _validate_federal_tax_parameters(federal)
-    _validate_payroll_tax_parameters(payroll)
+    _validate_tax_parameters(federal, payroll, pretax_deductions)
     start_decimal = _finite_decimal(start, "start")
     stop_decimal = _finite_decimal(stop, "stop")
     step_decimal = _finite_decimal(step, "step")
@@ -390,6 +388,16 @@ def _validate_pretax_deduction_mode(mode: str) -> None:
         raise ValueError(f"unknown pretax_deduction_mode: {mode}")
 
 
+def _validate_tax_parameters(
+    federal: FederalTaxParameters,
+    payroll: PayrollTaxParameters,
+    pretax_deductions: PretaxDeductionParameters,
+) -> None:
+    _validate_federal_tax_parameters(federal)
+    _validate_payroll_tax_parameters(payroll)
+    _validate_pretax_deduction_parameters(pretax_deductions)
+
+
 def _validate_federal_tax_parameters(federal: FederalTaxParameters) -> None:
     if not federal.brackets:
         raise ValueError("federal tax brackets are required")
@@ -418,6 +426,24 @@ def _validate_payroll_tax_parameters(payroll: PayrollTaxParameters) -> None:
             threshold,
             "additional_medicare_threshold",
         )
+
+
+def _validate_pretax_deduction_parameters(
+    parameters: PretaxDeductionParameters,
+) -> None:
+    _validated_non_negative_money(
+        parameters.employee_401k_limit,
+        "employee_401k_limit",
+    )
+    _validated_non_negative_money(parameters.health_fsa_limit, "health_fsa_limit")
+    _validated_non_negative_money(
+        parameters.dependent_care_fsa_limit,
+        "dependent_care_fsa_limit",
+    )
+    _validated_rate(
+        parameters.gradual_phase_in_start_rate,
+        "gradual_phase_in_start_rate",
+    )
 
 
 def _validated_rate(value: Decimal | int | float | str, field_name: str) -> Decimal:
