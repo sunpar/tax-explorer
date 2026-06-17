@@ -8,6 +8,7 @@ import tax_explorer as tax_module
 from tax_explorer import (
     FEDERAL_2026_SINGLE,
     PAYROLL_2026,
+    PRETAX_DEDUCTIONS_2026,
     FederalTaxParameters,
     PayrollTaxParameters,
     TaxBracket,
@@ -194,6 +195,76 @@ def test_build_income_series_rejects_malformed_payroll_parameters(
 
     with pytest.raises(ValueError, match=re.escape(message)):
         build_income_series(start=0, stop=1000, step=1000, payroll=payroll)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        (
+            "employee_401k_limit",
+            Decimal("NaN"),
+            "employee_401k_limit must be a finite decimal",
+        ),
+        (
+            "health_fsa_limit",
+            Decimal("-1.00"),
+            "health_fsa_limit must be non-negative",
+        ),
+        (
+            "dependent_care_fsa_limit",
+            Decimal("-1.00"),
+            "dependent_care_fsa_limit must be non-negative",
+        ),
+        (
+            "gradual_phase_in_start_rate",
+            Decimal("1.10"),
+            "gradual_phase_in_start_rate must be between 0 and 1",
+        ),
+    ],
+)
+def test_calculate_tax_burden_rejects_malformed_pretax_parameters(
+    field,
+    value,
+    message,
+):
+    pretax = replace(PRETAX_DEDUCTIONS_2026, **{field: value})
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        calculate_tax_burden(
+            TaxScenario(gross_income=money("1000")),
+            pretax_deductions=pretax,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        (
+            "employee_401k_limit",
+            Decimal("NaN"),
+            "employee_401k_limit must be a finite decimal",
+        ),
+        (
+            "gradual_phase_in_start_rate",
+            Decimal("-0.10"),
+            "gradual_phase_in_start_rate must be between 0 and 1",
+        ),
+    ],
+)
+def test_build_income_series_rejects_malformed_pretax_parameters(
+    field,
+    value,
+    message,
+):
+    pretax = replace(PRETAX_DEDUCTIONS_2026, **{field: value})
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        build_income_series(
+            start=0,
+            stop=1000,
+            step=1000,
+            pretax_deductions=pretax,
+        )
 
 
 def test_dependent_care_fsa_activates_when_dependents_are_present():

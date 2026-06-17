@@ -211,6 +211,7 @@ def calculate_tax_burden(
 ) -> TaxBurden:
     _validate_federal_tax_parameters(federal)
     _validate_payroll_tax_parameters(payroll)
+    _validate_pretax_deduction_parameters(pretax_deductions)
     return _calculate_tax_burden(
         scenario,
         federal=federal,
@@ -314,6 +315,7 @@ def build_income_series(
 ) -> list[TaxBurden]:
     _validate_federal_tax_parameters(federal)
     _validate_payroll_tax_parameters(payroll)
+    _validate_pretax_deduction_parameters(pretax_deductions)
     start_decimal = _finite_decimal(start, "start")
     stop_decimal = _finite_decimal(stop, "stop")
     step_decimal = _finite_decimal(step, "step")
@@ -418,6 +420,24 @@ def _validate_payroll_tax_parameters(payroll: PayrollTaxParameters) -> None:
             threshold,
             "additional_medicare_threshold",
         )
+
+
+def _validate_pretax_deduction_parameters(
+    parameters: PretaxDeductionParameters,
+) -> None:
+    _validated_non_negative_money(
+        parameters.employee_401k_limit,
+        "employee_401k_limit",
+    )
+    _validated_non_negative_money(parameters.health_fsa_limit, "health_fsa_limit")
+    _validated_non_negative_money(
+        parameters.dependent_care_fsa_limit,
+        "dependent_care_fsa_limit",
+    )
+    _validated_rate(
+        parameters.gradual_phase_in_start_rate,
+        "gradual_phase_in_start_rate",
+    )
 
 
 def _validated_rate(value: Decimal | int | float | str, field_name: str) -> Decimal:
