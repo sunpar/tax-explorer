@@ -210,7 +210,7 @@ def calculate_tax_burden(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> TaxBurden:
-    federal = _validated_tax_parameters(federal, payroll, pretax_deductions)
+    federal, payroll = _validated_tax_parameters(federal, payroll, pretax_deductions)
     return _calculate_tax_burden(
         scenario,
         federal=federal,
@@ -312,7 +312,7 @@ def build_income_series(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> list[TaxBurden]:
-    federal = _validated_tax_parameters(federal, payroll, pretax_deductions)
+    federal, payroll = _validated_tax_parameters(federal, payroll, pretax_deductions)
     start_decimal = _finite_decimal(start, "start")
     stop_decimal = _finite_decimal(stop, "stop")
     step_decimal = _finite_decimal(step, "step")
@@ -393,11 +393,11 @@ def _validated_tax_parameters(
     federal: FederalTaxParameters,
     payroll: PayrollTaxParameters,
     pretax_deductions: PretaxDeductionParameters,
-) -> FederalTaxParameters:
+) -> tuple[FederalTaxParameters, PayrollTaxParameters]:
     federal = _validated_federal_tax_parameters(federal)
-    _validate_payroll_tax_parameters(payroll)
+    payroll = _validated_payroll_tax_parameters(payroll)
     _validate_pretax_deduction_parameters(pretax_deductions)
-    return federal
+    return federal, payroll
 
 
 def _validated_federal_tax_parameters(
@@ -449,23 +449,40 @@ def _validated_federal_tax_parameters_uncached(
     )
 
 
-def _validate_payroll_tax_parameters(payroll: PayrollTaxParameters) -> None:
-    _validated_rate(payroll.social_security_rate, "social_security_rate")
-    _validated_non_negative_money(
+def _validated_payroll_tax_parameters(
+    payroll: PayrollTaxParameters,
+) -> PayrollTaxParameters:
+    social_security_rate = _validated_rate(
+        payroll.social_security_rate, "social_security_rate"
+    )
+    social_security_wage_base = _validated_non_negative_money(
         payroll.social_security_wage_base,
         "social_security_wage_base",
     )
-    _validated_rate(payroll.medicare_rate, "medicare_rate")
-    _validated_rate(payroll.additional_medicare_rate, "additional_medicare_rate")
-    _validated_non_negative_money(
+    medicare_rate = _validated_rate(payroll.medicare_rate, "medicare_rate")
+    additional_medicare_rate = _validated_rate(
+        payroll.additional_medicare_rate, "additional_medicare_rate"
+    )
+    additional_medicare_threshold_single = _validated_non_negative_money(
         payroll.additional_medicare_threshold_single,
         "additional_medicare_threshold_single",
     )
-    for threshold in payroll.additional_medicare_thresholds.values():
-        _validated_non_negative_money(
-            threshold,
-            "additional_medicare_threshold",
+    additional_medicare_thresholds = {
+        filing_status: _validated_non_negative_money(
+            threshold, "additional_medicare_threshold"
         )
+        for filing_status, threshold in payroll.additional_medicare_thresholds.items()
+    }
+
+    return PayrollTaxParameters(
+        tax_year=payroll.tax_year,
+        social_security_rate=social_security_rate,
+        social_security_wage_base=social_security_wage_base,
+        medicare_rate=medicare_rate,
+        additional_medicare_rate=additional_medicare_rate,
+        additional_medicare_threshold_single=additional_medicare_threshold_single,
+        additional_medicare_thresholds=additional_medicare_thresholds,
+    )
 
 
 def _validate_pretax_deduction_parameters(

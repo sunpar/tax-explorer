@@ -343,6 +343,40 @@ def test_build_income_series_rejects_malformed_payroll_parameters(
         build_income_series(start=0, stop=1000, step=1000, payroll=payroll)
 
 
+def test_calculate_tax_burden_normalizes_custom_payroll_rate_fields():
+    payroll = replace(
+        PAYROLL_2026,
+        social_security_rate="0.062",
+        medicare_rate="0.0145",
+        additional_medicare_rate="0.009",
+    )
+    scenario = TaxScenario(gross_income=money("250000"))
+
+    result = calculate_tax_burden(scenario, payroll=payroll)
+    expected = calculate_tax_burden(scenario, payroll=PAYROLL_2026)
+
+    assert result.employee_social_security_tax == expected.employee_social_security_tax
+    assert result.employee_medicare_tax == expected.employee_medicare_tax
+    assert (
+        result.employee_additional_medicare_tax
+        == expected.employee_additional_medicare_tax
+    )
+
+
+def test_build_income_series_normalizes_custom_payroll_money_fields():
+    payroll = replace(
+        PAYROLL_2026,
+        social_security_wage_base=184500.0,
+        additional_medicare_threshold_single=200000.0,
+        additional_medicare_thresholds={"single": 200000.0},
+    )
+
+    rows = build_income_series(start=250000, stop=250000, step=1, payroll=payroll)
+
+    assert rows[0].employee_social_security_tax == money("11439.00")
+    assert rows[0].employee_additional_medicare_tax == money("419.40")
+
+
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
