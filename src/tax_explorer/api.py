@@ -190,6 +190,7 @@ def create_app(
                 filing_status=filing_status,
                 start=start,
                 stop=stop,
+                step=step,
                 secondary_income=secondary_income,
             )
         except ValueError as exc:
@@ -255,6 +256,7 @@ def _prevalidate_supported_income_series_request(
     filing_status: str,
     start: Decimal,
     stop: Decimal,
+    step: Decimal,
     secondary_income: Decimal,
 ) -> None:
     if year != DEFAULT_TAX_YEAR or filing_status not in FILING_STATUS_CHOICES:
@@ -262,9 +264,12 @@ def _prevalidate_supported_income_series_request(
 
     start_amount = _rounded_query_money(start, "start")
     stop_amount = _rounded_query_money(stop, "stop")
+    step_amount = _rounded_query_money(step, "step")
     secondary_income_amount = _rounded_query_money(
         secondary_income, "secondary_income"
     )
+    if step_amount <= 0:
+        raise ValueError("step must be positive")
     if start_amount > stop_amount:
         raise ValueError("start must be less than or equal to stop")
     if secondary_income_amount == 0:

@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tax_explorer.api import create_app
@@ -872,6 +873,31 @@ def test_income_series_rejects_secondary_income_for_non_joint_filers(tmp_path):
     )
 
 
+def test_income_series_prevalidates_secondary_income_for_non_joint_before_database_init(
+    tmp_path,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "100000",
+            "stop": "100000",
+            "step": "50000",
+            "secondary_income": "25000",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "secondary_income is only supported for married_joint"
+    )
+    assert not database_path.exists()
+
+
 def test_income_series_rejects_secondary_income_above_stop(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -1052,6 +1078,37 @@ def test_income_series_prevalidates_unroundable_range_before_database_init(tmp_p
 
     assert response.status_code == 422
     assert response.json()["detail"] == "start must fit cents precision"
+    assert not database_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("step", "message"),
+    [
+        ("1e27", "step must fit cents precision"),
+        ("0.004", "step must be positive"),
+    ],
+)
+def test_income_series_prevalidates_invalid_step_before_database_init(
+    tmp_path,
+    step,
+    message,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "0",
+            "stop": "100000",
+            "step": step,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == message
     assert not database_path.exists()
 
 
