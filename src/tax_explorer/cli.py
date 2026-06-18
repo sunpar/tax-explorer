@@ -97,6 +97,18 @@ def validate_secondary_income_arguments(
         parser.error("secondary_income cannot exceed stop")
 
 
+def validate_income_range_arguments(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> None:
+    if args.filing_status not in FILING_STATUS_CHOICES:
+        return
+
+    start = Decimal(args.start).quantize(MONEY, rounding=ROUND_HALF_UP)
+    stop = Decimal(args.stop).quantize(MONEY, rounding=ROUND_HALF_UP)
+    if start > stop:
+        parser.error("start must be less than or equal to stop")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate US W-2 tax burden rows by income."
@@ -141,6 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     validate_secondary_income_arguments(args, parser)
+    validate_income_range_arguments(args, parser)
 
     try:
         with initialize_database(args.database_path) as connection:
