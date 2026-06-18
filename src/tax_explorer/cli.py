@@ -80,11 +80,11 @@ def positive_money_increment_argument(value: str) -> str:
     return value
 
 
-def _round_money_argument(value: str) -> Decimal | None:
+def _money_comparison_argument(value: str) -> Decimal:
     try:
         return Decimal(value).quantize(MONEY, rounding=ROUND_HALF_UP)
     except InvalidOperation:
-        return None
+        return Decimal(value)
 
 
 def validate_secondary_income_arguments(
@@ -93,10 +93,8 @@ def validate_secondary_income_arguments(
     if args.filing_status not in FILING_STATUS_CHOICES:
         return
 
-    stop = _round_money_argument(args.stop)
-    secondary_income = _round_money_argument(args.secondary_income)
-    if stop is None or secondary_income is None:
-        return
+    stop = _money_comparison_argument(args.stop)
+    secondary_income = _money_comparison_argument(args.secondary_income)
 
     if args.filing_status != "married_joint" and secondary_income > 0:
         parser.error("secondary_income is only supported for married_joint")
@@ -110,11 +108,8 @@ def validate_income_range_arguments(
     if args.filing_status not in FILING_STATUS_CHOICES:
         return
 
-    start = _round_money_argument(args.start)
-    stop = _round_money_argument(args.stop)
-    if start is None or stop is None:
-        return
-
+    start = _money_comparison_argument(args.start)
+    stop = _money_comparison_argument(args.stop)
     if start > stop:
         parser.error("start must be less than or equal to stop")
 

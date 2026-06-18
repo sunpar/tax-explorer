@@ -215,6 +215,29 @@ def test_cli_reports_secondary_income_above_stop_as_usage_error(tmp_path, capsys
     assert not database_path.exists()
 
 
+def test_cli_reports_unroundable_secondary_income_as_usage_error(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--secondary-income",
+                "1e27",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert (
+        "secondary_income is only supported for married_joint" in capsys.readouterr().err
+    )
+    assert not database_path.exists()
+
+
 def test_cli_reports_reversed_income_range_before_database_initialization(
     tmp_path,
     capsys,
@@ -226,6 +249,29 @@ def test_cli_reports_reversed_income_range_before_database_initialization(
             [
                 "--start",
                 "100000",
+                "--stop",
+                "0",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "start must be less than or equal to stop" in capsys.readouterr().err
+    assert not database_path.exists()
+
+
+def test_cli_reports_unroundable_reversed_income_range_before_database_initialization(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--start",
+                "1e999",
                 "--stop",
                 "0",
                 "--database-path",
