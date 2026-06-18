@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import asdict
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Annotated, Any, Iterator, Literal
 
@@ -11,7 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, BeforeValidator, Field, model_validator
 
 from tax_explorer import (
+    FILING_STATUS_CHOICES,
     FederalTaxParameters,
+    MONEY,
     PayrollTaxParameters,
     PRETAX_DEDUCTION_MODE_GRADUAL_PHASE_IN,
     PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
@@ -43,6 +45,7 @@ MISSING_PARAMETER_MESSAGE_PREFIXES = (
     "No payroll tax parameters",
     "No pre-tax deduction parameters",
 )
+DEFAULT_TAX_YEAR = 2026
 
 
 def _parse_strict_query_bool(value: Any) -> bool:
@@ -182,6 +185,18 @@ def create_app(
         ),
     ) -> dict[str, list[dict[str, Any]]]:
         try:
+            _prevalidate_supported_income_series_request(
+                year=year,
+                filing_status=filing_status,
+                start=start,
+                stop=stop,
+                step=step,
+                secondary_income=secondary_income,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        try:
             federal, payroll, pretax = _load_parameters(app, year, filing_status)
         except ValueError as exc:
             raise _parameter_http_exception(exc) from exc
@@ -233,6 +248,43 @@ def _load_parameters(
         payroll = load_payroll_tax_parameters(connection, year)
         pretax = load_pretax_deduction_parameters(connection, year)
     return federal, payroll, pretax
+
+
+def _prevalidate_supported_income_series_request(
+    *,
+    year: int,
+    filing_status: str,
+    start: Decimal,
+    stop: Decimal,
+    step: Decimal,
+    secondary_income: Decimal,
+) -> None:
+    if year != DEFAULT_TAX_YEAR or filing_status not in FILING_STATUS_CHOICES:
+        return
+
+    start_amount = _rounded_query_money(start, "start")
+    stop_amount = _rounded_query_money(stop, "stop")
+    step_amount = _rounded_query_money(step, "step")
+    if step_amount <= 0:
+        raise ValueError("step must be positive")
+    if start_amount > stop_amount:
+        raise ValueError("start must be less than or equal to stop")
+    secondary_income_amount = _rounded_query_money(
+        secondary_income, "secondary_income"
+    )
+    if secondary_income_amount == 0:
+        return
+    if filing_status != "married_joint":
+        raise ValueError("secondary_income is only supported for married_joint")
+    if secondary_income_amount > stop_amount:
+        raise ValueError("secondary_income cannot exceed stop")
+
+
+def _rounded_query_money(value: Decimal, field_name: str) -> Decimal:
+    try:
+        return value.quantize(MONEY, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        raise ValueError(f"{field_name} must fit cents precision") from None
 
 
 def _parameter_http_exception(exc: ValueError) -> HTTPException:
