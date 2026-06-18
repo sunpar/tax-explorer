@@ -142,10 +142,18 @@ def test_rejects_negative_federal_standard_deduction_from_sqlite(
             load_federal_tax_parameters(connection, 2026, "single")
 
 
-@pytest.mark.parametrize("standard_deduction", ["NaN", "Infinity"])
-def test_rejects_non_finite_federal_standard_deduction_from_sqlite(
+@pytest.mark.parametrize(
+    ("standard_deduction", "message"),
+    [
+        ("NaN", "standard_deduction must be a finite decimal"),
+        ("Infinity", "standard_deduction must be a finite decimal"),
+        ("1e27", "standard_deduction must fit cents precision"),
+    ],
+)
+def test_rejects_invalid_federal_standard_deduction_decimal_from_sqlite(
     tmp_path,
     standard_deduction,
+    message,
 ):
     db_path = tmp_path / "tax.sqlite3"
 
@@ -160,9 +168,7 @@ def test_rejects_non_finite_federal_standard_deduction_from_sqlite(
         )
         connection.commit()
 
-        with pytest.raises(
-            ValueError, match="standard_deduction must be a finite decimal"
-        ):
+        with pytest.raises(ValueError, match=message):
             load_federal_tax_parameters(connection, 2026, "single")
 
 
@@ -246,11 +252,12 @@ def test_rejects_duplicate_federal_bracket_lower_bounds_after_rounding_from_sqli
     ("column", "value", "message"),
     [
         ("lower_bound", "NaN", "bracket lower_bound must be a finite decimal"),
+        ("lower_bound", "1e27", "bracket lower_bound must fit cents precision"),
         ("rate", "NaN", "bracket rate must be a finite decimal"),
         ("rate", "Infinity", "bracket rate must be a finite decimal"),
     ],
 )
-def test_rejects_non_finite_federal_brackets_from_sqlite(
+def test_rejects_invalid_federal_bracket_decimals_from_sqlite(
     tmp_path,
     column,
     value,
@@ -325,6 +332,11 @@ def test_loads_2026_payroll_parameters_from_sqlite(tmp_path):
             "Infinity",
             "social_security_wage_base must be a finite decimal",
         ),
+        (
+            "social_security_wage_base",
+            "1e27",
+            "social_security_wage_base must fit cents precision",
+        ),
         ("medicare_rate", "-0.10", "medicare_rate must be between 0 and 1"),
         ("medicare_rate", "1.10", "medicare_rate must be between 0 and 1"),
         (
@@ -351,6 +363,11 @@ def test_loads_2026_payroll_parameters_from_sqlite(tmp_path):
             "additional_medicare_threshold_single",
             "NaN",
             "additional_medicare_threshold_single must be a finite decimal",
+        ),
+        (
+            "additional_medicare_threshold_single",
+            "1e27",
+            "additional_medicare_threshold_single must fit cents precision",
         ),
     ],
 )
@@ -383,6 +400,7 @@ def test_rejects_invalid_payroll_parameters_from_sqlite(
         ("-1.00", "additional_medicare_threshold must be non-negative"),
         ("-0.004", "additional_medicare_threshold must be non-negative"),
         ("NaN", "additional_medicare_threshold must be a finite decimal"),
+        ("1e27", "additional_medicare_threshold must fit cents precision"),
     ],
 )
 def test_rejects_invalid_additional_medicare_thresholds_from_sqlite(
@@ -458,8 +476,18 @@ def test_loads_2026_pretax_deduction_parameters_from_sqlite(tmp_path):
             "NaN",
             "employee_401k_limit must be a finite decimal",
         ),
+        (
+            "employee_401k_limit",
+            "1e27",
+            "employee_401k_limit must fit cents precision",
+        ),
         ("health_fsa_limit", "-1.00", "health_fsa_limit must be non-negative"),
         ("health_fsa_limit", "-0.004", "health_fsa_limit must be non-negative"),
+        (
+            "health_fsa_limit",
+            "1e27",
+            "health_fsa_limit must fit cents precision",
+        ),
         (
             "dependent_care_fsa_limit",
             "-1.00",
@@ -469,6 +497,11 @@ def test_loads_2026_pretax_deduction_parameters_from_sqlite(tmp_path):
             "dependent_care_fsa_limit",
             "-0.004",
             "dependent_care_fsa_limit must be non-negative",
+        ),
+        (
+            "dependent_care_fsa_limit",
+            "1e27",
+            "dependent_care_fsa_limit must fit cents precision",
         ),
         (
             "gradual_phase_in_start_rate",
