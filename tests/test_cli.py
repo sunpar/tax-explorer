@@ -226,8 +226,10 @@ def test_cli_preserves_unsupported_filing_status_error_with_secondary_income(
             [
                 "--filing-status",
                 "unknown",
+                "--stop",
+                "100000",
                 "--secondary-income",
-                "1",
+                "120000",
                 "--database-path",
                 str(database_path),
             ]

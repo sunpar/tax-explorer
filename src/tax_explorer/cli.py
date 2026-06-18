@@ -94,7 +94,7 @@ def validate_secondary_income_arguments(
         and secondary_income > 0
     ):
         parser.error("secondary_income is only supported for married_joint")
-    if secondary_income > stop:
+    if args.filing_status in FILING_STATUS_CHOICES and secondary_income > stop:
         parser.error("secondary_income cannot exceed stop")
 
 
