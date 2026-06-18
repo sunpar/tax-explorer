@@ -363,6 +363,13 @@ async function renderLoadedApp(expectedStop = 140.69, expectedSelected = 127900)
   );
 }
 
+function expectNoInvertedIncomeSeriesRequests() {
+  const invertedRequests = mockFetchIncomeSeries.mock.calls
+    .map(([request]) => request)
+    .filter((request) => Number(request.start) > Number(request.stop));
+  expect(invertedRequests).toEqual([]);
+}
+
 beforeEach(() => {
   localStorage.clear();
   vi.resetAllMocks();
@@ -536,6 +543,7 @@ describe("App tax curve controls", () => {
         })
       )
     );
+    expectNoInvertedIncomeSeriesRequests();
   });
 
   test("manual Start edit raises Stop when it would invert the range", async () => {
@@ -556,6 +564,7 @@ describe("App tax curve controls", () => {
         })
       )
     );
+    expectNoInvertedIncomeSeriesRequests();
   });
 
   test("manual Start edit caps selected income when it raises Stop", async () => {
@@ -571,6 +580,15 @@ describe("App tax curve controls", () => {
     expect(screen.getByLabelText("Start ($k)")).toHaveValue(150);
     expect(screen.getByLabelText("Stop ($k)")).toHaveValue(150);
     expect(screen.getByLabelText(/Selected income/)).toHaveValue("150000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "150000",
+          stop: "150000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
   });
 
   test("manual Stop edit lowers Start when it would invert the range", async () => {
@@ -594,6 +612,7 @@ describe("App tax curve controls", () => {
         })
       )
     );
+    expectNoInvertedIncomeSeriesRequests();
   });
 
   test("manual Stop edit keeps following the intended Start while typing", async () => {
@@ -620,6 +639,7 @@ describe("App tax curve controls", () => {
         })
       )
     );
+    expectNoInvertedIncomeSeriesRequests();
   });
 
   test("manual Stop edit resets the collapsed Start baseline for later edits", async () => {
@@ -650,6 +670,7 @@ describe("App tax curve controls", () => {
         })
       )
     );
+    expectNoInvertedIncomeSeriesRequests();
   });
 
   test("manual Stop replacement keeps the original Start anchor while focused", async () => {
@@ -668,6 +689,15 @@ describe("App tax curve controls", () => {
     expect(screen.getByLabelText("Start ($k)")).toHaveValue(75);
     expect(screen.getByLabelText("Stop ($k)")).toHaveValue(75);
     expect(screen.getByLabelText(/Selected income/)).toHaveValue("75000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "75000",
+          stop: "75000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
   });
 
   test("selected income edits clear the active Stop collapse anchor", async () => {
@@ -689,6 +719,15 @@ describe("App tax curve controls", () => {
     expect(screen.getByLabelText("Start ($k)")).toHaveValue(1);
     expect(screen.getByLabelText("Stop ($k)")).toHaveValue(125);
     expect(screen.getByLabelText(/Selected income/)).toHaveValue("50000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "1000",
+          stop: "125000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
   });
 
   test("manual Stop edit restores Start when the completed value stays above it", async () => {
@@ -718,6 +757,7 @@ describe("App tax curve controls", () => {
         })
       )
     );
+    expectNoInvertedIncomeSeriesRequests();
   });
 
   test("chart click updates the selected income", async () => {
