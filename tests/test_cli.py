@@ -284,6 +284,29 @@ def test_cli_reports_unroundable_reversed_income_range_before_database_initializ
     assert not database_path.exists()
 
 
+def test_cli_reports_unroundable_income_range_before_database_initialization(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--start",
+                "1e27",
+                "--stop",
+                "1e27",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "argument --start: must fit cents precision" in capsys.readouterr().err
+    assert not database_path.exists()
+
+
 def test_cli_compares_income_range_after_money_rounding(monkeypatch, tmp_path):
     output = io.StringIO()
     monkeypatch.setattr("sys.stdout", output)
