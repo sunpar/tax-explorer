@@ -215,6 +215,143 @@ def test_cli_reports_secondary_income_above_stop_as_usage_error(tmp_path, capsys
     assert not database_path.exists()
 
 
+def test_cli_reports_unroundable_secondary_income_as_usage_error(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--secondary-income",
+                "1e27",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert (
+        "secondary_income is only supported for married_joint" in capsys.readouterr().err
+    )
+    assert not database_path.exists()
+
+
+def test_cli_reports_reversed_income_range_before_database_initialization(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--start",
+                "100000",
+                "--stop",
+                "0",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "start must be less than or equal to stop" in capsys.readouterr().err
+    assert not database_path.exists()
+
+
+def test_cli_reports_unroundable_reversed_income_range_before_database_initialization(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--start",
+                "1e999",
+                "--stop",
+                "0",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "start must be less than or equal to stop" in capsys.readouterr().err
+    assert not database_path.exists()
+
+
+def test_cli_reports_unroundable_income_range_before_database_initialization(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--start",
+                "1e27",
+                "--stop",
+                "1e27",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "argument --start: must fit cents precision" in capsys.readouterr().err
+    assert not database_path.exists()
+
+
+def test_cli_compares_income_range_after_money_rounding(monkeypatch, tmp_path):
+    output = io.StringIO()
+    monkeypatch.setattr("sys.stdout", output)
+
+    result = main(
+        [
+            "--start",
+            "0.004",
+            "--stop",
+            "0.003",
+            "--database-path",
+            str(tmp_path / "tax.sqlite3"),
+        ]
+    )
+
+    row = next(csv.DictReader(io.StringIO(output.getvalue())))
+    assert result == 0
+    assert row["gross_income"] == "0.00"
+
+
+def test_cli_preserves_unsupported_year_error_for_unroundable_income_range(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--year",
+                "9999",
+                "--start",
+                "1e999",
+                "--stop",
+                "1e999",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "No federal tax parameters for 9999 single" in capsys.readouterr().err
+    assert database_path.exists()
+
+
 def test_cli_preserves_unsupported_filing_status_error_with_secondary_income(
     tmp_path,
     capsys,

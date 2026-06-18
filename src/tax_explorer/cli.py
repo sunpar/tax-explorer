@@ -44,6 +44,7 @@ CSV_FIELDS = (
     "dependent_care_fsa_contribution",
     "total_pretax_deductions",
 )
+DEFAULT_TAX_YEAR = 2026
 
 
 def non_negative_int(value: str) -> int:
@@ -80,21 +81,69 @@ def positive_money_increment_argument(value: str) -> str:
     return value
 
 
+def _rounded_money_argument(value: str) -> Decimal | None:
+    try:
+        return Decimal(value).quantize(MONEY, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return None
+
+
+def _money_comparison_argument(value: str) -> Decimal:
+    rounded = _rounded_money_argument(value)
+    return rounded if rounded is not None else Decimal(value)
+
+
+def _validate_roundable_money_arguments(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    fields: tuple[tuple[str, str], ...],
+) -> None:
+    for attribute, flag in fields:
+        if _rounded_money_argument(getattr(args, attribute)) is None:
+            parser.error(f"argument {flag}: must fit cents precision")
+
+
+def _can_prevalidate_arguments(args: argparse.Namespace) -> bool:
+    return args.year == DEFAULT_TAX_YEAR and args.filing_status in FILING_STATUS_CHOICES
+
+
 def validate_secondary_income_arguments(
     args: argparse.Namespace, parser: argparse.ArgumentParser
 ) -> None:
-    if args.filing_status not in FILING_STATUS_CHOICES:
+    if not _can_prevalidate_arguments(args):
         return
 
-    stop = Decimal(args.stop).quantize(MONEY, rounding=ROUND_HALF_UP)
-    secondary_income = Decimal(args.secondary_income).quantize(
-        MONEY, rounding=ROUND_HALF_UP
-    )
+    stop = _money_comparison_argument(args.stop)
+    secondary_income = _money_comparison_argument(args.secondary_income)
+    if secondary_income == 0:
+        return
 
     if args.filing_status != "married_joint" and secondary_income > 0:
         parser.error("secondary_income is only supported for married_joint")
     if secondary_income > stop:
         parser.error("secondary_income cannot exceed stop")
+    _validate_roundable_money_arguments(
+        args,
+        parser,
+        (("stop", "--stop"), ("secondary_income", "--secondary-income")),
+    )
+
+
+def validate_income_range_arguments(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> None:
+    if not _can_prevalidate_arguments(args):
+        return
+
+    start = _money_comparison_argument(args.start)
+    stop = _money_comparison_argument(args.stop)
+    if start > stop:
+        parser.error("start must be less than or equal to stop")
+    _validate_roundable_money_arguments(
+        args,
+        parser,
+        (("start", "--start"), ("stop", "--stop")),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -106,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--step", type=positive_money_increment_argument, default="10000"
     )
-    parser.add_argument("--year", type=non_negative_int, default=2026)
+    parser.add_argument("--year", type=non_negative_int, default=DEFAULT_TAX_YEAR)
     parser.add_argument("--filing-status", default="single")
     parser.add_argument(
         "--secondary-income", type=non_negative_decimal_argument, default="0"
@@ -141,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     validate_secondary_income_arguments(args, parser)
+    validate_income_range_arguments(args, parser)
 
     try:
         with initialize_database(args.database_path) as connection:
