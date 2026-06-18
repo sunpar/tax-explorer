@@ -595,6 +595,17 @@ def test_openapi_documents_pretax_deduction_modes(tmp_path):
         if parameter["name"] == "secondary_income"
     )
     assert numeric_schema(income_series_secondary_income["schema"])["minimum"] == 0
+    for field_name in (
+        "include_employer_payroll_tax",
+        "include_marginal_breakpoints",
+    ):
+        boolean_parameter = next(
+            parameter
+            for parameter in income_series_parameters
+            if parameter["name"] == field_name
+        )
+        assert boolean_parameter["schema"]["type"] == "boolean"
+        assert boolean_parameter["schema"]["default"] is False
 
 
 def test_calculate_response_breaks_tax_down_by_component(tmp_path):
@@ -711,6 +722,28 @@ def test_income_series_can_include_marginal_breakpoints_and_rates(tmp_path):
     assert rows[0]["marginal_employee_tax_rate"] == "0.0672"
     assert rows[1]["marginal_employee_tax_rate"] == "0.0765"
     assert rows[7]["marginal_employee_tax_rate"] == "0.2545"
+
+
+def test_income_series_accepts_lowercase_boolean_query_strings(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "100000",
+            "stop": "100000",
+            "step": "50000",
+            "include_employer_payroll_tax": "false",
+            "include_marginal_breakpoints": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    row = response.json()["rows"][0]
+    assert row["gross_income"] == "100000.00"
+    assert row["total_tax_with_employer_payroll"] == "14421.90"
 
 
 def test_income_series_includes_lopsided_dual_earner_deduction_breakpoint(tmp_path):
@@ -865,6 +898,32 @@ def test_income_series_rejects_negative_dependent_count(tmp_path):
     )
 
     assert response.status_code == 422
+
+
+def test_income_series_rejects_ambiguous_boolean_query_values(tmp_path):
+    client = create_test_client(tmp_path)
+
+    for field_name in (
+        "include_employer_payroll_tax",
+        "include_marginal_breakpoints",
+    ):
+        for query_value in ("1", "yes"):
+            response = client.get(
+                "/api/income-series",
+                params={
+                    "year": 2026,
+                    "filing_status": "single",
+                    "start": "100000",
+                    "stop": "100000",
+                    "step": "50000",
+                    field_name: query_value,
+                },
+            )
+
+            assert response.status_code == 422
+            detail = response.json()["detail"]
+            assert isinstance(detail, list)
+            assert detail[0]["loc"] == ["query", field_name]
 
 
 def test_income_series_rejects_unknown_pretax_deduction_mode(tmp_path):
