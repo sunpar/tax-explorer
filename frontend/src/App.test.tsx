@@ -921,6 +921,7 @@ describe("App tax curve controls", () => {
     );
     mockFetchTaxParameters.mockClear();
     mockFetchIncomeSeries.mockClear();
+    mockFetchTaxBurden.mockClear();
 
     fireEvent.change(screen.getByLabelText("Tax year"), {
       target: { value: "2025" }
@@ -942,6 +943,12 @@ describe("App tax curve controls", () => {
         filingStatus: "married_joint"
       })
     );
+    expect(mockFetchTaxBurden).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        year: 2025,
+        filingStatus: "married_joint"
+      })
+    );
     await waitFor(() =>
       expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -949,6 +956,62 @@ describe("App tax curve controls", () => {
           filingStatus: "single"
         })
       )
+    );
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          year: 2025,
+          filingStatus: "single"
+        })
+      )
+    );
+  });
+
+  test("stops loading when filing statuses fail before a scenario can run", async () => {
+    mockFetchTaxYears.mockResolvedValue([2025, 2026]);
+    await renderLoadedApp();
+    await screen.findByRole("radio", { name: "Married filing jointly" });
+
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          year: 2026,
+          filingStatus: "married_joint"
+        })
+      )
+    );
+
+    mockFetchFilingStatuses.mockRejectedValueOnce(
+      new Error("status lookup failed")
+    );
+    mockFetchTaxParameters.mockClear();
+    mockFetchIncomeSeries.mockClear();
+    mockFetchTaxBurden.mockClear();
+
+    fireEvent.change(screen.getByLabelText("Tax year"), {
+      target: { value: "2025" }
+    });
+
+    expect(await screen.findByText("status lookup failed")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("Loading")).not.toBeInTheDocument()
+    );
+    expect(mockFetchTaxParameters).not.toHaveBeenCalledWith(
+      2025,
+      "married_joint"
+    );
+    expect(mockFetchIncomeSeries).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        year: 2025,
+        filingStatus: "married_joint"
+      })
+    );
+    expect(mockFetchTaxBurden).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        year: 2025,
+        filingStatus: "married_joint"
+      })
     );
   });
 

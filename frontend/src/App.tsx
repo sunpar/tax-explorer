@@ -992,6 +992,9 @@ function App() {
   const selectedFilingStatus = filingStatuses.find(
     (status) => status.code === filingStatus
   );
+  const isSelectedStatusReady =
+    loadedFilingStatusesYear === year &&
+    filingStatuses.some((status) => status.code === filingStatus);
   const displayedError = scenarioError ?? selectedIncomeError;
 
   useEffect(() => {
@@ -1042,7 +1045,10 @@ function App() {
         );
       })
       .catch((nextError: Error) => {
-        if (!cancelled) setScenarioError(nextError.message);
+        if (!cancelled) {
+          setScenarioError(nextError.message);
+          setLoading(false);
+        }
       });
 
     return () => {
@@ -1052,9 +1058,6 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    const isSelectedStatusReady =
-      loadedFilingStatusesYear === year &&
-      filingStatuses.some((status) => status.code === filingStatus);
 
     setLoading(true);
     setScenarioError(null);
@@ -1205,11 +1208,17 @@ function App() {
     compareTaxYears,
     taxYears,
     filingStatuses,
-    loadedFilingStatusesYear
+    isSelectedStatusReady
   ]);
 
   useEffect(() => {
     let cancelled = false;
+
+    if (!isSelectedStatusReady) {
+      return () => {
+        cancelled = true;
+      };
+    }
 
     fetchTaxBurden({
       year,
@@ -1242,7 +1251,8 @@ function App() {
     includeEmployer,
     pretaxDeductionMode,
     dependentCount,
-    secondaryIncomeRequest
+    secondaryIncomeRequest,
+    isSelectedStatusReady
   ]);
 
   const chartRows = useMemo<ChartRow[]>(
