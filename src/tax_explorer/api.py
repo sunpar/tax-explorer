@@ -76,7 +76,11 @@ class CalculateRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_income_split(self) -> "CalculateRequest":
-        if self.secondary_income > self.gross_income:
+        gross_income = _rounded_query_money_or_none(self.gross_income)
+        secondary_income = _rounded_query_money_or_none(self.secondary_income)
+        if gross_income is None or secondary_income is None:
+            return self
+        if secondary_income > gross_income:
             raise ValueError("secondary_income cannot exceed gross_income")
         return self
 
@@ -306,6 +310,13 @@ def _rounded_query_money(value: Decimal, field_name: str) -> Decimal:
         return value.quantize(MONEY, rounding=ROUND_HALF_UP)
     except InvalidOperation:
         raise ValueError(f"{field_name} must fit cents precision") from None
+
+
+def _rounded_query_money_or_none(value: Decimal) -> Decimal | None:
+    try:
+        return value.quantize(MONEY, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return None
 
 
 def _parameter_http_exception(exc: ValueError) -> HTTPException:
