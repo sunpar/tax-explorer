@@ -146,6 +146,11 @@ def create_app(
     @app.post("/api/calculate")
     def calculate(request: CalculateRequest) -> dict[str, Any]:
         try:
+            _prevalidate_supported_calculate_request(request)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        try:
             federal, payroll, pretax = _load_parameters(
                 app, request.year, request.filing_status
             )
@@ -259,7 +264,7 @@ def _prevalidate_supported_income_series_request(
     step: Decimal,
     secondary_income: Decimal,
 ) -> None:
-    if year != DEFAULT_TAX_YEAR or filing_status not in FILING_STATUS_CHOICES:
+    if not _has_supported_tax_parameters(year, filing_status):
         return
 
     start_amount = _rounded_query_money(start, "start")
@@ -278,6 +283,22 @@ def _prevalidate_supported_income_series_request(
         raise ValueError("secondary_income is only supported for married_joint")
     if secondary_income_amount > stop_amount:
         raise ValueError("secondary_income cannot exceed stop")
+
+
+def _prevalidate_supported_calculate_request(request: CalculateRequest) -> None:
+    if not _has_supported_tax_parameters(request.year, request.filing_status):
+        return
+
+    _rounded_query_money(request.gross_income, "gross_income")
+    secondary_income_amount = _rounded_query_money(
+        request.secondary_income, "secondary_income"
+    )
+    if secondary_income_amount > 0 and request.filing_status != "married_joint":
+        raise ValueError("secondary_income is only supported for married_joint")
+
+
+def _has_supported_tax_parameters(year: int, filing_status: str) -> bool:
+    return year == DEFAULT_TAX_YEAR and filing_status in FILING_STATUS_CHOICES
 
 
 def _rounded_query_money(value: Decimal, field_name: str) -> Decimal:
