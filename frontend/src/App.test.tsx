@@ -515,6 +515,29 @@ describe("App tax curve controls", () => {
     }
   );
 
+  test("clearing manual Stop clamps requests to the current Start while editing", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(100);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(null);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("127900");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "100000",
+          stop: "100000"
+        })
+      )
+    );
+  });
+
   test("manual Start edit raises Stop when it would invert the range", async () => {
     await renderLoadedApp();
 

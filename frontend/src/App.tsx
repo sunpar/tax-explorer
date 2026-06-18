@@ -190,6 +190,16 @@ function nonNegativeDollarsFromThousands(value: string): number | null {
   return roundMoneyNumber(amount * 1000);
 }
 
+function clampStopDollarsAtStart(startDollars: string, stopDollars: string): string {
+  const startAmount = Number(startDollars);
+  const stopAmount = Number(stopDollars);
+  const safeStart = Number.isFinite(startAmount) ? Math.max(0, startAmount) : 0;
+  if (!Number.isFinite(stopAmount) || stopAmount < safeStart) {
+    return String(safeStart);
+  }
+  return stopDollars;
+}
+
 function formatThousandsOption(value: string | number): string {
   return `$${dollarsToThousands(value)}k`;
 }
@@ -1030,9 +1040,10 @@ function App() {
         dependentCount,
         secondaryIncome
       );
-      const resolvedStop = hasCustomStop
+      const requestedStop = hasCustomStop
         ? stop
         : thousandsToDollars(nextDefaultStopThousands);
+      const resolvedStop = clampStopDollarsAtStart(start, requestedStop);
       const selectedSeriesRequest = {
         year,
         filingStatus,
