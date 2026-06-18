@@ -482,6 +482,39 @@ describe("App tax curve controls", () => {
     );
   });
 
+  test("manual Start edit raises selected income to the range minimum", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "130" }
+    });
+
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("130000");
+  });
+
+  test("manual Stop edit lowers selected income to the range maximum", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "75" }
+    });
+
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("75000");
+  });
+
+  test.each(["Start ($k)", "Stop ($k)"])(
+    "clearing manual %s keeps selected income unchanged while editing",
+    async (label) => {
+      await renderLoadedApp();
+
+      fireEvent.change(screen.getByLabelText(label), {
+        target: { value: "" }
+      });
+
+      expect(screen.getByLabelText(/Selected income/)).toHaveValue("127900");
+    }
+  );
+
   test("chart click updates the selected income", async () => {
     await renderLoadedApp();
 
