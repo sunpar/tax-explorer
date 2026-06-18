@@ -262,6 +262,31 @@ def test_cli_reports_reversed_income_range_before_database_initialization(
     assert not database_path.exists()
 
 
+def test_cli_reports_reversed_range_before_secondary_income_validation(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--start",
+                "100000",
+                "--stop",
+                "0",
+                "--secondary-income",
+                "25000",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "start must be less than or equal to stop" in capsys.readouterr().err
+    assert not database_path.exists()
+
+
 def test_cli_reports_unroundable_reversed_income_range_before_database_initialization(
     tmp_path,
     capsys,
