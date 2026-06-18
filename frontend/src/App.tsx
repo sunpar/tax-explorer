@@ -914,6 +914,10 @@ function App() {
   const [selectedIncome, setSelectedIncome] = useState(100000);
   const [hasCustomSelectedIncome, setHasCustomSelectedIncome] = useState(false);
   const hasCustomSelectedIncomeRef = useRef(false);
+  const stopEditCollapseAnchorRef = useRef<{
+    selectedIncome: number;
+    start: number;
+  } | null>(null);
   const [includeEmployer, setIncludeEmployer] = useState(false);
   const [pretaxDeductionMode, setPretaxDeductionMode] =
     useState<PretaxDeductionMode>("gradual_phase_in");
@@ -1409,17 +1413,20 @@ function App() {
     }
   };
   const setQuickStart = (income: number) => {
+    stopEditCollapseAnchorRef.current = null;
     setStartThousands(dollarsToThousands(income));
     markCustomSelectedIncome();
     setSelectedIncome((currentIncome) => Math.max(currentIncome, income));
   };
   const setQuickStop = (income: number) => {
+    stopEditCollapseAnchorRef.current = null;
     setHasCustomStop(true);
     setStopThousands(dollarsToThousands(income));
     markCustomSelectedIncome();
     setSelectedIncome((currentIncome) => Math.min(currentIncome, income));
   };
   const setManualStartThousands = (value: string) => {
+    stopEditCollapseAnchorRef.current = null;
     setStartThousands(value);
     markCustomSelectedIncome();
     const nextStart = nonNegativeDollarsFromThousands(value);
@@ -1428,6 +1435,8 @@ function App() {
     if (currentStop !== null && nextStart > currentStop) {
       setHasCustomStop(true);
       setStopThousands(dollarsToThousands(nextStart));
+      setSelectedIncome(nextStart);
+      return;
     }
     setSelectedIncome((currentIncome) => Math.max(currentIncome, nextStart));
   };
@@ -1438,8 +1447,29 @@ function App() {
     const nextStop = nonNegativeDollarsFromThousands(value);
     if (nextStop === null) return;
     const currentStart = nonNegativeDollarsFromThousands(startThousands);
-    if (currentStart !== null && nextStop < currentStart) {
+    const stopEditAnchor = stopEditCollapseAnchorRef.current;
+    const comparisonStart = stopEditAnchor?.start ?? currentStart;
+    if (comparisonStart !== null && nextStop < comparisonStart) {
+      if (stopEditAnchor === null) {
+        stopEditCollapseAnchorRef.current = {
+          selectedIncome,
+          start: comparisonStart
+        };
+      }
       setStartThousands(dollarsToThousands(nextStop));
+      setSelectedIncome(nextStop);
+      return;
+    }
+    if (stopEditAnchor !== null) {
+      setStartThousands(dollarsToThousands(stopEditAnchor.start));
+      setSelectedIncome(
+        Math.min(
+          Math.max(stopEditAnchor.selectedIncome, stopEditAnchor.start),
+          nextStop
+        )
+      );
+      stopEditCollapseAnchorRef.current = null;
+      return;
     }
     setSelectedIncome((currentIncome) => Math.min(currentIncome, nextStop));
   };

@@ -535,6 +535,21 @@ describe("App tax curve controls", () => {
     );
   });
 
+  test("manual Start edit caps selected income when it raises Stop", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "3000000" }
+    });
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "150" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(150);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(150);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("150000");
+  });
+
   test("manual Stop edit lowers Start when it would invert the range", async () => {
     await renderLoadedApp();
 
@@ -553,6 +568,61 @@ describe("App tax curve controls", () => {
         expect.objectContaining({
           start: "75000",
           stop: "75000"
+        })
+      )
+    );
+  });
+
+  test("manual Stop edit keeps following the intended Start while typing", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "7" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "75" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("75000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "75000",
+          stop: "75000"
+        })
+      )
+    );
+  });
+
+  test("manual Stop edit restores Start when the completed value stays above it", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "1" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "12" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "125" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(100);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(125);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("125000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "100000",
+          stop: "125000"
         })
       )
     );
