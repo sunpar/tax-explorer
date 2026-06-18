@@ -182,6 +182,12 @@ function dollarsToThousands(value: string | number): string {
   return trimTrailingZeros((amount / 1000).toFixed(3));
 }
 
+function nonNegativeDollarsFromThousands(value: string): number | null {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return roundMoneyNumber(amount * 1000);
+}
+
 function formatThousandsOption(value: string | number): string {
   return `$${dollarsToThousands(value)}k`;
 }
@@ -1411,6 +1417,21 @@ function App() {
     markCustomSelectedIncome();
     setSelectedIncome((currentIncome) => Math.min(currentIncome, income));
   };
+  const setManualStartThousands = (value: string) => {
+    setStartThousands(value);
+    const nextStart = nonNegativeDollarsFromThousands(value);
+    if (nextStart === null) return;
+    markCustomSelectedIncome();
+    setSelectedIncome((currentIncome) => Math.max(currentIncome, nextStart));
+  };
+  const setManualStopThousands = (value: string) => {
+    setHasCustomStop(true);
+    setStopThousands(value);
+    const nextStop = nonNegativeDollarsFromThousands(value);
+    if (nextStop === null) return;
+    markCustomSelectedIncome();
+    setSelectedIncome((currentIncome) => Math.min(currentIncome, nextStop));
+  };
   const setPrimaryIncomeThousands = (value: string) => {
     const nextPrimaryIncome = Math.max(0, Number(thousandsToDollars(value)) || 0);
     markCustomSelectedIncome();
@@ -1548,7 +1569,9 @@ function App() {
                   min="0"
                   step="0.001"
                   value={startThousands}
-                  onChange={(event) => setStartThousands(event.target.value)}
+                  onChange={(event) =>
+                    setManualStartThousands(event.target.value)
+                  }
                 />
               </label>
               <label htmlFor="stop-thousands">
@@ -1559,10 +1582,9 @@ function App() {
                   min="0"
                   step="0.001"
                   value={stopThousands}
-                  onChange={(event) => {
-                    setHasCustomStop(true);
-                    setStopThousands(event.target.value);
-                  }}
+                  onChange={(event) =>
+                    setManualStopThousands(event.target.value)
+                  }
                 />
               </label>
             </div>
