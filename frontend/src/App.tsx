@@ -1054,6 +1054,10 @@ function App() {
         if (!cancelled) {
           setFailedFilingStatusesYear(year);
           setScenarioError(nextError.message);
+          setParameters(null);
+          setRows([]);
+          setSelectedBurden(null);
+          setComparisonSeries([]);
           setLoading(false);
         }
       });

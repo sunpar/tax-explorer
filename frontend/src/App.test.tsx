@@ -997,6 +997,7 @@ describe("App tax curve controls", () => {
     await waitFor(() =>
       expect(screen.queryByText("Loading")).not.toBeInTheDocument()
     );
+    expect(screen.getByText("0 rows")).toBeInTheDocument();
     expect(mockFetchTaxParameters).not.toHaveBeenCalledWith(
       2025,
       "married_joint"
