@@ -915,6 +915,7 @@ function App() {
   const [hasCustomSelectedIncome, setHasCustomSelectedIncome] = useState(false);
   const hasCustomSelectedIncomeRef = useRef(false);
   const stopEditCollapseAnchorRef = useRef<{
+    lastStopThousands: string;
     selectedIncome: number;
     start: number;
   } | null>(null);
@@ -1447,13 +1448,26 @@ function App() {
     const nextStop = nonNegativeDollarsFromThousands(value);
     if (nextStop === null) return;
     const currentStart = nonNegativeDollarsFromThousands(startThousands);
-    const stopEditAnchor = stopEditCollapseAnchorRef.current;
+    let stopEditAnchor = stopEditCollapseAnchorRef.current;
+    if (
+      stopEditAnchor !== null &&
+      !value.startsWith(stopEditAnchor.lastStopThousands)
+    ) {
+      stopEditCollapseAnchorRef.current = null;
+      stopEditAnchor = null;
+    }
     const comparisonStart = stopEditAnchor?.start ?? currentStart;
     if (comparisonStart !== null && nextStop < comparisonStart) {
       if (stopEditAnchor === null) {
         stopEditCollapseAnchorRef.current = {
+          lastStopThousands: value,
           selectedIncome,
           start: comparisonStart
+        };
+      } else {
+        stopEditCollapseAnchorRef.current = {
+          ...stopEditAnchor,
+          lastStopThousands: value
         };
       }
       setStartThousands(dollarsToThousands(nextStop));

@@ -599,6 +599,35 @@ describe("App tax curve controls", () => {
     );
   });
 
+  test("manual Stop edit resets the collapsed Start baseline for later edits", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "7" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "75" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "90" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(90);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("75000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "75000",
+          stop: "90000"
+        })
+      )
+    );
+  });
+
   test("manual Stop edit restores Start when the completed value stays above it", async () => {
     await renderLoadedApp();
 
