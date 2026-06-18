@@ -238,6 +238,26 @@ def test_cli_reports_reversed_income_range_before_database_initialization(
     assert not database_path.exists()
 
 
+def test_cli_compares_income_range_after_money_rounding(monkeypatch, tmp_path):
+    output = io.StringIO()
+    monkeypatch.setattr("sys.stdout", output)
+
+    result = main(
+        [
+            "--start",
+            "0.004",
+            "--stop",
+            "0.003",
+            "--database-path",
+            str(tmp_path / "tax.sqlite3"),
+        ]
+    )
+
+    row = next(csv.DictReader(io.StringIO(output.getvalue())))
+    assert result == 0
+    assert row["gross_income"] == "0.00"
+
+
 def test_cli_preserves_unsupported_filing_status_error_with_secondary_income(
     tmp_path,
     capsys,
