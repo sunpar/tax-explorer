@@ -239,6 +239,32 @@ def test_cli_reports_unroundable_secondary_income_as_usage_error(
     assert not database_path.exists()
 
 
+def test_cli_reports_unroundable_married_joint_secondary_income_before_stop_bound(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--filing-status",
+                "married_joint",
+                "--secondary-income",
+                "1e27",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert (
+        "argument --secondary-income: must fit cents precision"
+        in capsys.readouterr().err
+    )
+    assert not database_path.exists()
+
+
 def test_cli_reports_reversed_income_range_before_database_initialization(
     tmp_path,
     capsys,
