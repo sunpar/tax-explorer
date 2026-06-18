@@ -1081,6 +1081,29 @@ def test_income_series_prevalidates_unroundable_range_before_database_init(tmp_p
     assert not database_path.exists()
 
 
+def test_income_series_prevalidates_reversed_range_before_secondary_precision(
+    tmp_path,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "married_joint",
+            "start": "100000",
+            "stop": "0",
+            "step": "10000",
+            "secondary_income": "1e27",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "start must be less than or equal to stop"
+    assert not database_path.exists()
+
+
 @pytest.mark.parametrize(
     ("step", "message"),
     [
@@ -1109,6 +1132,27 @@ def test_income_series_prevalidates_invalid_step_before_database_init(
 
     assert response.status_code == 422
     assert response.json()["detail"] == message
+    assert not database_path.exists()
+
+
+def test_income_series_prevalidates_step_before_secondary_precision(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "married_joint",
+            "start": "0",
+            "stop": "100000",
+            "step": "0.004",
+            "secondary_income": "1e27",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "step must be positive"
     assert not database_path.exists()
 
 
