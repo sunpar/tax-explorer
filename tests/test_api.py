@@ -458,6 +458,28 @@ def test_calculate_rejects_negative_dependent_count(tmp_path):
     assert response.status_code == 422
 
 
+def test_calculate_rejects_coerced_year_request_values(tmp_path):
+    client = create_test_client(tmp_path)
+
+    for year in (True, False, "2026"):
+        response = client.post(
+            "/api/calculate",
+            json={
+                "year": year,
+                "filing_status": "single",
+                "gross_income": "100000",
+            },
+        )
+
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert isinstance(detail, list)
+        year_error = next(
+            error for error in detail if error["loc"] == ["body", "year"]
+        )
+        assert year_error["type"] == "int_type"
+
+
 def test_calculate_rejects_coerced_dependent_count_request_values(tmp_path):
     client = create_test_client(tmp_path)
 
