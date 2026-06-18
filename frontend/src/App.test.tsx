@@ -363,6 +363,13 @@ async function renderLoadedApp(expectedStop = 140.69, expectedSelected = 127900)
   );
 }
 
+function expectNoInvertedIncomeSeriesRequests() {
+  const invertedRequests = mockFetchIncomeSeries.mock.calls
+    .map(([request]) => request)
+    .filter((request) => Number(request.start) > Number(request.stop));
+  expect(invertedRequests).toEqual([]);
+}
+
 beforeEach(() => {
   localStorage.clear();
   vi.resetAllMocks();
@@ -514,6 +521,275 @@ describe("App tax curve controls", () => {
       expect(screen.getByLabelText(/Selected income/)).toHaveValue("127900");
     }
   );
+
+  test("clearing manual Stop at the default Start sends a zero stop request", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(0);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(null);
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "0",
+          stop: "0"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
+  });
+
+  test("clearing manual Stop clamps requests to the current Start while editing", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(100);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(null);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("127900");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "100000",
+          stop: "100000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
+    const sampledRows = screen
+      .getByRole("heading", { name: "Sampled Income Rows" })
+      .closest("section");
+    expect(sampledRows).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        within(sampledRows as HTMLElement).getByRole("cell", {
+          name: "$100,000"
+        })
+      ).toBeInTheDocument()
+    );
+  });
+
+  test("manual Start edit raises Stop when it would invert the range", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "150" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(150);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(150);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("150000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "150000",
+          stop: "150000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
+  });
+
+  test("manual Start edit caps selected income when it raises Stop", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "3000000" }
+    });
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "150" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(150);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(150);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("150000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "150000",
+          stop: "150000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
+  });
+
+  test("manual Stop edit lowers Start when it would invert the range", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "75" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("75000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "75000",
+          stop: "75000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
+  });
+
+  test("manual Stop edit keeps following the intended Start while typing", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "7" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "75" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("75000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "75000",
+          stop: "75000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
+  });
+
+  test("manual Stop edit resets the collapsed Start baseline for later edits", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "7" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "75" }
+    });
+    fireEvent.blur(screen.getByLabelText("Stop ($k)"));
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "90" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(90);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("75000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "75000",
+          stop: "90000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
+  });
+
+  test("manual Stop replacement keeps the original Start anchor while focused", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "8" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "75" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("75000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "75000",
+          stop: "75000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
+  });
+
+  test("selected income edits clear the active Stop collapse anchor", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "1" }
+    });
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "50000" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "125" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(1);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(125);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("50000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "1000",
+          stop: "125000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
+  });
+
+  test("manual Stop edit restores Start when the completed value stays above it", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "1" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "12" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "125" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(100);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(125);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("125000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "100000",
+          stop: "125000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
+  });
 
   test("chart click updates the selected income", async () => {
     await renderLoadedApp();
@@ -887,6 +1163,36 @@ describe("App tax curve controls", () => {
     expect(
       screen.getByText("100.00% of $6,800 max")
     ).toBeInTheDocument();
+  });
+
+  test("married joint cleared Stop clamps secondary income to the request Stop", async () => {
+    await renderLoadedApp();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+
+    await screen.findByLabelText("Income 2 ($k)");
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Selected income/)).toHaveValue("256800")
+    );
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "50" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filingStatus: "married_joint",
+          secondaryIncome: "50000",
+          start: "50000",
+          stop: "50000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
   });
 
   test("married joint income split is saved and restored", async () => {

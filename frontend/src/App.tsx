@@ -190,6 +190,34 @@ function nonNegativeDollarsFromThousands(value: string): number | null {
   return roundMoneyNumber(amount * 1000);
 }
 
+function clampStopDollarsAtStart(startDollars: string, stopDollars: string): string {
+  const startAmount = Number(startDollars);
+  const trimmedStopDollars = stopDollars.trim();
+  const stopAmount = Number(trimmedStopDollars);
+  const safeStart = Number.isFinite(startAmount) ? Math.max(0, startAmount) : 0;
+  if (
+    trimmedStopDollars === "" ||
+    !Number.isFinite(stopAmount) ||
+    stopAmount < safeStart
+  ) {
+    return String(safeStart);
+  }
+  return stopDollars;
+}
+
+function clampSecondaryDollarsAtStop(
+  secondaryDollars: string,
+  stopDollars: string
+): string {
+  const secondaryAmount = Number(secondaryDollars);
+  const stopAmount = Number(stopDollars);
+  const safeSecondary = Number.isFinite(secondaryAmount)
+    ? Math.max(0, secondaryAmount)
+    : 0;
+  if (!Number.isFinite(stopAmount)) return String(safeSecondary);
+  return String(Math.min(safeSecondary, Math.max(0, stopAmount)));
+}
+
 function formatThousandsOption(value: string | number): string {
   return `$${dollarsToThousands(value)}k`;
 }
@@ -914,6 +942,10 @@ function App() {
   const [selectedIncome, setSelectedIncome] = useState(100000);
   const [hasCustomSelectedIncome, setHasCustomSelectedIncome] = useState(false);
   const hasCustomSelectedIncomeRef = useRef(false);
+  const stopEditCollapseAnchorRef = useRef<{
+    selectedIncome: number;
+    start: number;
+  } | null>(null);
   const [includeEmployer, setIncludeEmployer] = useState(false);
   const [pretaxDeductionMode, setPretaxDeductionMode] =
     useState<PretaxDeductionMode>("gradual_phase_in");
@@ -943,6 +975,7 @@ function App() {
   );
   const start = thousandsToDollars(startThousands);
   const stop = thousandsToDollars(stopThousands);
+  const effectiveStop = clampStopDollarsAtStart(start, stop);
   const step = thousandsToDollars(stepThousands);
   const dependentCount = sanitizeDependentCount(dependentCountInput);
   const rawSecondaryIncome = Number(
@@ -1026,9 +1059,14 @@ function App() {
         dependentCount,
         secondaryIncome
       );
-      const resolvedStop = hasCustomStop
-        ? stop
+      const requestedStop = hasCustomStop
+        ? effectiveStop
         : thousandsToDollars(nextDefaultStopThousands);
+      const resolvedStop = clampStopDollarsAtStart(start, requestedStop);
+      const resolvedSecondaryIncomeRequest = clampSecondaryDollarsAtStop(
+        secondaryIncomeRequest,
+        resolvedStop
+      );
       const selectedSeriesRequest = {
         year,
         filingStatus,
@@ -1038,7 +1076,7 @@ function App() {
         includeEmployerPayrollTax: includeEmployer,
         includeMarginalBreakpoints: true,
         dependentCount,
-        secondaryIncome: secondaryIncomeRequest,
+        secondaryIncome: resolvedSecondaryIncomeRequest,
         pretaxDeductionMode
       };
       const selectedSeries = await fetchIncomeSeries(selectedSeriesRequest);
@@ -1140,6 +1178,7 @@ function App() {
     selectedFilingStatus?.label,
     start,
     stop,
+    effectiveStop,
     step,
     stopThousands,
     hasCustomStop,
@@ -1244,7 +1283,7 @@ function App() {
       dependentCount,
       secondaryIncome,
       start,
-      stop
+      effectiveStop
     );
     return chartRows.filter((row) => breakpointIncomes.has(row.incomeNumber));
   }, [
@@ -1254,7 +1293,7 @@ function App() {
     pretaxDeductionMode,
     secondaryIncome,
     start,
-    stop
+    effectiveStop
   ]);
 
   const sampledIncomeOptions = useMemo(
@@ -1404,26 +1443,37 @@ function App() {
   const handleChartClick = (state: unknown) => {
     const income = readClickedIncome(state);
     if (income !== null) {
+      stopEditCollapseAnchorRef.current = null;
       markCustomSelectedIncome();
       setSelectedIncome(income);
     }
   };
   const setQuickStart = (income: number) => {
+    stopEditCollapseAnchorRef.current = null;
     setStartThousands(dollarsToThousands(income));
     markCustomSelectedIncome();
     setSelectedIncome((currentIncome) => Math.max(currentIncome, income));
   };
   const setQuickStop = (income: number) => {
+    stopEditCollapseAnchorRef.current = null;
     setHasCustomStop(true);
     setStopThousands(dollarsToThousands(income));
     markCustomSelectedIncome();
     setSelectedIncome((currentIncome) => Math.min(currentIncome, income));
   };
   const setManualStartThousands = (value: string) => {
+    stopEditCollapseAnchorRef.current = null;
     setStartThousands(value);
     markCustomSelectedIncome();
     const nextStart = nonNegativeDollarsFromThousands(value);
     if (nextStart === null) return;
+    const currentStop = nonNegativeDollarsFromThousands(stopThousands);
+    if (currentStop !== null && nextStart > currentStop) {
+      setHasCustomStop(true);
+      setStopThousands(dollarsToThousands(nextStart));
+      setSelectedIncome(nextStart);
+      return;
+    }
     setSelectedIncome((currentIncome) => Math.max(currentIncome, nextStart));
   };
   const setManualStopThousands = (value: string) => {
@@ -1432,10 +1482,36 @@ function App() {
     markCustomSelectedIncome();
     const nextStop = nonNegativeDollarsFromThousands(value);
     if (nextStop === null) return;
+    const currentStart = nonNegativeDollarsFromThousands(startThousands);
+    const stopEditAnchor = stopEditCollapseAnchorRef.current;
+    const comparisonStart = stopEditAnchor?.start ?? currentStart;
+    if (comparisonStart !== null && nextStop < comparisonStart) {
+      if (stopEditAnchor === null) {
+        stopEditCollapseAnchorRef.current = {
+          selectedIncome,
+          start: comparisonStart
+        };
+      }
+      setStartThousands(dollarsToThousands(nextStop));
+      setSelectedIncome(nextStop);
+      return;
+    }
+    if (stopEditAnchor !== null) {
+      setStartThousands(dollarsToThousands(stopEditAnchor.start));
+      setSelectedIncome(
+        Math.min(
+          Math.max(stopEditAnchor.selectedIncome, stopEditAnchor.start),
+          nextStop
+        )
+      );
+      stopEditCollapseAnchorRef.current = null;
+      return;
+    }
     setSelectedIncome((currentIncome) => Math.min(currentIncome, nextStop));
   };
   const setPrimaryIncomeThousands = (value: string) => {
     const nextPrimaryIncome = Math.max(0, Number(thousandsToDollars(value)) || 0);
+    stopEditCollapseAnchorRef.current = null;
     markCustomSelectedIncome();
     markCustomIncomeSplit();
     setStoredPrimaryIncomeThousands(value);
@@ -1443,6 +1519,7 @@ function App() {
   };
   const setSecondaryIncomeThousandsValue = (value: string) => {
     const nextSecondaryIncome = Math.max(0, Number(thousandsToDollars(value)) || 0);
+    stopEditCollapseAnchorRef.current = null;
     markCustomSelectedIncome();
     markCustomIncomeSplit();
     setStoredPrimaryIncomeThousands(dollarsToThousands(primaryIncome));
@@ -1587,6 +1664,9 @@ function App() {
                   onChange={(event) =>
                     setManualStopThousands(event.target.value)
                   }
+                  onBlur={() => {
+                    stopEditCollapseAnchorRef.current = null;
+                  }}
                 />
               </label>
             </div>
@@ -1613,7 +1693,7 @@ function App() {
             <details className="range-preset-group">
               <summary>
                 <span>Stop presets</span>
-                <span>{formatThousandsOption(Number(stop) || 0)}</span>
+                <span>{formatThousandsOption(Number(effectiveStop) || 0)}</span>
               </summary>
               <div className="range-chip-list" aria-label="Stop presets">
                 {quickStopOptions.map((income) => (
@@ -1621,8 +1701,8 @@ function App() {
                     key={income}
                     type="button"
                     aria-label={`Stop ${formatThousandsOption(income)}`}
-                    aria-pressed={Number(stop) === income}
-                    className={Number(stop) === income ? "active" : ""}
+                    aria-pressed={Number(effectiveStop) === income}
+                    className={Number(effectiveStop) === income ? "active" : ""}
                     onClick={() => setQuickStop(income)}
                   >
                     {formatThousandsOption(income)}
@@ -1651,6 +1731,7 @@ function App() {
               step={1}
               value={selectedIncome}
               onChange={(event) => {
+                stopEditCollapseAnchorRef.current = null;
                 markCustomSelectedIncome();
                 setSelectedIncome(Number(event.target.value));
               }}
@@ -1752,6 +1833,7 @@ function App() {
             type="button"
             className="refresh-button"
             onClick={() => {
+              stopEditCollapseAnchorRef.current = null;
               markCustomSelectedIncome();
               setSelectedIncome(Number(start) || 0);
             }}
@@ -1791,7 +1873,7 @@ function App() {
                 <XAxis
                   dataKey="incomeNumber"
                   type="number"
-                  domain={[Number(start) || 0, Number(stop) || "dataMax"]}
+                  domain={[Number(start) || 0, Number(effectiveStop) || "dataMax"]}
                   tickFormatter={formatIncomeAxisTick}
                   stroke="#706b60"
                   minTickGap={24}
