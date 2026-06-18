@@ -46,7 +46,7 @@ MISSING_PARAMETER_MESSAGE_PREFIXES = (
 
 
 class CalculateRequest(BaseModel):
-    year: int
+    year: int = Field(strict=True)
     filing_status: str = "single"
     gross_income: Decimal = Field(ge=0)
     include_employer_payroll_tax: bool = Field(default=False, strict=True)
