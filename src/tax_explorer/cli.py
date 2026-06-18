@@ -76,7 +76,11 @@ def non_negative_decimal_argument(value: str) -> str:
 
 def positive_money_increment_argument(value: str) -> str:
     parsed = _finite_decimal_argument(value)
-    if parsed.quantize(MONEY, rounding=ROUND_HALF_UP) <= 0:
+    try:
+        increment = parsed.quantize(MONEY, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        raise argparse.ArgumentTypeError("must fit cents precision") from None
+    if increment <= 0:
         raise argparse.ArgumentTypeError("must be positive")
     return value
 

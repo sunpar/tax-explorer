@@ -150,6 +150,7 @@ def test_cli_reports_invalid_decimal_arguments_as_usage_errors(
         ("--step", "0", "must be positive"),
         ("--step", "-1", "must be positive"),
         ("--step", "0.004", "must be positive"),
+        ("--step", "1e27", "must fit cents precision"),
         ("--secondary-income", "-1", "must be non-negative"),
         ("--dependent-count", "1.5", "must be a whole number"),
         ("--year", "2026.5", "must be a whole number"),
