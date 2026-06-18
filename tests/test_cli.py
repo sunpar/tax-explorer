@@ -238,6 +238,35 @@ def test_cli_preserves_unsupported_filing_status_error_with_secondary_income(
     assert database_path.exists()
 
 
+def test_cli_compares_secondary_income_bounds_after_money_rounding(
+    monkeypatch,
+    tmp_path,
+):
+    output = io.StringIO()
+    monkeypatch.setattr("sys.stdout", output)
+
+    result = main(
+        [
+            "--filing-status",
+            "married_joint",
+            "--start",
+            "100000.005",
+            "--stop",
+            "100000.005",
+            "--step",
+            "50000",
+            "--secondary-income",
+            "100000.006",
+            "--database-path",
+            str(tmp_path / "tax.sqlite3"),
+        ]
+    )
+
+    row = next(csv.DictReader(io.StringIO(output.getvalue())))
+    assert result == 0
+    assert row["gross_income"] == "100000.01"
+
+
 def test_cli_accepts_year_filing_status_and_secondary_income(monkeypatch, tmp_path):
     output = io.StringIO()
     monkeypatch.setattr("sys.stdout", output)

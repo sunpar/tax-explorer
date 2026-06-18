@@ -83,8 +83,10 @@ def positive_money_increment_argument(value: str) -> str:
 def validate_secondary_income_arguments(
     args: argparse.Namespace, parser: argparse.ArgumentParser
 ) -> None:
-    stop = Decimal(args.stop)
-    secondary_income = Decimal(args.secondary_income)
+    stop = Decimal(args.stop).quantize(MONEY, rounding=ROUND_HALF_UP)
+    secondary_income = Decimal(args.secondary_income).quantize(
+        MONEY, rounding=ROUND_HALF_UP
+    )
 
     if (
         args.filing_status in FILING_STATUS_CHOICES
