@@ -430,6 +430,50 @@ def test_calculate_rejects_secondary_income_for_non_joint_filers(tmp_path):
     )
 
 
+def test_calculate_prevalidates_secondary_income_for_non_joint_before_database_init(
+    tmp_path,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "single",
+            "gross_income": "100000",
+            "secondary_income": "25000",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "secondary_income is only supported for married_joint"
+    )
+    assert not database_path.exists()
+
+
+def test_calculate_prevalidates_gross_income_precision_before_secondary_status(
+    tmp_path,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "single",
+            "gross_income": "1e27",
+            "secondary_income": "25000",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "gross_income must fit cents precision"
+    assert not database_path.exists()
+
+
 def test_calculate_rejects_secondary_income_above_gross_income_as_request_validation(
     tmp_path,
 ):
