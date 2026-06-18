@@ -1052,20 +1052,18 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    const selectedStatusLoadedForYear =
+    const isSelectedStatusReady =
       loadedFilingStatusesYear === year &&
       filingStatuses.some((status) => status.code === filingStatus);
 
-    if (!selectedStatusLoadedForYear) {
-      setLoading(true);
-      setScenarioError(null);
+    setLoading(true);
+    setScenarioError(null);
+
+    if (!isSelectedStatusReady) {
       return () => {
         cancelled = true;
       };
     }
-
-    setLoading(true);
-    setScenarioError(null);
 
     async function loadScenario() {
       const nextParameters = await fetchTaxParameters(year, filingStatus);
