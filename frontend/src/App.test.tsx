@@ -522,6 +522,26 @@ describe("App tax curve controls", () => {
     }
   );
 
+  test("clearing manual Stop at the default Start sends a zero stop request", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(0);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(null);
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "0",
+          stop: "0"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
+  });
+
   test("clearing manual Stop clamps requests to the current Start while editing", async () => {
     await renderLoadedApp();
 

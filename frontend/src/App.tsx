@@ -192,9 +192,14 @@ function nonNegativeDollarsFromThousands(value: string): number | null {
 
 function clampStopDollarsAtStart(startDollars: string, stopDollars: string): string {
   const startAmount = Number(startDollars);
-  const stopAmount = Number(stopDollars);
+  const trimmedStopDollars = stopDollars.trim();
+  const stopAmount = Number(trimmedStopDollars);
   const safeStart = Number.isFinite(startAmount) ? Math.max(0, startAmount) : 0;
-  if (!Number.isFinite(stopAmount) || stopAmount < safeStart) {
+  if (
+    trimmedStopDollars === "" ||
+    !Number.isFinite(stopAmount) ||
+    stopAmount < safeStart
+  ) {
     return String(safeStart);
   }
   return stopDollars;
