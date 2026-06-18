@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 from tax_explorer import (
+    FILING_STATUS_CHOICES,
     MONEY,
     PRETAX_DEDUCTION_MODE_CHOICES,
     PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
@@ -79,6 +80,23 @@ def positive_money_increment_argument(value: str) -> str:
     return value
 
 
+def validate_secondary_income_arguments(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> None:
+    if args.filing_status not in FILING_STATUS_CHOICES:
+        return
+
+    stop = Decimal(args.stop).quantize(MONEY, rounding=ROUND_HALF_UP)
+    secondary_income = Decimal(args.secondary_income).quantize(
+        MONEY, rounding=ROUND_HALF_UP
+    )
+
+    if args.filing_status != "married_joint" and secondary_income > 0:
+        parser.error("secondary_income is only supported for married_joint")
+    if secondary_income > stop:
+        parser.error("secondary_income cannot exceed stop")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate US W-2 tax burden rows by income."
@@ -122,6 +140,7 @@ def main(argv: list[str] | None = None) -> int:
         help="SQLite database path for tax parameters.",
     )
     args = parser.parse_args(argv)
+    validate_secondary_income_arguments(args, parser)
 
     try:
         with initialize_database(args.database_path) as connection:

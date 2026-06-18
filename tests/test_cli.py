@@ -174,13 +174,15 @@ def test_cli_rejects_invalid_numeric_bounds_before_database_initialization(
 
 
 def test_cli_reports_invalid_secondary_income_as_usage_error(tmp_path, capsys):
+    database_path = tmp_path / "tax.sqlite3"
+
     with pytest.raises(SystemExit) as exc_info:
         main(
             [
                 "--secondary-income",
                 "1",
                 "--database-path",
-                str(tmp_path / "tax.sqlite3"),
+                str(database_path),
             ]
         )
 
@@ -188,9 +190,12 @@ def test_cli_reports_invalid_secondary_income_as_usage_error(tmp_path, capsys):
     assert (
         "secondary_income is only supported for married_joint" in capsys.readouterr().err
     )
+    assert not database_path.exists()
 
 
 def test_cli_reports_secondary_income_above_stop_as_usage_error(tmp_path, capsys):
+    database_path = tmp_path / "tax.sqlite3"
+
     with pytest.raises(SystemExit) as exc_info:
         main(
             [
@@ -201,12 +206,67 @@ def test_cli_reports_secondary_income_above_stop_as_usage_error(tmp_path, capsys
                 "--secondary-income",
                 "120000",
                 "--database-path",
-                str(tmp_path / "tax.sqlite3"),
+                str(database_path),
             ]
         )
 
     assert exc_info.value.code == 2
     assert "secondary_income cannot exceed stop" in capsys.readouterr().err
+    assert not database_path.exists()
+
+
+def test_cli_preserves_unsupported_filing_status_error_with_secondary_income(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--filing-status",
+                "unknown",
+                "--stop",
+                "100000",
+                "--secondary-income",
+                "1e27",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "No federal tax parameters for 2026 unknown" in capsys.readouterr().err
+    assert database_path.exists()
+
+
+def test_cli_compares_secondary_income_bounds_after_money_rounding(
+    monkeypatch,
+    tmp_path,
+):
+    output = io.StringIO()
+    monkeypatch.setattr("sys.stdout", output)
+
+    result = main(
+        [
+            "--filing-status",
+            "married_joint",
+            "--start",
+            "100000.005",
+            "--stop",
+            "100000.005",
+            "--step",
+            "50000",
+            "--secondary-income",
+            "100000.006",
+            "--database-path",
+            str(tmp_path / "tax.sqlite3"),
+        ]
+    )
+
+    row = next(csv.DictReader(io.StringIO(output.getvalue())))
+    assert result == 0
+    assert row["gross_income"] == "100000.01"
 
 
 def test_cli_accepts_year_filing_status_and_secondary_income(monkeypatch, tmp_path):
