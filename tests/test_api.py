@@ -474,6 +474,41 @@ def test_calculate_prevalidates_gross_income_precision_before_secondary_status(
     assert not database_path.exists()
 
 
+@pytest.mark.parametrize(
+    ("year", "filing_status", "expected_detail"),
+    [
+        (2030, "single", "No federal tax parameters for 2030 single"),
+        (
+            2026,
+            "unsupported",
+            "No federal tax parameters for 2026 unsupported",
+        ),
+    ],
+)
+def test_calculate_preserves_unknown_parameter_errors_for_secondary_income(
+    tmp_path,
+    year,
+    filing_status,
+    expected_detail,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": year,
+            "filing_status": filing_status,
+            "gross_income": "100000",
+            "secondary_income": "25000",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == expected_detail
+    assert database_path.exists()
+
+
 def test_calculate_rejects_secondary_income_above_gross_income_as_request_validation(
     tmp_path,
 ):

@@ -264,7 +264,7 @@ def _prevalidate_supported_income_series_request(
     step: Decimal,
     secondary_income: Decimal,
 ) -> None:
-    if year != DEFAULT_TAX_YEAR or filing_status not in FILING_STATUS_CHOICES:
+    if not _has_supported_tax_parameters(year, filing_status):
         return
 
     start_amount = _rounded_query_money(start, "start")
@@ -286,10 +286,7 @@ def _prevalidate_supported_income_series_request(
 
 
 def _prevalidate_supported_calculate_request(request: CalculateRequest) -> None:
-    if (
-        request.year != DEFAULT_TAX_YEAR
-        or request.filing_status not in FILING_STATUS_CHOICES
-    ):
+    if not _has_supported_tax_parameters(request.year, request.filing_status):
         return
 
     _rounded_query_money(request.gross_income, "gross_income")
@@ -298,6 +295,10 @@ def _prevalidate_supported_calculate_request(request: CalculateRequest) -> None:
     )
     if secondary_income_amount > 0 and request.filing_status != "married_joint":
         raise ValueError("secondary_income is only supported for married_joint")
+
+
+def _has_supported_tax_parameters(year: int, filing_status: str) -> bool:
+    return year == DEFAULT_TAX_YEAR and filing_status in FILING_STATUS_CHOICES
 
 
 def _rounded_query_money(value: Decimal, field_name: str) -> Decimal:
