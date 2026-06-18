@@ -76,10 +76,15 @@ class CalculateRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_income_split(self) -> "CalculateRequest":
-        gross_income = _rounded_query_money_or_none(self.gross_income)
-        secondary_income = _rounded_query_money_or_none(self.secondary_income)
-        if gross_income is None or secondary_income is None:
-            return self
+        gross_income = self.gross_income
+        secondary_income = self.secondary_income
+        if _has_supported_tax_parameters(self.year, self.filing_status):
+            rounded_gross_income = _try_round_query_money(self.gross_income)
+            rounded_secondary_income = _try_round_query_money(self.secondary_income)
+            if rounded_gross_income is None or rounded_secondary_income is None:
+                return self
+            gross_income = rounded_gross_income
+            secondary_income = rounded_secondary_income
         if secondary_income > gross_income:
             raise ValueError("secondary_income cannot exceed gross_income")
         return self
@@ -306,13 +311,13 @@ def _has_supported_tax_parameters(year: int, filing_status: str) -> bool:
 
 
 def _rounded_query_money(value: Decimal, field_name: str) -> Decimal:
-    try:
-        return value.quantize(MONEY, rounding=ROUND_HALF_UP)
-    except InvalidOperation:
+    rounded_value = _try_round_query_money(value)
+    if rounded_value is None:
         raise ValueError(f"{field_name} must fit cents precision") from None
+    return rounded_value
 
 
-def _rounded_query_money_or_none(value: Decimal) -> Decimal | None:
+def _try_round_query_money(value: Decimal) -> Decimal | None:
     try:
         return value.quantize(MONEY, rounding=ROUND_HALF_UP)
     except InvalidOperation:
