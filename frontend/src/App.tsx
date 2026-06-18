@@ -105,6 +105,7 @@ const SERIES_COLORS = [
 const DEPENDENT_COUNT_STORAGE_KEY = "taxExplorer.dependentCount";
 const PRIMARY_INCOME_STORAGE_KEY = "taxExplorer.primaryIncomeThousands";
 const SECONDARY_INCOME_STORAGE_KEY = "taxExplorer.secondaryIncomeThousands";
+const DEFAULT_TAX_YEAR = 2026;
 const SELECTED_INCOME_MAX = 3000000;
 
 function sanitizeDependentCount(value: string | number | null): number {
@@ -939,7 +940,7 @@ function App() {
   const [failedFilingStatusesYear, setFailedFilingStatusesYear] = useState<
     number | null
   >(null);
-  const [year, setYear] = useState(2026);
+  const [year, setYear] = useState(DEFAULT_TAX_YEAR);
   const [filingStatus, setFilingStatus] = useState("single");
   const [startThousands, setStartThousands] = useState("0");
   const [stopThousands, setStopThousands] = useState("");
@@ -1031,7 +1032,10 @@ function App() {
           setYear(years[years.length - 1]);
         }
       })
-      .catch((nextError: Error) => setScenarioError(nextError.message));
+      .catch((nextError: Error) => {
+        setTaxYears([DEFAULT_TAX_YEAR]);
+        setScenarioError(nextError.message);
+      });
   }, []);
 
   useEffect(() => {
