@@ -402,6 +402,18 @@ afterEach(() => {
 });
 
 describe("App tax curve controls", () => {
+  test("keeps the default tax year selectable when tax-year lookup fails", async () => {
+    mockFetchTaxYears.mockRejectedValueOnce(new Error("tax years unavailable"));
+
+    await renderLoadedApp();
+
+    const taxYearSelect = screen.getByLabelText("Tax year");
+    expect(taxYearSelect).toHaveValue("2026");
+    expect(within(taxYearSelect).getByRole("option", { name: "2026" })).toHaveValue(
+      "2026"
+    );
+  });
+
   test("defaults Stop to 10 percent above the last marginal-rate change and preserves custom Stop", async () => {
     await renderLoadedApp();
 
