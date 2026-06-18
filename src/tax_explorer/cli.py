@@ -79,6 +79,18 @@ def positive_money_increment_argument(value: str) -> str:
     return value
 
 
+def validate_secondary_income_arguments(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> None:
+    stop = Decimal(args.stop)
+    secondary_income = Decimal(args.secondary_income)
+
+    if args.filing_status != "married_joint" and secondary_income > 0:
+        parser.error("secondary_income is only supported for married_joint")
+    if secondary_income > stop:
+        parser.error("secondary_income cannot exceed stop")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate US W-2 tax burden rows by income."
@@ -122,6 +134,7 @@ def main(argv: list[str] | None = None) -> int:
         help="SQLite database path for tax parameters.",
     )
     args = parser.parse_args(argv)
+    validate_secondary_income_arguments(args, parser)
 
     try:
         with initialize_database(args.database_path) as connection:
