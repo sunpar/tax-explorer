@@ -258,6 +258,31 @@ def test_cli_compares_income_range_after_money_rounding(monkeypatch, tmp_path):
     assert row["gross_income"] == "0.00"
 
 
+def test_cli_preserves_unsupported_year_error_for_unroundable_income_range(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--year",
+                "9999",
+                "--start",
+                "1e999",
+                "--stop",
+                "1e999",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "No federal tax parameters for 9999 single" in capsys.readouterr().err
+    assert database_path.exists()
+
+
 def test_cli_preserves_unsupported_filing_status_error_with_secondary_income(
     tmp_path,
     capsys,
