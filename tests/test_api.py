@@ -474,6 +474,57 @@ def test_calculate_prevalidates_gross_income_precision_before_secondary_status(
     assert not database_path.exists()
 
 
+def test_calculate_prevalidates_secondary_income_precision_before_split_bounds(
+    tmp_path,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "married_joint",
+            "gross_income": "100000",
+            "secondary_income": "1e27",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "secondary_income must fit cents precision"
+    assert not database_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("year", "filing_status"),
+    [(2030, "single"), (2026, "unsupported")],
+)
+def test_calculate_preserves_unsupported_split_bounds_for_unroundable_secondary(
+    tmp_path,
+    year,
+    filing_status,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": year,
+            "filing_status": filing_status,
+            "gross_income": "100000",
+            "secondary_income": "1e27",
+        },
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    assert detail[0]["loc"] == ["body"]
+    assert "secondary_income cannot exceed gross_income" in detail[0]["msg"]
+    assert not database_path.exists()
+
+
 @pytest.mark.parametrize(
     ("year", "filing_status", "expected_detail"),
     [
