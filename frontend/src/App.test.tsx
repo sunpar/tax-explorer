@@ -1154,6 +1154,36 @@ describe("App tax curve controls", () => {
     ).toBeInTheDocument();
   });
 
+  test("married joint cleared Stop clamps secondary income to the request Stop", async () => {
+    await renderLoadedApp();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+
+    await screen.findByLabelText("Income 2 ($k)");
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Selected income/)).toHaveValue("256800")
+    );
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "50" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filingStatus: "married_joint",
+          secondaryIncome: "50000",
+          start: "50000",
+          stop: "50000"
+        })
+      )
+    );
+    expectNoInvertedIncomeSeriesRequests();
+  });
+
   test("married joint income split is saved and restored", async () => {
     await renderLoadedApp();
 

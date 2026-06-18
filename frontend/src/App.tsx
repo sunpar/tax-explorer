@@ -205,6 +205,19 @@ function clampStopDollarsAtStart(startDollars: string, stopDollars: string): str
   return stopDollars;
 }
 
+function clampSecondaryDollarsAtStop(
+  secondaryDollars: string,
+  stopDollars: string
+): string {
+  const secondaryAmount = Number(secondaryDollars);
+  const stopAmount = Number(stopDollars);
+  const safeSecondary = Number.isFinite(secondaryAmount)
+    ? Math.max(0, secondaryAmount)
+    : 0;
+  if (!Number.isFinite(stopAmount)) return String(safeSecondary);
+  return String(Math.min(safeSecondary, Math.max(0, stopAmount)));
+}
+
 function formatThousandsOption(value: string | number): string {
   return `$${dollarsToThousands(value)}k`;
 }
@@ -1049,6 +1062,10 @@ function App() {
         ? stop
         : thousandsToDollars(nextDefaultStopThousands);
       const resolvedStop = clampStopDollarsAtStart(start, requestedStop);
+      const resolvedSecondaryIncomeRequest = clampSecondaryDollarsAtStop(
+        secondaryIncomeRequest,
+        resolvedStop
+      );
       const selectedSeriesRequest = {
         year,
         filingStatus,
@@ -1058,7 +1075,7 @@ function App() {
         includeEmployerPayrollTax: includeEmployer,
         includeMarginalBreakpoints: true,
         dependentCount,
-        secondaryIncome: secondaryIncomeRequest,
+        secondaryIncome: resolvedSecondaryIncomeRequest,
         pretaxDeductionMode
       };
       const selectedSeries = await fetchIncomeSeries(selectedSeriesRequest);
