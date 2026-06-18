@@ -308,7 +308,10 @@ def _non_negative_money(value: object, field_name: str) -> Decimal:
     amount = _finite_decimal(value, field_name)
     if amount < 0:
         raise ValueError(f"{field_name} must be non-negative")
-    return amount.quantize(MONEY, rounding=ROUND_HALF_UP)
+    try:
+        return amount.quantize(MONEY, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        raise ValueError(f"{field_name} must fit cents precision") from None
 
 
 def _rate(value: object, field_name: str) -> Decimal:
