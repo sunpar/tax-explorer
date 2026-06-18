@@ -936,6 +936,9 @@ function App() {
   const [loadedFilingStatusesYear, setLoadedFilingStatusesYear] = useState<
     number | null
   >(null);
+  const [failedFilingStatusesYear, setFailedFilingStatusesYear] = useState<
+    number | null
+  >(null);
   const [year, setYear] = useState(2026);
   const [filingStatus, setFilingStatus] = useState("single");
   const [startThousands, setStartThousands] = useState("0");
@@ -995,6 +998,7 @@ function App() {
   const isSelectedStatusReady =
     loadedFilingStatusesYear === year &&
     filingStatuses.some((status) => status.code === filingStatus);
+  const filingStatusLoadFailedForYear = failedFilingStatusesYear === year;
   const displayedError = scenarioError ?? selectedIncomeError;
 
   useEffect(() => {
@@ -1032,10 +1036,12 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+    setFailedFilingStatusesYear(null);
     fetchFilingStatuses(year)
       .then((statuses) => {
         if (cancelled) return;
         filingStatusCacheByYearRef.current[year] = statuses;
+        setFailedFilingStatusesYear(null);
         setFilingStatuses(statuses);
         setLoadedFilingStatusesYear(year);
         setFilingStatus((currentStatus) =>
@@ -1046,6 +1052,7 @@ function App() {
       })
       .catch((nextError: Error) => {
         if (!cancelled) {
+          setFailedFilingStatusesYear(year);
           setScenarioError(nextError.message);
           setLoading(false);
         }
@@ -1059,14 +1066,18 @@ function App() {
   useEffect(() => {
     let cancelled = false;
 
-    setLoading(true);
-    setScenarioError(null);
-
     if (!isSelectedStatusReady) {
+      if (!filingStatusLoadFailedForYear) {
+        setLoading(true);
+        setScenarioError(null);
+      }
       return () => {
         cancelled = true;
       };
     }
+
+    setLoading(true);
+    setScenarioError(null);
 
     async function loadScenario() {
       const nextParameters = await fetchTaxParameters(year, filingStatus);
@@ -1208,7 +1219,8 @@ function App() {
     compareTaxYears,
     taxYears,
     filingStatuses,
-    isSelectedStatusReady
+    isSelectedStatusReady,
+    filingStatusLoadFailedForYear
   ]);
 
   useEffect(() => {

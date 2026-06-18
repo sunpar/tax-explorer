@@ -1013,6 +1013,15 @@ describe("App tax curve controls", () => {
         filingStatus: "married_joint"
       })
     );
+
+    fireEvent.change(screen.getByLabelText("Step ($k)"), {
+      target: { value: "5" }
+    });
+
+    expect(screen.getByText("status lookup failed")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("Loading")).not.toBeInTheDocument()
+    );
   });
 
   test("selected income slider supports exact calculations up to $3m", async () => {
