@@ -915,7 +915,6 @@ function App() {
   const [hasCustomSelectedIncome, setHasCustomSelectedIncome] = useState(false);
   const hasCustomSelectedIncomeRef = useRef(false);
   const stopEditCollapseAnchorRef = useRef<{
-    lastStopThousands: string;
     selectedIncome: number;
     start: number;
   } | null>(null);
@@ -1409,6 +1408,7 @@ function App() {
   const handleChartClick = (state: unknown) => {
     const income = readClickedIncome(state);
     if (income !== null) {
+      stopEditCollapseAnchorRef.current = null;
       markCustomSelectedIncome();
       setSelectedIncome(income);
     }
@@ -1448,26 +1448,13 @@ function App() {
     const nextStop = nonNegativeDollarsFromThousands(value);
     if (nextStop === null) return;
     const currentStart = nonNegativeDollarsFromThousands(startThousands);
-    let stopEditAnchor = stopEditCollapseAnchorRef.current;
-    if (
-      stopEditAnchor !== null &&
-      !value.startsWith(stopEditAnchor.lastStopThousands)
-    ) {
-      stopEditCollapseAnchorRef.current = null;
-      stopEditAnchor = null;
-    }
+    const stopEditAnchor = stopEditCollapseAnchorRef.current;
     const comparisonStart = stopEditAnchor?.start ?? currentStart;
     if (comparisonStart !== null && nextStop < comparisonStart) {
       if (stopEditAnchor === null) {
         stopEditCollapseAnchorRef.current = {
-          lastStopThousands: value,
           selectedIncome,
           start: comparisonStart
-        };
-      } else {
-        stopEditCollapseAnchorRef.current = {
-          ...stopEditAnchor,
-          lastStopThousands: value
         };
       }
       setStartThousands(dollarsToThousands(nextStop));
@@ -1489,6 +1476,7 @@ function App() {
   };
   const setPrimaryIncomeThousands = (value: string) => {
     const nextPrimaryIncome = Math.max(0, Number(thousandsToDollars(value)) || 0);
+    stopEditCollapseAnchorRef.current = null;
     markCustomSelectedIncome();
     markCustomIncomeSplit();
     setStoredPrimaryIncomeThousands(value);
@@ -1496,6 +1484,7 @@ function App() {
   };
   const setSecondaryIncomeThousandsValue = (value: string) => {
     const nextSecondaryIncome = Math.max(0, Number(thousandsToDollars(value)) || 0);
+    stopEditCollapseAnchorRef.current = null;
     markCustomSelectedIncome();
     markCustomIncomeSplit();
     setStoredPrimaryIncomeThousands(dollarsToThousands(primaryIncome));
@@ -1640,6 +1629,9 @@ function App() {
                   onChange={(event) =>
                     setManualStopThousands(event.target.value)
                   }
+                  onBlur={() => {
+                    stopEditCollapseAnchorRef.current = null;
+                  }}
                 />
               </label>
             </div>
@@ -1704,6 +1696,7 @@ function App() {
               step={1}
               value={selectedIncome}
               onChange={(event) => {
+                stopEditCollapseAnchorRef.current = null;
                 markCustomSelectedIncome();
                 setSelectedIncome(Number(event.target.value));
               }}
@@ -1805,6 +1798,7 @@ function App() {
             type="button"
             className="refresh-button"
             onClick={() => {
+              stopEditCollapseAnchorRef.current = null;
               markCustomSelectedIncome();
               setSelectedIncome(Number(start) || 0);
             }}

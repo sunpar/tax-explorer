@@ -611,6 +611,7 @@ describe("App tax curve controls", () => {
     fireEvent.change(screen.getByLabelText("Stop ($k)"), {
       target: { value: "75" }
     });
+    fireEvent.blur(screen.getByLabelText("Stop ($k)"));
     fireEvent.change(screen.getByLabelText("Stop ($k)"), {
       target: { value: "90" }
     });
@@ -626,6 +627,45 @@ describe("App tax curve controls", () => {
         })
       )
     );
+  });
+
+  test("manual Stop replacement keeps the original Start anchor while focused", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "8" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "75" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("75000");
+  });
+
+  test("selected income edits clear the active Stop collapse anchor", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "1" }
+    });
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "50000" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "125" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(1);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(125);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("50000");
   });
 
   test("manual Stop edit restores Start when the completed value stays above it", async () => {
