@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 from tax_explorer import (
+    FILING_STATUS_CHOICES,
     MONEY,
     PRETAX_DEDUCTION_MODE_CHOICES,
     PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
@@ -85,7 +86,11 @@ def validate_secondary_income_arguments(
     stop = Decimal(args.stop)
     secondary_income = Decimal(args.secondary_income)
 
-    if args.filing_status != "married_joint" and secondary_income > 0:
+    if (
+        args.filing_status in FILING_STATUS_CHOICES
+        and args.filing_status != "married_joint"
+        and secondary_income > 0
+    ):
         parser.error("secondary_income is only supported for married_joint")
     if secondary_income > stop:
         parser.error("secondary_income cannot exceed stop")

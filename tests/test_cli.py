@@ -215,6 +215,29 @@ def test_cli_reports_secondary_income_above_stop_as_usage_error(tmp_path, capsys
     assert not database_path.exists()
 
 
+def test_cli_preserves_unsupported_filing_status_error_with_secondary_income(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--filing-status",
+                "unknown",
+                "--secondary-income",
+                "1",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "No federal tax parameters for 2026 unknown" in capsys.readouterr().err
+    assert database_path.exists()
+
+
 def test_cli_accepts_year_filing_status_and_secondary_income(monkeypatch, tmp_path):
     output = io.StringIO()
     monkeypatch.setattr("sys.stdout", output)
