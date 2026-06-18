@@ -515,6 +515,49 @@ describe("App tax curve controls", () => {
     }
   );
 
+  test("manual Start edit raises Stop when it would invert the range", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "150" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(150);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(150);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("150000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "150000",
+          stop: "150000"
+        })
+      )
+    );
+  });
+
+  test("manual Stop edit lowers Start when it would invert the range", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "100" }
+    });
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "75" }
+    });
+
+    expect(screen.getByLabelText("Start ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(75);
+    expect(screen.getByLabelText(/Selected income/)).toHaveValue("75000");
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "75000",
+          stop: "75000"
+        })
+      )
+    );
+  });
+
   test("chart click updates the selected income", async () => {
     await renderLoadedApp();
 

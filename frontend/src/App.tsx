@@ -1424,6 +1424,11 @@ function App() {
     markCustomSelectedIncome();
     const nextStart = nonNegativeDollarsFromThousands(value);
     if (nextStart === null) return;
+    const currentStop = nonNegativeDollarsFromThousands(stopThousands);
+    if (currentStop !== null && nextStart > currentStop) {
+      setHasCustomStop(true);
+      setStopThousands(dollarsToThousands(nextStart));
+    }
     setSelectedIncome((currentIncome) => Math.max(currentIncome, nextStart));
   };
   const setManualStopThousands = (value: string) => {
@@ -1432,6 +1437,10 @@ function App() {
     markCustomSelectedIncome();
     const nextStop = nonNegativeDollarsFromThousands(value);
     if (nextStop === null) return;
+    const currentStart = nonNegativeDollarsFromThousands(startThousands);
+    if (currentStart !== null && nextStop < currentStart) {
+      setStartThousands(dollarsToThousands(nextStop));
+    }
     setSelectedIncome((currentIncome) => Math.min(currentIncome, nextStop));
   };
   const setPrimaryIncomeThousands = (value: string) => {
