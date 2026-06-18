@@ -1176,6 +1176,28 @@ def test_income_series_preserves_unknown_year_error_for_invalid_range(tmp_path):
     assert database_path.exists()
 
 
+def test_income_series_preserves_unknown_status_error_for_invalid_range(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "unsupported",
+            "start": "100000",
+            "stop": "0",
+            "step": "10000",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == (
+        "No federal tax parameters for 2026 unsupported"
+    )
+    assert database_path.exists()
+
+
 def test_income_series_rejects_excessive_row_count(tmp_path):
     client = create_test_client(tmp_path)
 
