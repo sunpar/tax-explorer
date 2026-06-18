@@ -183,7 +183,9 @@ function dollarsToThousands(value: string | number): string {
 }
 
 function nonNegativeDollarsFromThousands(value: string): number | null {
-  const amount = Number(value);
+  const trimmedValue = value.trim();
+  if (trimmedValue === "") return null;
+  const amount = Number(trimmedValue);
   if (!Number.isFinite(amount) || amount < 0) return null;
   return roundMoneyNumber(amount * 1000);
 }
@@ -1419,17 +1421,17 @@ function App() {
   };
   const setManualStartThousands = (value: string) => {
     setStartThousands(value);
+    markCustomSelectedIncome();
     const nextStart = nonNegativeDollarsFromThousands(value);
     if (nextStart === null) return;
-    markCustomSelectedIncome();
     setSelectedIncome((currentIncome) => Math.max(currentIncome, nextStart));
   };
   const setManualStopThousands = (value: string) => {
     setHasCustomStop(true);
     setStopThousands(value);
+    markCustomSelectedIncome();
     const nextStop = nonNegativeDollarsFromThousands(value);
     if (nextStop === null) return;
-    markCustomSelectedIncome();
     setSelectedIncome((currentIncome) => Math.min(currentIncome, nextStop));
   };
   const setPrimaryIncomeThousands = (value: string) => {

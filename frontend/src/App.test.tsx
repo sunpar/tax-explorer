@@ -502,6 +502,19 @@ describe("App tax curve controls", () => {
     expect(screen.getByLabelText(/Selected income/)).toHaveValue("75000");
   });
 
+  test.each(["Start ($k)", "Stop ($k)"])(
+    "clearing manual %s keeps selected income unchanged while editing",
+    async (label) => {
+      await renderLoadedApp();
+
+      fireEvent.change(screen.getByLabelText(label), {
+        target: { value: "" }
+      });
+
+      expect(screen.getByLabelText(/Selected income/)).toHaveValue("127900");
+    }
+  );
+
   test("chart click updates the selected income", async () => {
     await renderLoadedApp();
 
