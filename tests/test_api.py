@@ -20,6 +20,15 @@ def create_test_client(tmp_path):
     return TestClient(create_app(database_path=tmp_path / "tax.sqlite3"))
 
 
+def create_deferred_test_client(database_path):
+    return TestClient(
+        create_app(
+            database_path=database_path,
+            initialize_database_on_create=False,
+        )
+    )
+
+
 def create_corrupted_payroll_test_client(tmp_path):
     database_path = tmp_path / "tax.sqlite3"
     client = TestClient(create_app(database_path=database_path))
@@ -882,6 +891,29 @@ def test_income_series_rejects_secondary_income_above_stop(tmp_path):
     assert response.json()["detail"] == "secondary_income cannot exceed stop"
 
 
+def test_income_series_prevalidates_secondary_income_above_stop_before_database_init(
+    tmp_path,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "married_joint",
+            "start": "0",
+            "stop": "100000",
+            "step": "50000",
+            "secondary_income": "120000",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "secondary_income cannot exceed stop"
+    assert not database_path.exists()
+
+
 def test_income_series_rejects_negative_dependent_count(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -960,6 +992,87 @@ def test_income_series_rejects_reversed_income_range(tmp_path):
 
     assert response.status_code == 422
     assert response.json()["detail"] == "start must be less than or equal to stop"
+
+
+def test_income_series_prevalidates_reversed_range_before_database_init(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "100000",
+            "stop": "0",
+            "step": "10000",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "start must be less than or equal to stop"
+    assert not database_path.exists()
+
+
+def test_income_series_compares_prevalidated_range_after_money_rounding(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "0.004",
+            "stop": "0.003",
+            "step": "1",
+        },
+    )
+
+    assert response.status_code == 200
+    rows = response.json()["rows"]
+    assert [row["gross_income"] for row in rows] == ["0.00"]
+    assert database_path.exists()
+
+
+def test_income_series_prevalidates_unroundable_range_before_database_init(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "1e27",
+            "stop": "1e27",
+            "step": "10000",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "start must fit cents precision"
+    assert not database_path.exists()
+
+
+def test_income_series_preserves_unknown_year_error_for_invalid_range(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2030,
+            "filing_status": "single",
+            "start": "100000",
+            "stop": "0",
+            "step": "10000",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No federal tax parameters for 2030 single"
+    assert database_path.exists()
 
 
 def test_income_series_rejects_excessive_row_count(tmp_path):
