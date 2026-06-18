@@ -933,6 +933,9 @@ function ChartTooltip({
 function App() {
   const [taxYears, setTaxYears] = useState<number[]>([]);
   const [filingStatuses, setFilingStatuses] = useState<FilingStatus[]>([]);
+  const [filingStatusesYear, setFilingStatusesYear] = useState<number | null>(
+    null
+  );
   const [year, setYear] = useState(2026);
   const [filingStatus, setFilingStatus] = useState("single");
   const [startThousands, setStartThousands] = useState("0");
@@ -1031,6 +1034,7 @@ function App() {
         if (cancelled) return;
         filingStatusCacheByYearRef.current[year] = statuses;
         setFilingStatuses(statuses);
+        setFilingStatusesYear(year);
         setFilingStatus((currentStatus) =>
           statuses.some((status) => status.code === currentStatus)
             ? currentStatus
@@ -1048,6 +1052,18 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+    const statusIsAvailableForYear =
+      filingStatusesYear === year &&
+      filingStatuses.some((status) => status.code === filingStatus);
+
+    if (!statusIsAvailableForYear) {
+      setLoading(true);
+      setScenarioError(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setLoading(true);
     setScenarioError(null);
 
@@ -1190,7 +1206,8 @@ function App() {
     compareFilingStatuses,
     compareTaxYears,
     taxYears,
-    filingStatuses
+    filingStatuses,
+    filingStatusesYear
   ]);
 
   useEffect(() => {

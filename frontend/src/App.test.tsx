@@ -902,6 +902,56 @@ describe("App tax curve controls", () => {
     );
   });
 
+  test("waits for year-specific filing statuses before loading a stale selected status", async () => {
+    mockFetchTaxYears.mockResolvedValue([2025, 2026]);
+    mockFetchFilingStatuses.mockImplementation(async (taxYear) =>
+      taxYear === 2025 ? [{ code: "single", label: "Single" }] : statuses
+    );
+    await renderLoadedApp();
+    await screen.findByRole("radio", { name: "Married filing jointly" });
+
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          year: 2026,
+          filingStatus: "married_joint"
+        })
+      )
+    );
+    mockFetchTaxParameters.mockClear();
+    mockFetchIncomeSeries.mockClear();
+
+    fireEvent.change(screen.getByLabelText("Tax year"), {
+      target: { value: "2025" }
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: "Single" })).toHaveAttribute(
+        "aria-checked",
+        "true"
+      )
+    );
+    expect(mockFetchTaxParameters).not.toHaveBeenCalledWith(
+      2025,
+      "married_joint"
+    );
+    expect(mockFetchIncomeSeries).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        year: 2025,
+        filingStatus: "married_joint"
+      })
+    );
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          year: 2025,
+          filingStatus: "single"
+        })
+      )
+    );
+  });
+
   test("selected income slider supports exact calculations up to $3m", async () => {
     await renderLoadedApp();
 
