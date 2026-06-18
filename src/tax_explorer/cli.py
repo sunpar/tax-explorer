@@ -193,8 +193,8 @@ def main(argv: list[str] | None = None) -> int:
         help="SQLite database path for tax parameters.",
     )
     args = parser.parse_args(argv)
-    validate_secondary_income_arguments(args, parser)
     validate_income_range_arguments(args, parser)
+    validate_secondary_income_arguments(args, parser)
 
     try:
         with initialize_database(args.database_path) as connection:
