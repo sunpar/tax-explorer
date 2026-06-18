@@ -34,8 +34,11 @@ def _decimal(value: Decimal | int | float | str) -> Decimal:
     return Decimal(str(value))
 
 
-def _money(value: Decimal | int | float | str) -> Decimal:
-    return _decimal(value).quantize(MONEY, rounding=ROUND_HALF_UP)
+def _money(value: Decimal | int | float | str, field_name: str = "money") -> Decimal:
+    try:
+        return _decimal(value).quantize(MONEY, rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        raise ValueError(f"{field_name} must fit cents precision") from None
 
 
 def _finite_decimal(value: Decimal | int | float | str, field_name: str) -> Decimal:
@@ -55,7 +58,7 @@ def _validated_non_negative_money(
     amount = _finite_decimal(value, field_name)
     if amount < 0:
         raise ValueError(f"{field_name} must be non-negative")
-    return amount.quantize(MONEY, rounding=ROUND_HALF_UP)
+    return _money(amount, field_name)
 
 
 @dataclass(frozen=True)
@@ -336,10 +339,10 @@ def build_income_series(
     if start_decimal < 0 or stop_decimal < 0:
         raise ValueError("income bounds must be non-negative")
 
-    start_amount = _money(start_decimal)
+    start_amount = _money(start_decimal, "start")
     current = start_amount
-    stop_amount = _money(stop_decimal)
-    step_amount = _money(step_decimal)
+    stop_amount = _money(stop_decimal, "stop")
+    step_amount = _money(step_decimal, "step")
     if step_amount <= 0:
         raise ValueError("step must be positive")
     if current > stop_amount:

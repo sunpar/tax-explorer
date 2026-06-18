@@ -846,6 +846,29 @@ def test_build_income_series_rejects_non_finite_money_inputs(field, kwargs):
         build_income_series(**kwargs)
 
 
+@pytest.mark.parametrize(
+    ("field", "kwargs"),
+    [
+        ("start", {"start": money("1e27"), "stop": 1, "step": 1}),
+        ("stop", {"start": 0, "stop": money("1e27"), "step": 1}),
+        ("step", {"start": 0, "stop": 1, "step": money("1e27")}),
+        (
+            "secondary_income",
+            {
+                "start": 0,
+                "stop": 1,
+                "step": 1,
+                "secondary_income": money("1e27"),
+                "federal": FEDERAL_2026_MARRIED_JOINT,
+            },
+        ),
+    ],
+)
+def test_build_income_series_rejects_unroundable_money_inputs(field, kwargs):
+    with pytest.raises(ValueError, match=f"{field} must fit cents precision"):
+        build_income_series(**kwargs)
+
+
 def test_build_income_series_rejects_excessive_row_count():
     with pytest.raises(ValueError, match="at most 2001 rows"):
         build_income_series(start=0, stop=2001000, step=1000)
@@ -857,12 +880,12 @@ def test_build_income_series_rejects_excessive_row_count_without_scanning_full_r
     original_money = tax_module._money
     money_calls = 0
 
-    def guarded_money(value):
+    def guarded_money(value, field_name="money"):
         nonlocal money_calls
         money_calls += 1
-        if money_calls > 12:
+        if money_calls > 30:
             raise AssertionError("row limit was not enforced promptly")
-        return original_money(value)
+        return original_money(value, field_name)
 
     monkeypatch.setattr(tax_module, "MAX_INCOME_SERIES_ROWS", 3)
     monkeypatch.setattr(tax_module, "_money", guarded_money)
@@ -883,6 +906,11 @@ def test_non_finite_income_is_rejected(income):
         calculate_tax_burden(TaxScenario(gross_income=income))
 
 
+def test_unroundable_income_is_rejected():
+    with pytest.raises(ValueError, match="gross_income must fit cents precision"):
+        calculate_tax_burden(TaxScenario(gross_income=money("1e27")))
+
+
 def test_sub_cent_negative_secondary_income_is_rejected():
     with pytest.raises(ValueError, match="secondary_income must be non-negative"):
         calculate_tax_burden(
@@ -900,6 +928,17 @@ def test_non_finite_secondary_income_is_rejected():
             TaxScenario(
                 gross_income=money("100000"),
                 secondary_income=money("NaN"),
+            ),
+            federal=FEDERAL_2026_MARRIED_JOINT,
+        )
+
+
+def test_unroundable_secondary_income_is_rejected():
+    with pytest.raises(ValueError, match="secondary_income must fit cents precision"):
+        calculate_tax_burden(
+            TaxScenario(
+                gross_income=money("100000"),
+                secondary_income=money("1e27"),
             ),
             federal=FEDERAL_2026_MARRIED_JOINT,
         )
