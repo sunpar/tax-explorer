@@ -564,6 +564,17 @@ describe("App tax curve controls", () => {
       )
     );
     expectNoInvertedIncomeSeriesRequests();
+    const sampledRows = screen
+      .getByRole("heading", { name: "Sampled Income Rows" })
+      .closest("section");
+    expect(sampledRows).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        within(sampledRows as HTMLElement).getByRole("cell", {
+          name: "$100,000"
+        })
+      ).toBeInTheDocument()
+    );
   });
 
   test("manual Start edit raises Stop when it would invert the range", async () => {

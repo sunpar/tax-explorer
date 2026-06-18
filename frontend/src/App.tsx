@@ -975,6 +975,7 @@ function App() {
   );
   const start = thousandsToDollars(startThousands);
   const stop = thousandsToDollars(stopThousands);
+  const effectiveStop = clampStopDollarsAtStart(start, stop);
   const step = thousandsToDollars(stepThousands);
   const dependentCount = sanitizeDependentCount(dependentCountInput);
   const rawSecondaryIncome = Number(
@@ -1059,7 +1060,7 @@ function App() {
         secondaryIncome
       );
       const requestedStop = hasCustomStop
-        ? stop
+        ? effectiveStop
         : thousandsToDollars(nextDefaultStopThousands);
       const resolvedStop = clampStopDollarsAtStart(start, requestedStop);
       const resolvedSecondaryIncomeRequest = clampSecondaryDollarsAtStop(
@@ -1177,6 +1178,7 @@ function App() {
     selectedFilingStatus?.label,
     start,
     stop,
+    effectiveStop,
     step,
     stopThousands,
     hasCustomStop,
@@ -1281,7 +1283,7 @@ function App() {
       dependentCount,
       secondaryIncome,
       start,
-      stop
+      effectiveStop
     );
     return chartRows.filter((row) => breakpointIncomes.has(row.incomeNumber));
   }, [
@@ -1291,7 +1293,7 @@ function App() {
     pretaxDeductionMode,
     secondaryIncome,
     start,
-    stop
+    effectiveStop
   ]);
 
   const sampledIncomeOptions = useMemo(
@@ -1691,7 +1693,7 @@ function App() {
             <details className="range-preset-group">
               <summary>
                 <span>Stop presets</span>
-                <span>{formatThousandsOption(Number(stop) || 0)}</span>
+                <span>{formatThousandsOption(Number(effectiveStop) || 0)}</span>
               </summary>
               <div className="range-chip-list" aria-label="Stop presets">
                 {quickStopOptions.map((income) => (
@@ -1699,8 +1701,8 @@ function App() {
                     key={income}
                     type="button"
                     aria-label={`Stop ${formatThousandsOption(income)}`}
-                    aria-pressed={Number(stop) === income}
-                    className={Number(stop) === income ? "active" : ""}
+                    aria-pressed={Number(effectiveStop) === income}
+                    className={Number(effectiveStop) === income ? "active" : ""}
                     onClick={() => setQuickStop(income)}
                   >
                     {formatThousandsOption(income)}
@@ -1871,7 +1873,7 @@ function App() {
                 <XAxis
                   dataKey="incomeNumber"
                   type="number"
-                  domain={[Number(start) || 0, Number(stop) || "dataMax"]}
+                  domain={[Number(start) || 0, Number(effectiveStop) || "dataMax"]}
                   tickFormatter={formatIncomeAxisTick}
                   stroke="#706b60"
                   minTickGap={24}
