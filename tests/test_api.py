@@ -867,6 +867,32 @@ def test_income_series_rejects_negative_dependent_count(tmp_path):
     assert response.status_code == 422
 
 
+def test_income_series_rejects_ambiguous_boolean_query_values(tmp_path):
+    client = create_test_client(tmp_path)
+
+    for field_name in (
+        "include_employer_payroll_tax",
+        "include_marginal_breakpoints",
+    ):
+        for query_value in ("1", "yes"):
+            response = client.get(
+                "/api/income-series",
+                params={
+                    "year": 2026,
+                    "filing_status": "single",
+                    "start": "100000",
+                    "stop": "100000",
+                    "step": "50000",
+                    field_name: query_value,
+                },
+            )
+
+            assert response.status_code == 422
+            detail = response.json()["detail"]
+            assert isinstance(detail, list)
+            assert detail[0]["loc"] == ["query", field_name]
+
+
 def test_income_series_rejects_unknown_pretax_deduction_mode(tmp_path):
     client = create_test_client(tmp_path)
 

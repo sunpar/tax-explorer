@@ -4,11 +4,11 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Iterator, Literal
+from typing import Annotated, Any, Iterator, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, model_validator
 
 from tax_explorer import (
     FederalTaxParameters,
@@ -43,6 +43,23 @@ MISSING_PARAMETER_MESSAGE_PREFIXES = (
     "No payroll tax parameters",
     "No pre-tax deduction parameters",
 )
+
+
+def _parse_strict_query_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise ValueError("must be true or false")
+
+
+StrictQueryBool = Annotated[
+    bool,
+    BeforeValidator(_parse_strict_query_bool),
+    Query(),
+]
 
 
 class CalculateRequest(BaseModel):
@@ -156,8 +173,8 @@ def create_app(
         start: Decimal = Query(default=Decimal("0"), ge=0),
         stop: Decimal = Query(default=Decimal("500000"), ge=0),
         step: Decimal = Query(default=Decimal("10000"), gt=0),
-        include_employer_payroll_tax: bool = Query(default=False),
-        include_marginal_breakpoints: bool = Query(default=False),
+        include_employer_payroll_tax: StrictQueryBool = False,
+        include_marginal_breakpoints: StrictQueryBool = False,
         dependent_count: int = Query(default=0, ge=0),
         secondary_income: Decimal = Query(default=Decimal("0"), ge=0),
         pretax_deduction_mode: PretaxDeductionMode = Query(
