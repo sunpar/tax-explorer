@@ -257,7 +257,7 @@ def test_rejects_duplicate_federal_bracket_lower_bounds_after_rounding_from_sqli
         ("rate", "Infinity", "bracket rate must be a finite decimal"),
     ],
 )
-def test_rejects_non_finite_federal_brackets_from_sqlite(
+def test_rejects_invalid_federal_bracket_decimals_from_sqlite(
     tmp_path,
     column,
     value,
