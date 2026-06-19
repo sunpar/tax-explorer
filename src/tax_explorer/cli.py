@@ -124,13 +124,13 @@ def validate_secondary_income_arguments(
 
     if args.filing_status != "married_joint" and secondary_income > 0:
         parser.error("secondary_income is only supported for married_joint")
-    if secondary_income > stop:
-        parser.error("secondary_income cannot exceed stop")
     _validate_roundable_money_arguments(
         args,
         parser,
-        (("stop", "--stop"), ("secondary_income", "--secondary-income")),
+        (("secondary_income", "--secondary-income"),),
     )
+    if secondary_income > stop:
+        parser.error("secondary_income cannot exceed stop")
 
 
 def validate_income_range_arguments(
