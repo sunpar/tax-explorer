@@ -153,6 +153,12 @@ def numeric_schema(schema):
     )
 
 
+def parameter_schema(parameters, name):
+    return next(
+        parameter["schema"] for parameter in parameters if parameter["name"] == name
+    )
+
+
 def assert_pretax_mode_validation_error(response, expected_loc):
     assert response.status_code == 422
     detail = response.json()["detail"]
@@ -742,7 +748,7 @@ def test_calculate_rejects_unknown_pretax_deduction_mode_as_request_validation(
     assert_pretax_mode_validation_error(response, ["body", "pretax_deduction_mode"])
 
 
-def test_openapi_documents_pretax_deduction_modes(tmp_path):
+def test_openapi_documents_request_validation_constraints(tmp_path):
     client = create_test_client(tmp_path)
 
     response = client.get("/openapi.json")
@@ -772,44 +778,35 @@ def test_openapi_documents_pretax_deduction_modes(tmp_path):
     income_series_parameters = openapi["paths"]["/api/income-series"]["get"][
         "parameters"
     ]
-    income_series_year = next(
-        parameter
-        for parameter in income_series_parameters
-        if parameter["name"] == "year"
-    )
-    assert income_series_year["schema"]["minimum"] == 0
-    income_series_mode = next(
-        parameter
-        for parameter in income_series_parameters
-        if parameter["name"] == "pretax_deduction_mode"
-    )
-    assert income_series_mode["schema"]["enum"] == [
+    assert parameter_schema(income_series_parameters, "year")["minimum"] == 0
+    assert parameter_schema(income_series_parameters, "pretax_deduction_mode")[
+        "enum"
+    ] == [
         "max_available",
         "gradual_phase_in",
     ]
-    income_series_dependent_count = next(
-        parameter
-        for parameter in income_series_parameters
-        if parameter["name"] == "dependent_count"
+    assert parameter_schema(income_series_parameters, "dependent_count")[
+        "minimum"
+    ] == 0
+    assert (
+        numeric_schema(parameter_schema(income_series_parameters, "secondary_income"))[
+            "minimum"
+        ]
+        == 0
     )
-    assert income_series_dependent_count["schema"]["minimum"] == 0
-    income_series_secondary_income = next(
-        parameter
-        for parameter in income_series_parameters
-        if parameter["name"] == "secondary_income"
-    )
-    assert numeric_schema(income_series_secondary_income["schema"])["minimum"] == 0
     for field_name in (
         "include_employer_payroll_tax",
         "include_marginal_breakpoints",
     ):
-        boolean_parameter = next(
-            parameter
-            for parameter in income_series_parameters
-            if parameter["name"] == field_name
-        )
-        assert boolean_parameter["schema"]["type"] == "boolean"
-        assert boolean_parameter["schema"]["default"] is False
+        boolean_schema = parameter_schema(income_series_parameters, field_name)
+        assert boolean_schema["type"] == "boolean"
+        assert boolean_schema["default"] is False
+    for path in (
+        "/api/tax-years/{year}/filing-statuses",
+        "/api/tax-years/{year}/parameters",
+    ):
+        path_parameters = openapi["paths"][path]["get"]["parameters"]
+        assert parameter_schema(path_parameters, "year")["minimum"] == 0
 
 
 def test_calculate_response_breaks_tax_down_by_component(tmp_path):
