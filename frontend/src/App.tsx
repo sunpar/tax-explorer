@@ -980,6 +980,7 @@ function App() {
   const [selectedIncomeError, setSelectedIncomeError] = useState<string | null>(
     null
   );
+  const selectedScenarioFailedRef = useRef(false);
   const start = thousandsToDollars(startThousands);
   const stop = thousandsToDollars(stopThousands);
   const effectiveStop = clampStopDollarsAtStart(start, stop);
@@ -1056,6 +1057,7 @@ function App() {
       })
       .catch((nextError: Error) => {
         if (!cancelled) {
+          selectedScenarioFailedRef.current = true;
           setFailedFilingStatusesYear(year);
           setScenarioError(nextError.message);
           setParameters(null);
@@ -1086,6 +1088,7 @@ function App() {
 
     setLoading(true);
     setScenarioError(null);
+    selectedScenarioFailedRef.current = false;
 
     async function loadScenario() {
       const nextParameters = await fetchTaxParameters(year, filingStatus);
@@ -1116,88 +1119,118 @@ function App() {
         pretaxDeductionMode
       };
       const selectedSeries = await fetchIncomeSeries(selectedSeriesRequest);
-      const yearsToCompare =
-        compareTaxYears && taxYears.length > 0 ? taxYears : [year];
-      const seriesRequests: Array<{
-        year: number;
-        filingStatus: string;
-        statusLabel: string;
-      }> = [];
-
-      for (const comparisonYear of yearsToCompare) {
-        let statuses = filingStatusCacheByYearRef.current[comparisonYear];
-        if (!statuses && comparisonYear === year && filingStatuses.length > 0) {
-          statuses = filingStatuses;
-          filingStatusCacheByYearRef.current[comparisonYear] = statuses;
-        }
-        if (!statuses) {
-          statuses = await fetchFilingStatuses(comparisonYear);
-          if (cancelled) return;
-          filingStatusCacheByYearRef.current[comparisonYear] = statuses;
-        }
-        const statusesToCompare = compareFilingStatuses
-          ? statuses
-          : statuses.filter((status) => status.code === filingStatus);
-
-        for (const status of statusesToCompare) {
-          seriesRequests.push({
-            year: comparisonYear,
-            filingStatus: status.code,
-            statusLabel: status.label
-          });
-        }
-      }
-
-      if (seriesRequests.length === 0) {
-        seriesRequests.push({
+      const selectedCurveSeries = {
+        key: seriesKey(year, filingStatus),
+        label: comparisonSeriesLabel(
           year,
-          filingStatus,
-          statusLabel: selectedFilingStatus?.label ?? filingStatus
-        });
-      }
-
-      const nextComparisonSeries = await Promise.all(
-        seriesRequests.map(async (request, index) => {
-          const isSelectedSeries =
-            request.year === year && request.filingStatus === filingStatus;
-          const response = isSelectedSeries
-            ? selectedSeries
-            : await fetchIncomeSeries({
-                ...selectedSeriesRequest,
-                year: request.year,
-                filingStatus: request.filingStatus,
-                secondaryIncome:
-                  request.filingStatus === "married_joint"
-                    ? selectedSeriesRequest.secondaryIncome
-                    : "0"
-              });
-
-          return {
-            key: seriesKey(request.year, request.filingStatus),
-            label: comparisonSeriesLabel(
-              request.year,
-              request.statusLabel,
-              compareFilingStatuses,
-              compareTaxYears
-            ),
-            color: seriesColor(index),
-            rows: buildChartRows(response.rows, includeEmployer)
-          };
-        })
-      );
+          selectedFilingStatus?.label ?? filingStatus,
+          compareFilingStatuses,
+          compareTaxYears
+        ),
+        color: seriesColor(0),
+        rows: buildChartRows(selectedSeries.rows, includeEmployer)
+      };
 
       if (cancelled) return;
       if (!hasCustomStop && stopThousands !== nextDefaultStopThousands) {
         setStopThousands(nextDefaultStopThousands);
       }
+      selectedScenarioFailedRef.current = false;
       setParameters(nextParameters);
       setRows(selectedSeries.rows);
+      setComparisonSeries([selectedCurveSeries]);
+
+      let nextComparisonSeries: CurveSeries[];
+      try {
+        const yearsToCompare =
+          compareTaxYears && taxYears.length > 0 ? taxYears : [year];
+        const seriesRequests: Array<{
+          year: number;
+          filingStatus: string;
+          statusLabel: string;
+        }> = [];
+
+        for (const comparisonYear of yearsToCompare) {
+          let statuses = filingStatusCacheByYearRef.current[comparisonYear];
+          if (
+            !statuses &&
+            comparisonYear === year &&
+            filingStatuses.length > 0
+          ) {
+            statuses = filingStatuses;
+            filingStatusCacheByYearRef.current[comparisonYear] = statuses;
+          }
+          if (!statuses) {
+            statuses = await fetchFilingStatuses(comparisonYear);
+            if (cancelled) return;
+            filingStatusCacheByYearRef.current[comparisonYear] = statuses;
+          }
+          const statusesToCompare = compareFilingStatuses
+            ? statuses
+            : statuses.filter((status) => status.code === filingStatus);
+
+          for (const status of statusesToCompare) {
+            seriesRequests.push({
+              year: comparisonYear,
+              filingStatus: status.code,
+              statusLabel: status.label
+            });
+          }
+        }
+
+        if (seriesRequests.length === 0) {
+          seriesRequests.push({
+            year,
+            filingStatus,
+            statusLabel: selectedFilingStatus?.label ?? filingStatus
+          });
+        }
+
+        nextComparisonSeries = await Promise.all(
+          seriesRequests.map(async (request, index) => {
+            const isSelectedSeries =
+              request.year === year && request.filingStatus === filingStatus;
+            const response = isSelectedSeries
+              ? selectedSeries
+              : await fetchIncomeSeries({
+                  ...selectedSeriesRequest,
+                  year: request.year,
+                  filingStatus: request.filingStatus,
+                  secondaryIncome:
+                    request.filingStatus === "married_joint"
+                      ? selectedSeriesRequest.secondaryIncome
+                      : "0"
+                });
+
+            return {
+              key: seriesKey(request.year, request.filingStatus),
+              label: comparisonSeriesLabel(
+                request.year,
+                request.statusLabel,
+                compareFilingStatuses,
+                compareTaxYears
+              ),
+              color: seriesColor(index),
+              rows: buildChartRows(response.rows, includeEmployer)
+            };
+          })
+        );
+      } catch (nextError) {
+        if (!cancelled) setScenarioError((nextError as Error).message);
+        return;
+      }
+
+      if (cancelled) return;
       setComparisonSeries(nextComparisonSeries);
     }
 
     loadScenario()
       .catch((nextError: Error) => {
         if (cancelled) return;
+        selectedScenarioFailedRef.current = true;
+        setParameters(null);
+        setRows([]);
+        setSelectedBurden(null);
         setComparisonSeries([]);
         setScenarioError(nextError.message);
       })
@@ -1250,13 +1283,13 @@ function App() {
       pretaxDeductionMode
     })
       .then((burden) => {
-        if (!cancelled) {
+        if (!cancelled && !selectedScenarioFailedRef.current) {
           setSelectedBurden(burden);
           setSelectedIncomeError(null);
         }
       })
       .catch((nextError: Error) => {
-        if (cancelled) return;
+        if (cancelled || selectedScenarioFailedRef.current) return;
         setSelectedBurden(null);
         setSelectedIncomeError(nextError.message);
       });
