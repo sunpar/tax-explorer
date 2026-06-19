@@ -421,7 +421,7 @@ def _validated_tax_parameters(
     pretax_deductions: PretaxDeductionParameters,
 ) -> tuple[FederalTaxParameters, PayrollTaxParameters, PretaxDeductionParameters]:
     federal = _validated_federal_tax_parameters(federal)
-    payroll = _validated_payroll_tax_parameters(payroll)
+    payroll = _validated_payroll_tax_parameters(payroll, federal.filing_status)
     pretax_deductions = _validated_pretax_deduction_parameters(pretax_deductions)
     return federal, payroll, pretax_deductions
 
@@ -479,6 +479,7 @@ def _validated_federal_tax_parameters_uncached(
 
 def _validated_payroll_tax_parameters(
     payroll: PayrollTaxParameters,
+    filing_status: str,
 ) -> PayrollTaxParameters:
     social_security_rate = _validated_rate(
         payroll.social_security_rate, "social_security_rate"
@@ -496,11 +497,16 @@ def _validated_payroll_tax_parameters(
         "additional_medicare_threshold_single",
     )
     additional_medicare_thresholds = {
-        filing_status: _validated_non_negative_money(
+        threshold_status: _validated_non_negative_money(
             threshold, "additional_medicare_threshold"
         )
-        for filing_status, threshold in payroll.additional_medicare_thresholds.items()
+        for threshold_status, threshold in payroll.additional_medicare_thresholds.items()
     }
+    if filing_status != "single" and filing_status not in additional_medicare_thresholds:
+        raise ValueError(
+            f"additional_medicare_threshold missing for "
+            f"{payroll.tax_year} {filing_status}"
+        )
 
     return PayrollTaxParameters(
         tax_year=payroll.tax_year,
