@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -348,6 +349,14 @@ function chartData(): Array<Record<string, number | null>> {
   return JSON.parse(screen.getByTestId("chart").dataset.chartData ?? "[]") as Array<
     Record<string, number | null>
   >;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
 }
 
 async function renderLoadedApp(expectedStop = 140.69, expectedSelected = 127900) {
@@ -1125,6 +1134,49 @@ describe("App tax curve controls", () => {
     );
     expect(screen.getByText("0 rows")).toBeInTheDocument();
     expect(screen.queryByText("Standard deduction")).not.toBeInTheDocument();
+  });
+
+  test("ignores selected income responses after scenario reload failures", async () => {
+    await renderLoadedApp();
+    const scenarioError = "scenario parameters unavailable";
+    const lateSelectedBurden = deferred<TaxBurden>();
+    mockFetchTaxParameters.mockRejectedValueOnce(new Error(scenarioError));
+    mockFetchTaxBurden.mockReturnValueOnce(lateSelectedBurden.promise);
+
+    fireEvent.click(screen.getByLabelText("Employer payroll taxes"));
+
+    expect(await screen.findByText(scenarioError)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("Loading")).not.toBeInTheDocument()
+    );
+    expect(screen.getByText("0 rows")).toBeInTheDocument();
+
+    await act(async () => {
+      lateSelectedBurden.resolve(taxBurden(130000, "single", 0, 0, true));
+      await lateSelectedBurden.promise;
+    });
+
+    expect(screen.queryByText("$130,000")).not.toBeInTheDocument();
+    expect(screen.getByText("0 rows")).toBeInTheDocument();
+  });
+
+  test("preserves selected scenario data when comparison loading fails", async () => {
+    mockFetchTaxYears.mockResolvedValue([2025, 2026]);
+    await renderLoadedApp();
+    expect(screen.getByText("7 rows")).toBeInTheDocument();
+    expect(screen.getByText("Standard deduction")).toBeInTheDocument();
+
+    const comparisonError = "comparison statuses unavailable";
+    mockFetchFilingStatuses.mockRejectedValueOnce(new Error(comparisonError));
+
+    fireEvent.click(screen.getByLabelText("All tax years"));
+
+    expect(await screen.findByText(comparisonError)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("Loading")).not.toBeInTheDocument()
+    );
+    expect(screen.getByText("1 curve")).toBeInTheDocument();
+    expect(screen.getByText("Standard deduction")).toBeInTheDocument();
   });
 
   test("comparison chart modes plot effective, marginal, and total-tax values with tooltip detail", async () => {
