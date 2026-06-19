@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Annotated, Any, Iterator, Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Path as ApiPath, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, BeforeValidator, Field, model_validator
 
@@ -63,10 +63,12 @@ StrictQueryBool = Annotated[
     BeforeValidator(_parse_strict_query_bool),
     Query(),
 ]
+TaxYearPath = Annotated[int, ApiPath(ge=0)]
+TaxYearQuery = Annotated[int, Query(ge=0)]
 
 
 class CalculateRequest(BaseModel):
-    year: int = Field(strict=True)
+    year: int = Field(strict=True, ge=0)
     filing_status: str = "single"
     gross_income: Decimal = Field(ge=0)
     include_employer_payroll_tax: bool = Field(default=False, strict=True)
@@ -125,7 +127,7 @@ def create_app(
             return {"years": get_available_tax_years(connection)}
 
     @app.get("/api/tax-years/{year}/filing-statuses")
-    def filing_statuses(year: int) -> dict[str, list[dict[str, str]]]:
+    def filing_statuses(year: TaxYearPath) -> dict[str, list[dict[str, str]]]:
         with _database(app) as connection:
             statuses = get_filing_statuses(connection, year)
         if not statuses:
@@ -136,7 +138,7 @@ def create_app(
 
     @app.get("/api/tax-years/{year}/parameters")
     def tax_parameters(
-        year: int, filing_status: str = Query(default="single")
+        year: TaxYearPath, filing_status: str = Query(default="single")
     ) -> dict[str, Any]:
         try:
             with _database(app) as connection:
@@ -185,7 +187,7 @@ def create_app(
 
     @app.get("/api/income-series")
     def income_series(
-        year: int,
+        year: TaxYearQuery,
         filing_status: str = Query(default="single"),
         start: Decimal = Query(default=Decimal("0"), ge=0),
         stop: Decimal = Query(default=Decimal("500000"), ge=0),

@@ -191,6 +191,60 @@ def test_lists_filing_statuses_for_tax_year(tmp_path):
     }
 
 
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs", "year_loc"),
+    [
+        ("get", "/api/tax-years/-1/filing-statuses", {}, ["path", "year"]),
+        ("get", "/api/tax-years/-1/parameters", {}, ["path", "year"]),
+        (
+            "get",
+            "/api/income-series",
+            {
+                "params": {
+                    "year": -1,
+                    "filing_status": "single",
+                    "start": "0",
+                    "stop": "100000",
+                    "step": "10000",
+                }
+            },
+            ["query", "year"],
+        ),
+        (
+            "post",
+            "/api/calculate",
+            {
+                "json": {
+                    "year": -1,
+                    "filing_status": "single",
+                    "gross_income": "100000",
+                }
+            },
+            ["body", "year"],
+        ),
+    ],
+)
+def test_api_rejects_negative_years_before_database_initialization(
+    tmp_path,
+    method,
+    path,
+    kwargs,
+    year_loc,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = getattr(client, method)(path, **kwargs)
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    year_error = next(error for error in detail if error["loc"] == year_loc)
+    assert year_error["type"] == "greater_than_equal"
+    assert year_error["ctx"] == {"ge": 0}
+    assert not database_path.exists()
+
+
 def test_returns_parameters_for_tax_year(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -698,6 +752,9 @@ def test_openapi_documents_pretax_deduction_modes(tmp_path):
     calculate_mode_schema = openapi["components"]["schemas"]["CalculateRequest"][
         "properties"
     ]["pretax_deduction_mode"]
+    calculate_year_schema = openapi["components"]["schemas"]["CalculateRequest"][
+        "properties"
+    ]["year"]
     calculate_dependent_count_schema = openapi["components"]["schemas"][
         "CalculateRequest"
     ]["properties"]["dependent_count"]
@@ -708,12 +765,19 @@ def test_openapi_documents_pretax_deduction_modes(tmp_path):
         "max_available",
         "gradual_phase_in",
     ]
+    assert calculate_year_schema["minimum"] == 0
     assert calculate_dependent_count_schema["minimum"] == 0
     assert numeric_schema(calculate_secondary_income_schema)["minimum"] == 0
 
     income_series_parameters = openapi["paths"]["/api/income-series"]["get"][
         "parameters"
     ]
+    income_series_year = next(
+        parameter
+        for parameter in income_series_parameters
+        if parameter["name"] == "year"
+    )
+    assert income_series_year["schema"]["minimum"] == 0
     income_series_mode = next(
         parameter
         for parameter in income_series_parameters
