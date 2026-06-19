@@ -1198,6 +1198,9 @@ function App() {
     loadScenario()
       .catch((nextError: Error) => {
         if (cancelled) return;
+        setParameters(null);
+        setRows([]);
+        setSelectedBurden(null);
         setComparisonSeries([]);
         setScenarioError(nextError.message);
       })

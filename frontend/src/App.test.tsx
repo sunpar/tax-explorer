@@ -1107,6 +1107,26 @@ describe("App tax curve controls", () => {
     expect(screen.getByText(scenarioError)).toBeInTheDocument();
   });
 
+  test("clears stale scenario data after scenario reload failures", async () => {
+    await renderLoadedApp();
+    expect(screen.getByText("7 rows")).toBeInTheDocument();
+    expect(screen.getByText("Standard deduction")).toBeInTheDocument();
+
+    const scenarioError = "scenario parameters unavailable";
+    mockFetchTaxParameters.mockRejectedValueOnce(new Error(scenarioError));
+
+    fireEvent.change(screen.getByLabelText("Step ($k)"), {
+      target: { value: "5" }
+    });
+
+    expect(await screen.findByText(scenarioError)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("Loading")).not.toBeInTheDocument()
+    );
+    expect(screen.getByText("0 rows")).toBeInTheDocument();
+    expect(screen.queryByText("Standard deduction")).not.toBeInTheDocument();
+  });
+
   test("comparison chart modes plot effective, marginal, and total-tax values with tooltip detail", async () => {
     await renderLoadedApp();
 
