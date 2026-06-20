@@ -229,7 +229,64 @@ def seed_default_tax_data(connection: sqlite3.Connection) -> None:
 
 
 def get_available_tax_years(connection: sqlite3.Connection) -> list[int]:
-    rows = connection.execute("SELECT year FROM tax_years ORDER BY year").fetchall()
+    rows = connection.execute(
+        """
+        WITH advertised_federal_statuses AS (
+            SELECT federal.year, federal.filing_status
+            FROM federal_tax_parameters AS federal
+        ),
+        bracketed_federal_statuses AS (
+            SELECT federal.year, federal.filing_status
+            FROM federal_tax_parameters AS federal
+            WHERE EXISTS (
+                SELECT 1
+                FROM federal_tax_brackets AS bracket
+                WHERE bracket.year = federal.year
+                  AND bracket.filing_status = federal.filing_status
+            )
+        )
+        SELECT years.year
+        FROM tax_years AS years
+        WHERE EXISTS (
+            SELECT 1
+            FROM bracketed_federal_statuses AS federal
+            WHERE federal.year = years.year
+        )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM advertised_federal_statuses AS federal
+              WHERE federal.year = years.year
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM bracketed_federal_statuses AS bracketed
+                    WHERE bracketed.year = federal.year
+                      AND bracketed.filing_status = federal.filing_status
+                )
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM advertised_federal_statuses AS federal
+              WHERE federal.year = years.year
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM additional_medicare_thresholds AS threshold
+                    WHERE threshold.year = federal.year
+                      AND threshold.filing_status = federal.filing_status
+                )
+          )
+          AND EXISTS (
+              SELECT 1
+              FROM payroll_tax_parameters AS payroll
+              WHERE payroll.year = years.year
+          )
+          AND EXISTS (
+              SELECT 1
+              FROM pretax_deduction_parameters AS pretax
+              WHERE pretax.year = years.year
+          )
+        ORDER BY years.year
+        """
+    ).fetchall()
     return [int(row["year"]) for row in rows]
 
 
