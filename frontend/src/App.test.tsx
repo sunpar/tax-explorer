@@ -423,6 +423,28 @@ describe("App tax curve controls", () => {
     );
   });
 
+  test("keeps the default tax year selectable when tax-year lookup is empty", async () => {
+    mockFetchTaxYears.mockResolvedValueOnce([]);
+
+    await renderLoadedApp();
+
+    const taxYearSelect = screen.getByLabelText("Tax year");
+    expect(taxYearSelect).toHaveValue("2026");
+    expect(within(taxYearSelect).getByRole("option", { name: "2026" })).toHaveValue(
+      "2026"
+    );
+  });
+
+  test("selects the latest returned tax year when tax-year lookup succeeds", async () => {
+    mockFetchTaxYears.mockResolvedValueOnce([2025, 2027]);
+
+    render(<App />);
+
+    const taxYearSelect = await screen.findByLabelText("Tax year");
+    await waitFor(() => expect(taxYearSelect).toHaveValue("2027"));
+    expect(mockFetchFilingStatuses).toHaveBeenCalledWith(2027);
+  });
+
   test("defaults Stop to 10 percent above the last marginal-rate change and preserves custom Stop", async () => {
     await renderLoadedApp();
 
