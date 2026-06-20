@@ -365,6 +365,51 @@ def test_build_income_series_rejects_malformed_payroll_parameters(
         build_income_series(start=0, stop=1000, step=1000, payroll=payroll)
 
 
+@pytest.mark.parametrize(
+    "calculate",
+    [
+        pytest.param(
+            lambda **parameters: calculate_tax_burden(
+                TaxScenario(gross_income=money("1000")),
+                **parameters,
+            ),
+            id="calculate_tax_burden",
+        ),
+        pytest.param(
+            lambda **parameters: build_income_series(
+                start=0,
+                stop=1000,
+                step=1000,
+                **parameters,
+            ),
+            id="build_income_series",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    ("field", "parameter_name"),
+    [
+        ("payroll", "payroll"),
+        ("pretax_deductions", "pre-tax deduction"),
+    ],
+)
+def test_public_boundaries_reject_mismatched_parameter_tax_years(
+    calculate,
+    field,
+    parameter_name,
+):
+    parameters = {
+        "federal": FEDERAL_2026_SINGLE,
+        "payroll": PAYROLL_2026,
+        "pretax_deductions": PRETAX_DEDUCTIONS_2026,
+    }
+    parameters[field] = replace(parameters[field], tax_year=2025)
+    message = f"{parameter_name} tax_year 2025 does not match federal tax_year 2026"
+
+    with pytest.raises(ValueError, match=re.escape(message)):
+        calculate(**parameters)
+
+
 def test_calculate_tax_burden_normalizes_custom_payroll_rate_fields():
     payroll = replace(
         PAYROLL_2026,
