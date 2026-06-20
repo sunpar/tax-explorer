@@ -423,7 +423,23 @@ def _validated_tax_parameters(
     federal = _validated_federal_tax_parameters(federal)
     payroll = _validated_payroll_tax_parameters(payroll, federal.filing_status)
     pretax_deductions = _validated_pretax_deduction_parameters(pretax_deductions)
+    _validate_parameter_tax_year(federal.tax_year, payroll.tax_year, "payroll")
+    _validate_parameter_tax_year(
+        federal.tax_year, pretax_deductions.tax_year, "pre-tax deduction"
+    )
     return federal, payroll, pretax_deductions
+
+
+def _validate_parameter_tax_year(
+    federal_year: int,
+    parameter_year: int,
+    parameter_name: str,
+) -> None:
+    if parameter_year != federal_year:
+        raise ValueError(
+            f"{parameter_name} tax_year {parameter_year} "
+            f"does not match federal tax_year {federal_year}"
+        )
 
 
 def _validated_federal_tax_parameters(
