@@ -1028,10 +1028,10 @@ function App() {
   useEffect(() => {
     fetchTaxYears()
       .then((years) => {
-        setTaxYears(years);
-        if (years.length > 0) {
-          setYear(years[years.length - 1]);
-        }
+        const nextYears =
+          years.length > 0 ? years : [DEFAULT_TAX_YEAR];
+        setTaxYears(nextYears);
+        setYear(nextYears[nextYears.length - 1]);
       })
       .catch((nextError: Error) => {
         setTaxYears([DEFAULT_TAX_YEAR]);
