@@ -28,10 +28,141 @@ def insert_federal_tax_parameters(
     )
 
 
+def insert_tax_year(connection: sqlite3.Connection, year: int) -> None:
+    connection.execute(
+        "INSERT INTO tax_years (year, label) VALUES (?, ?)",
+        (year, f"Tax Year {year}"),
+    )
+
+
+def insert_federal_tax_bracket(
+    connection: sqlite3.Connection, year: int, filing_status: str
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO federal_tax_brackets
+            (year, filing_status, lower_bound, rate)
+        VALUES (?, ?, ?, ?)
+        """,
+        (year, filing_status, "0.00", "0.10"),
+    )
+
+
+def insert_payroll_tax_parameters(connection: sqlite3.Connection, year: int) -> None:
+    connection.execute(
+        """
+        INSERT INTO payroll_tax_parameters (
+            year,
+            social_security_rate,
+            social_security_wage_base,
+            medicare_rate,
+            additional_medicare_rate,
+            additional_medicare_threshold_single
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (year, "0.062", "184500.00", "0.0145", "0.009", "200000.00"),
+    )
+
+
+def insert_additional_medicare_threshold(
+    connection: sqlite3.Connection, year: int, filing_status: str
+) -> None:
+    thresholds = {
+        "single": "200000.00",
+        "married_joint": "250000.00",
+    }
+    connection.execute(
+        """
+        INSERT INTO additional_medicare_thresholds
+            (year, filing_status, threshold)
+        VALUES (?, ?, ?)
+        """,
+        (year, filing_status, thresholds[filing_status]),
+    )
+
+
+def insert_pretax_deduction_parameters(connection: sqlite3.Connection, year: int) -> None:
+    connection.execute(
+        """
+        INSERT INTO pretax_deduction_parameters (
+            year,
+            employee_401k_limit,
+            health_fsa_limit,
+            dependent_care_fsa_limit,
+            gradual_phase_in_start_rate
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (year, "24500.00", "3400.00", "7500.00", "0.01"),
+    )
+
+
 def test_initializes_seeded_tax_years(tmp_path):
     db_path = tmp_path / "tax.sqlite3"
 
     with initialize_database(db_path) as connection:
+        years = get_available_tax_years(connection)
+
+    assert years == [2026]
+
+
+def test_available_tax_years_exclude_incomplete_parameter_sets(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_tax_year(connection, 2030)
+        connection.commit()
+        years = get_available_tax_years(connection)
+
+    assert years == [2026]
+
+
+def test_available_tax_years_exclude_missing_additional_medicare_thresholds(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_tax_year(connection, 2030)
+        insert_federal_tax_parameters(connection, 2030, "single")
+        insert_federal_tax_bracket(connection, 2030, "single")
+        insert_payroll_tax_parameters(connection, 2030)
+        insert_pretax_deduction_parameters(connection, 2030)
+        connection.commit()
+        years = get_available_tax_years(connection)
+
+    assert years == [2026]
+
+
+def test_available_tax_years_check_thresholds_for_all_advertised_statuses(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_tax_year(connection, 2030)
+        insert_federal_tax_parameters(connection, 2030, "single")
+        insert_federal_tax_parameters(connection, 2030, "married_joint")
+        insert_federal_tax_bracket(connection, 2030, "single")
+        insert_payroll_tax_parameters(connection, 2030)
+        insert_additional_medicare_threshold(connection, 2030, "single")
+        insert_pretax_deduction_parameters(connection, 2030)
+        connection.commit()
+        years = get_available_tax_years(connection)
+
+    assert years == [2026]
+
+
+def test_available_tax_years_require_brackets_for_all_advertised_statuses(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_tax_year(connection, 2030)
+        insert_federal_tax_parameters(connection, 2030, "single")
+        insert_federal_tax_parameters(connection, 2030, "married_joint")
+        insert_federal_tax_bracket(connection, 2030, "single")
+        insert_payroll_tax_parameters(connection, 2030)
+        insert_additional_medicare_threshold(connection, 2030, "single")
+        insert_additional_medicare_threshold(connection, 2030, "married_joint")
+        insert_pretax_deduction_parameters(connection, 2030)
+        connection.commit()
         years = get_available_tax_years(connection)
 
     assert years == [2026]

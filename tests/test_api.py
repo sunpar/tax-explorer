@@ -181,6 +181,22 @@ def test_lists_available_tax_years(tmp_path):
     assert response.json() == {"years": [2026]}
 
 
+def test_tax_years_excludes_incomplete_parameter_sets(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = TestClient(create_app(database_path=database_path))
+    with connect(database_path) as connection:
+        connection.execute(
+            "INSERT INTO tax_years (year, label) VALUES (?, ?)",
+            (2030, "Tax Year 2030"),
+        )
+        connection.commit()
+
+    response = client.get("/api/tax-years")
+
+    assert response.status_code == 200
+    assert response.json() == {"years": [2026]}
+
+
 def test_lists_filing_statuses_for_tax_year(tmp_path):
     client = create_test_client(tmp_path)
 
