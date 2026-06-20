@@ -231,6 +231,16 @@ function seriesKey(year: number, filingStatus: string): string {
   return `curve_${year}_${filingStatus.replace(/[^a-z0-9]+/gi, "_")}`;
 }
 
+function requireFilingStatuses(
+  year: number,
+  statuses: FilingStatus[]
+): FilingStatus[] {
+  if (statuses.length === 0) {
+    throw new Error(`No filing statuses for ${year}`);
+  }
+  return statuses;
+}
+
 function chartPayloadKeys(key: string) {
   return {
     marginal: `${key}_marginal`,
@@ -1045,14 +1055,15 @@ function App() {
     fetchFilingStatuses(year)
       .then((statuses) => {
         if (cancelled) return;
-        filingStatusCacheByYearRef.current[year] = statuses;
+        const nextStatuses = requireFilingStatuses(year, statuses);
+        filingStatusCacheByYearRef.current[year] = nextStatuses;
         setFailedFilingStatusesYear(null);
-        setFilingStatuses(statuses);
+        setFilingStatuses(nextStatuses);
         setLoadedFilingStatusesYear(year);
         setFilingStatus((currentStatus) =>
-          statuses.some((status) => status.code === currentStatus)
+          nextStatuses.some((status) => status.code === currentStatus)
             ? currentStatus
-            : (statuses[0]?.code ?? "single")
+            : nextStatuses[0].code
         );
       })
       .catch((nextError: Error) => {
@@ -1060,6 +1071,9 @@ function App() {
           selectedScenarioFailedRef.current = true;
           setFailedFilingStatusesYear(year);
           setScenarioError(nextError.message);
+          delete filingStatusCacheByYearRef.current[year];
+          setFilingStatuses([]);
+          setLoadedFilingStatusesYear(null);
           setParameters(null);
           setRows([]);
           setSelectedBurden(null);
@@ -1163,8 +1177,9 @@ function App() {
           if (!statuses) {
             statuses = await fetchFilingStatuses(comparisonYear);
             if (cancelled) return;
-            filingStatusCacheByYearRef.current[comparisonYear] = statuses;
           }
+          statuses = requireFilingStatuses(comparisonYear, statuses);
+          filingStatusCacheByYearRef.current[comparisonYear] = statuses;
           const statusesToCompare = compareFilingStatuses
             ? statuses
             : statuses.filter((status) => status.code === filingStatus);
