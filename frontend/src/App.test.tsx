@@ -445,6 +445,93 @@ describe("App tax curve controls", () => {
     expect(mockFetchFilingStatuses).toHaveBeenCalledWith(2027);
   });
 
+  test("stops loading when filing-status lookup returns no statuses", async () => {
+    mockFetchFilingStatuses.mockResolvedValueOnce([]);
+
+    render(<App />);
+
+    expect(
+      await screen.findByText("No filing statuses for 2026")
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("Loading")).not.toBeInTheDocument()
+    );
+    expect(screen.getByText("0 rows")).toBeInTheDocument();
+    expect(mockFetchTaxParameters).not.toHaveBeenCalled();
+    expect(mockFetchIncomeSeries).not.toHaveBeenCalled();
+    expect(mockFetchTaxBurden).not.toHaveBeenCalled();
+  });
+
+  test("clears stale filing statuses when a later tax year has none", async () => {
+    mockFetchTaxYears.mockResolvedValue([2025, 2026]);
+    mockFetchFilingStatuses.mockImplementation(async (taxYear) =>
+      taxYear === 2025 ? [] : statuses
+    );
+    await renderLoadedApp();
+    expect(screen.getByRole("radio", { name: "Single" })).toBeInTheDocument();
+    mockFetchTaxParameters.mockClear();
+    mockFetchIncomeSeries.mockClear();
+    mockFetchTaxBurden.mockClear();
+
+    fireEvent.change(screen.getByLabelText("Tax year"), {
+      target: { value: "2025" }
+    });
+
+    expect(
+      await screen.findByText("No filing statuses for 2025")
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("Loading")).not.toBeInTheDocument()
+    );
+    expect(screen.queryByRole("radio", { name: "Single" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("radio", { name: "Married filing jointly" })
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("0 rows")).toBeInTheDocument();
+    expect(mockFetchTaxParameters).not.toHaveBeenCalledWith(2025, "single");
+    expect(mockFetchIncomeSeries).not.toHaveBeenCalledWith(
+      expect.objectContaining({ year: 2025 })
+    );
+    expect(mockFetchTaxBurden).not.toHaveBeenCalledWith(
+      expect.objectContaining({ year: 2025 })
+    );
+  });
+
+  test("clears cached comparison statuses after selected-year load failures", async () => {
+    mockFetchTaxYears.mockResolvedValue([2025, 2026]);
+    let year2025StatusLoads = 0;
+    mockFetchFilingStatuses.mockImplementation(async (taxYear) => {
+      if (taxYear !== 2025) return statuses;
+      year2025StatusLoads += 1;
+      return year2025StatusLoads === 2 ? [] : statuses;
+    });
+    await renderLoadedApp();
+
+    fireEvent.click(screen.getByLabelText("All tax years"));
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({ year: 2025 })
+      )
+    );
+
+    fireEvent.change(screen.getByLabelText("Tax year"), {
+      target: { value: "2025" }
+    });
+
+    expect(
+      await screen.findByText("No filing statuses for 2025")
+    ).toBeInTheDocument();
+    mockFetchFilingStatuses.mockClear();
+
+    fireEvent.change(screen.getByLabelText("Tax year"), {
+      target: { value: "2026" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchFilingStatuses).toHaveBeenCalledWith(2025)
+    );
+  });
+
   test("defaults Stop to 10 percent above the last marginal-rate change and preserves custom Stop", async () => {
     await renderLoadedApp();
 
@@ -1199,6 +1286,29 @@ describe("App tax curve controls", () => {
     );
     expect(screen.getByText("1 curve")).toBeInTheDocument();
     expect(screen.getByText("Standard deduction")).toBeInTheDocument();
+  });
+
+  test("reports empty comparison-year filing statuses as a load failure", async () => {
+    mockFetchTaxYears.mockResolvedValue([2025, 2026]);
+    mockFetchFilingStatuses.mockImplementation(async (taxYear) =>
+      taxYear === 2025 ? [] : statuses
+    );
+    await renderLoadedApp();
+    expect(screen.getByText("7 rows")).toBeInTheDocument();
+    mockFetchIncomeSeries.mockClear();
+
+    fireEvent.click(screen.getByLabelText("All tax years"));
+
+    expect(
+      await screen.findByText("No filing statuses for 2025")
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText("Loading")).not.toBeInTheDocument()
+    );
+    expect(screen.getByText("1 curve")).toBeInTheDocument();
+    expect(mockFetchIncomeSeries).not.toHaveBeenCalledWith(
+      expect.objectContaining({ year: 2025 })
+    );
   });
 
   test("comparison chart modes plot effective, marginal, and total-tax values with tooltip detail", async () => {
