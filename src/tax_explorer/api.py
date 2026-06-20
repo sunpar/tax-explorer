@@ -29,6 +29,7 @@ from tax_explorer.database import (
     get_available_tax_years,
     get_filing_statuses,
     initialize_database,
+    is_tax_year_available,
     load_federal_tax_parameters,
     load_payroll_tax_parameters,
     load_pretax_deduction_parameters,
@@ -129,7 +130,11 @@ def create_app(
     @app.get("/api/tax-years/{year}/filing-statuses")
     def filing_statuses(year: TaxYearPath) -> dict[str, list[dict[str, str]]]:
         with _database(app) as connection:
-            statuses = get_filing_statuses(connection, year)
+            statuses = (
+                get_filing_statuses(connection, year)
+                if is_tax_year_available(connection, year)
+                else []
+            )
         if not statuses:
             raise HTTPException(
                 status_code=404, detail=f"No filing statuses for {year}"

@@ -213,6 +213,38 @@ def test_lists_filing_statuses_for_tax_year(tmp_path):
     }
 
 
+def test_filing_statuses_exclude_incomplete_tax_years(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = TestClient(create_app(database_path=database_path))
+    with connect(database_path) as connection:
+        connection.execute(
+            "INSERT INTO tax_years (year, label) VALUES (?, ?)",
+            (2030, "Tax Year 2030"),
+        )
+        connection.execute(
+            """
+            INSERT INTO federal_tax_parameters
+                (year, filing_status, standard_deduction)
+            VALUES (?, ?, ?)
+            """,
+            (2030, "single", "17000.00"),
+        )
+        connection.execute(
+            """
+            INSERT INTO federal_tax_brackets
+                (year, filing_status, lower_bound, rate)
+            VALUES (?, ?, ?, ?)
+            """,
+            (2030, "single", "0.00", "0.10"),
+        )
+        connection.commit()
+
+    response = client.get("/api/tax-years/2030/filing-statuses")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No filing statuses for 2030"
+
+
 @pytest.mark.parametrize(
     ("method", "path", "kwargs", "year_loc"),
     [
