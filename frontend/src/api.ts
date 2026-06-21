@@ -110,15 +110,51 @@ function startsWithJsonObject(value: string): boolean {
 }
 
 export async function fetchTaxYears(): Promise<number[]> {
-  const response = await requestJson<{ years: number[] }>("/api/tax-years");
+  const response = await requestJson<unknown>("/api/tax-years");
+  if (!isTaxYearsResponse(response)) {
+    throw new Error("Malformed tax year response");
+  }
   return response.years;
 }
 
 export async function fetchFilingStatuses(year: number): Promise<FilingStatus[]> {
-  const response = await requestJson<{ statuses: FilingStatus[] }>(
+  const response = await requestJson<unknown>(
     `/api/tax-years/${year}/filing-statuses`
   );
+  if (!isFilingStatusesResponse(response)) {
+    throw new Error("Malformed filing status response");
+  }
   return response.statuses;
+}
+
+function isTaxYearsResponse(value: unknown): value is { years: number[] } {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.years) &&
+    value.years.every((year) => typeof year === "number")
+  );
+}
+
+function isFilingStatusesResponse(
+  value: unknown
+): value is { statuses: FilingStatus[] } {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.statuses) &&
+    value.statuses.every(isFilingStatus)
+  );
+}
+
+function isFilingStatus(value: unknown): value is FilingStatus {
+  return (
+    isRecord(value) &&
+    typeof value.code === "string" &&
+    typeof value.label === "string"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
 }
 
 export function fetchTaxParameters(

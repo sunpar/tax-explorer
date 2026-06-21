@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { fetchIncomeSeries, fetchTaxBurden, fetchTaxYears } from "./api";
+import {
+  fetchFilingStatuses,
+  fetchIncomeSeries,
+  fetchTaxBurden,
+  fetchTaxYears
+} from "./api";
 
 describe("api requests", () => {
   afterEach(() => {
@@ -82,6 +87,37 @@ describe("api requests", () => {
 
     await expect(fetchTaxYears()).rejects.toMatchObject({
       message: "Request failed with 500"
+    });
+  });
+
+  test("rejects malformed tax year discovery responses", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ years: [2026, "2025"] }), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxYears()).rejects.toMatchObject({
+      message: "Malformed tax year response"
+    });
+  });
+
+  test("rejects malformed filing status discovery responses", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          statuses: [{ label: "Single" }]
+        }),
+        {
+          headers: { "Content-Type": "application/json" },
+          status: 200
+        }
+      )
+    );
+
+    await expect(fetchFilingStatuses(2026)).rejects.toMatchObject({
+      message: "Malformed filing status response"
     });
   });
 });
