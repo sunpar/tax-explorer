@@ -236,6 +236,112 @@ def test_available_tax_years_exclude_missing_additional_medicare_thresholds(tmp_
     assert years == [2026]
 
 
+@pytest.mark.parametrize(
+    ("table", "column", "value", "where", "params"),
+    [
+        (
+            "federal_tax_parameters",
+            "standard_deduction",
+            "NaN",
+            "year = ? AND filing_status = ?",
+            (2026, "single"),
+        ),
+        (
+            "federal_tax_parameters",
+            "standard_deduction",
+            "-1.00",
+            "year = ? AND filing_status = ?",
+            (2026, "single"),
+        ),
+        (
+            "federal_tax_brackets",
+            "lower_bound",
+            "NaN",
+            "year = ? AND filing_status = ? AND lower_bound = ?",
+            (2026, "single", "0.00"),
+        ),
+        (
+            "federal_tax_brackets",
+            "rate",
+            "1.10",
+            "year = ? AND filing_status = ? AND lower_bound = ?",
+            (2026, "single", "0.00"),
+        ),
+    ],
+)
+def test_available_tax_years_exclude_invalid_federal_parameters(
+    tmp_path,
+    table,
+    column,
+    value,
+    where,
+    params,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            f"""
+            UPDATE {table}
+            SET {column} = ?
+            WHERE {where}
+            """,
+            (value, *params),
+        )
+        connection.commit()
+
+        years = get_available_tax_years(connection)
+        available = is_tax_year_available(connection, 2026)
+
+    assert years == []
+    assert available is False
+
+
+def test_available_tax_years_exclude_federal_brackets_without_zero_lower_bound(
+    tmp_path,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE federal_tax_brackets
+            SET lower_bound = ?
+            WHERE year = ? AND filing_status = ? AND lower_bound = ?
+            """,
+            ("100.00", 2026, "single", "0.00"),
+        )
+        connection.commit()
+
+        years = get_available_tax_years(connection)
+        available = is_tax_year_available(connection, 2026)
+
+    assert years == []
+    assert available is False
+
+
+def test_available_tax_years_exclude_duplicate_federal_brackets_after_rounding(
+    tmp_path,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO federal_tax_brackets (year, filing_status, lower_bound, rate)
+            VALUES (?, ?, ?, ?)
+            """,
+            (2026, "single", "12400.004", "0.37"),
+        )
+        connection.commit()
+
+        years = get_available_tax_years(connection)
+        available = is_tax_year_available(connection, 2026)
+
+    assert years == []
+    assert available is False
+
+
 def test_available_tax_years_check_thresholds_for_all_advertised_statuses(tmp_path):
     db_path = tmp_path / "tax.sqlite3"
 

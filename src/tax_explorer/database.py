@@ -26,7 +26,7 @@ _SUPPORTED_FILING_STATUS_SQL = ", ".join(
 
 _AVAILABLE_TAX_YEAR_CTES = """
 advertised_federal_statuses AS (
-    SELECT federal.year, federal.filing_status
+    SELECT federal.year, federal.filing_status, federal.standard_deduction
     FROM federal_tax_parameters AS federal
     WHERE federal.filing_status IN ({supported_filing_statuses})
 ),
@@ -38,6 +38,9 @@ bracketed_federal_statuses AS (
           FROM federal_tax_brackets AS bracket
           WHERE bracket.year = federal.year
             AND bracket.filing_status = federal.filing_status
+            AND tax_explorer_money_cents(bracket.lower_bound) IS NOT NULL
+            AND tax_explorer_money_cents(bracket.lower_bound) = '0'
+            AND tax_explorer_rate_valid(bracket.rate)
       )
 )
 """.format(supported_filing_statuses=_SUPPORTED_FILING_STATUS_SQL)
@@ -48,6 +51,37 @@ EXISTS (
     FROM bracketed_federal_statuses AS federal
     WHERE federal.year = years.year
 )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM advertised_federal_statuses AS federal
+      WHERE federal.year = years.year
+        AND tax_explorer_money_cents(federal.standard_deduction) IS NULL
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM advertised_federal_statuses AS federal
+      INNER JOIN federal_tax_brackets AS bracket
+          ON bracket.year = federal.year
+         AND bracket.filing_status = federal.filing_status
+      WHERE federal.year = years.year
+        AND (
+            tax_explorer_money_cents(bracket.lower_bound) IS NULL
+            OR NOT tax_explorer_rate_valid(bracket.rate)
+        )
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM advertised_federal_statuses AS federal
+      INNER JOIN federal_tax_brackets AS bracket
+          ON bracket.year = federal.year
+         AND bracket.filing_status = federal.filing_status
+      WHERE federal.year = years.year
+      GROUP BY
+          federal.year,
+          federal.filing_status,
+          tax_explorer_money_cents(bracket.lower_bound)
+      HAVING COUNT(*) > 1
+  )
   AND NOT EXISTS (
       SELECT 1
       FROM advertised_federal_statuses AS federal
@@ -103,6 +137,9 @@ def connect(database_path: str | Path = DEFAULT_DATABASE_PATH) -> sqlite3.Connec
     connection.row_factory = sqlite3.Row
     connection.create_function(
         "tax_explorer_money_cents", 1, _money_cents_for_sql, deterministic=True
+    )
+    connection.create_function(
+        "tax_explorer_rate_valid", 1, _rate_valid_for_sql, deterministic=True
     )
     return connection
 
@@ -430,6 +467,14 @@ def _money_cents_for_sql(value: object) -> str | None:
     except ValueError:
         return None
     return str(int(amount * 100))
+
+
+def _rate_valid_for_sql(value: object) -> bool:
+    try:
+        _rate(value, "rate")
+    except ValueError:
+        return False
+    return True
 
 
 def _rate(value: object, field_name: str) -> Decimal:
