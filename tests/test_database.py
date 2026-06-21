@@ -574,6 +574,39 @@ def test_rejects_duplicate_federal_bracket_lower_bounds_after_rounding_from_sqli
             load_federal_tax_parameters(connection, 2026, "single")
 
 
+def test_orders_federal_brackets_by_decimal_lower_bound_from_sqlite(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            """
+            DELETE FROM federal_tax_brackets
+            WHERE year = ? AND filing_status = ?
+            """,
+            (2026, "single"),
+        )
+        connection.executemany(
+            """
+            INSERT INTO federal_tax_brackets (year, filing_status, lower_bound, rate)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                (2026, "single", "0.00", "0.10"),
+                (2026, "single", "9.007199254740993E15", "0.37"),
+                (2026, "single", "9007199254740992.00", "0.35"),
+            ),
+        )
+        connection.commit()
+
+        federal = load_federal_tax_parameters(connection, 2026, "single")
+
+    assert tuple(bracket.lower_bound for bracket in federal.brackets) == (
+        Decimal("0.00"),
+        Decimal("9007199254740992.00"),
+        Decimal("9007199254740993.00"),
+    )
+
+
 @pytest.mark.parametrize(
     ("column", "value", "message"),
     [

@@ -373,7 +373,6 @@ def load_federal_tax_parameters(
         SELECT lower_bound, rate
         FROM federal_tax_brackets
         WHERE year = ? AND filing_status = ?
-        ORDER BY CAST(lower_bound AS REAL)
         """,
         (year, filing_status),
     ).fetchall()
@@ -381,11 +380,18 @@ def load_federal_tax_parameters(
         raise ValueError(f"No federal tax brackets for {year} {filing_status}")
 
     brackets = tuple(
-        TaxBracket(
-            lower_bound=_non_negative_money(row["lower_bound"], "bracket lower_bound"),
-            rate=_rate(row["rate"], "bracket rate"),
+        sorted(
+            (
+                TaxBracket(
+                    lower_bound=_non_negative_money(
+                        row["lower_bound"], "bracket lower_bound"
+                    ),
+                    rate=_rate(row["rate"], "bracket rate"),
+                )
+                for row in bracket_rows
+            ),
+            key=lambda bracket: bracket.lower_bound,
         )
-        for row in bracket_rows
     )
     _validate_federal_tax_brackets(brackets)
 
