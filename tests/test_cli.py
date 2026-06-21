@@ -5,6 +5,7 @@ import pytest
 
 from tax_explorer import TaxScenario, calculate_tax_burden
 from tax_explorer.cli import CSV_FIELDS, main, write_csv
+from tax_explorer.database import initialize_database
 
 
 LEGACY_CSV_FIELDS = (
@@ -22,6 +23,72 @@ LEGACY_CSV_FIELDS = (
     "total_employer_payroll_tax",
     "total_tax_with_employer_payroll",
 )
+
+
+def create_hidden_multi_status_year_database(database_path):
+    with initialize_database(database_path) as connection:
+        connection.execute(
+            "INSERT INTO tax_years (year, label) VALUES (?, ?)",
+            (2030, "Tax Year 2030"),
+        )
+        connection.executemany(
+            """
+            INSERT INTO federal_tax_parameters
+                (year, filing_status, standard_deduction)
+            VALUES (?, ?, ?)
+            """,
+            (
+                (2030, "single", "17000.00"),
+                (2030, "married_joint", "34000.00"),
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO federal_tax_brackets
+                (year, filing_status, lower_bound, rate)
+            VALUES (?, ?, ?, ?)
+            """,
+            (2030, "single", "0.00", "0.10"),
+        )
+        connection.execute(
+            """
+            INSERT INTO payroll_tax_parameters (
+                year,
+                social_security_rate,
+                social_security_wage_base,
+                medicare_rate,
+                additional_medicare_rate,
+                additional_medicare_threshold_single
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (2030, "0.062", "184500.00", "0.0145", "0.009", "200000.00"),
+        )
+        connection.executemany(
+            """
+            INSERT INTO additional_medicare_thresholds
+                (year, filing_status, threshold)
+            VALUES (?, ?, ?)
+            """,
+            (
+                (2030, "single", "200000.00"),
+                (2030, "married_joint", "250000.00"),
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO pretax_deduction_parameters (
+                year,
+                employee_401k_limit,
+                health_fsa_limit,
+                dependent_care_fsa_limit,
+                gradual_phase_in_start_rate
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (2030, "24500.00", "3400.00", "7500.00", "0.01"),
+        )
+        connection.commit()
 
 
 def test_csv_export_preserves_existing_columns_and_appends_marginal_rates(
@@ -100,6 +167,32 @@ def test_cli_accepts_dependent_count(monkeypatch, tmp_path):
     assert row["dependent_care_fsa_contribution"] == "7500.00"
     assert row["total_pretax_deductions"] == "35400.00"
     assert row["total_employee_tax"] == "12388.15"
+
+
+def test_cli_excludes_tax_years_hidden_from_availability(tmp_path, capsys):
+    database_path = tmp_path / "tax.sqlite3"
+    create_hidden_multi_status_year_database(database_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--year",
+                "2030",
+                "--filing-status",
+                "single",
+                "--start",
+                "100000",
+                "--stop",
+                "100000",
+                "--step",
+                "50000",
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "No tax parameters for 2030" in capsys.readouterr().err
 
 
 def test_cli_rejects_negative_dependent_count():

@@ -17,6 +17,7 @@ from tax_explorer import (
 from tax_explorer.database import (
     DEFAULT_DATABASE_PATH,
     initialize_database,
+    is_tax_year_available,
     load_federal_tax_parameters,
     load_payroll_tax_parameters,
     load_pretax_deduction_parameters,
@@ -205,6 +206,9 @@ def main(argv: list[str] | None = None) -> int:
             pretax_deductions = load_pretax_deduction_parameters(
                 connection, args.year
             )
+            available = is_tax_year_available(connection, args.year)
+        if not available:
+            raise ValueError(f"No tax parameters for {args.year}")
         rows = build_income_series(
             start=args.start,
             stop=args.stop,
