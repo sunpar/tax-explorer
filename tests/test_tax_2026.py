@@ -410,6 +410,45 @@ def test_public_boundaries_reject_mismatched_parameter_tax_years(
         calculate(**parameters)
 
 
+@pytest.mark.parametrize(
+    "calculate",
+    [
+        pytest.param(
+            lambda **parameters: calculate_tax_burden(
+                TaxScenario(gross_income=money("1000")),
+                **parameters,
+            ),
+            id="calculate_tax_burden",
+        ),
+        pytest.param(
+            lambda **parameters: build_income_series(
+                start=0,
+                stop=1000,
+                step=1000,
+                **parameters,
+            ),
+            id="build_income_series",
+        ),
+    ],
+)
+@pytest.mark.parametrize("tax_year", [-1, "2026", True])
+def test_public_boundaries_reject_invalid_parameter_tax_years(
+    calculate,
+    tax_year,
+):
+    parameters = {
+        "federal": replace(FEDERAL_2026_SINGLE, tax_year=tax_year),
+        "payroll": replace(PAYROLL_2026, tax_year=tax_year),
+        "pretax_deductions": replace(PRETAX_DEDUCTIONS_2026, tax_year=tax_year),
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=re.escape("tax_year must be a non-negative integer"),
+    ):
+        calculate(**parameters)
+
+
 def test_calculate_tax_burden_normalizes_custom_payroll_rate_fields():
     payroll = replace(
         PAYROLL_2026,
