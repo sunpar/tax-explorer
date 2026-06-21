@@ -37,6 +37,72 @@ describe("api requests", () => {
     }
   };
 
+  const taxBurdenResponse = {
+    gross_income: "100000.00",
+    taxable_income: "56000.00",
+    federal_income_tax: "7032.00",
+    employee_social_security_tax: "5989.20",
+    employee_medicare_tax: "1400.70",
+    employee_additional_medicare_tax: "0.00",
+    total_employee_payroll_tax: "7389.90",
+    total_employee_tax: "14421.90",
+    effective_employee_tax_rate: "0.1442",
+    marginal_employee_tax_rate: "0.2965",
+    employee_401k_contribution: "24500.00",
+    health_fsa_contribution: "3400.00",
+    dependent_care_fsa_contribution: "0.00",
+    total_pretax_deductions: "27900.00",
+    employer_social_security_tax: "0.00",
+    employer_medicare_tax: "0.00",
+    total_employer_payroll_tax: "0.00",
+    total_tax_with_employer_payroll: "14421.90",
+    marginal_tax_rate_with_employer_payroll: "0.2965",
+    payroll_breakdown: [
+      {
+        label: "Income 1",
+        gross_income: "100000.00",
+        payroll_wages: "96600.00",
+        employee_social_security_tax: "5989.20",
+        employee_medicare_tax: "1400.70",
+        employee_additional_medicare_tax: "0.00",
+        total_employee_payroll_tax: "7389.90",
+        employer_social_security_tax: "0.00",
+        employer_medicare_tax: "0.00",
+        total_employer_payroll_tax: "0.00",
+        total_payroll_tax: "7389.90"
+      }
+    ],
+    tax_breakdown: [
+      {
+        code: "federal_income_tax",
+        label: "Federal income tax",
+        amount: "7032.00"
+      }
+    ]
+  };
+
+  const seriesRequest = {
+    year: 2026,
+    filingStatus: "single",
+    start: "0",
+    stop: "100000",
+    step: "10000",
+    includeEmployerPayrollTax: false,
+    dependentCount: 0,
+    secondaryIncome: "0",
+    pretaxDeductionMode: "max_available" as const
+  };
+
+  const calculateRequest = {
+    year: 2026,
+    filingStatus: "single",
+    grossIncome: "100000",
+    includeEmployerPayrollTax: false,
+    dependentCount: 0,
+    secondaryIncome: "0",
+    pretaxDeductionMode: "max_available" as const
+  };
+
   test("uses FastAPI detail text for failed JSON responses", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ detail: "gross_income must be non-negative" }), {
@@ -325,6 +391,98 @@ describe("api requests", () => {
 
     await expect(fetchTaxParameters(2026, "single")).rejects.toMatchObject({
       message: "Malformed tax parameter response"
+    });
+  });
+
+  test("returns valid tax burden responses", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(taxBurdenResponse), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxBurden(calculateRequest)).resolves.toEqual(
+      taxBurdenResponse
+    );
+  });
+
+  test.each([
+    {},
+    {
+      ...taxBurdenResponse,
+      gross_income: 100000
+    },
+    {
+      ...taxBurdenResponse,
+      effective_employee_tax_rate: "oops"
+    },
+    {
+      ...taxBurdenResponse,
+      payroll_breakdown: []
+    },
+    {
+      ...taxBurdenResponse,
+      payroll_breakdown: [
+        {
+          ...taxBurdenResponse.payroll_breakdown[0],
+          total_payroll_tax: 7389.9
+        }
+      ]
+    },
+    {
+      ...taxBurdenResponse,
+      tax_breakdown: []
+    },
+    {
+      ...taxBurdenResponse,
+      tax_breakdown: [
+        {
+          ...taxBurdenResponse.tax_breakdown[0],
+          amount: "NaN"
+        }
+      ]
+    }
+  ])("rejects malformed tax burden responses", async (body) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxBurden(calculateRequest)).rejects.toMatchObject({
+      message: "Malformed tax burden response"
+    });
+  });
+
+  test("returns valid income series responses", async () => {
+    const body = { rows: [taxBurdenResponse] };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchIncomeSeries(seriesRequest)).resolves.toEqual(body);
+  });
+
+  test.each([
+    {},
+    { rows: [] },
+    { rows: taxBurdenResponse },
+    { rows: [{ ...taxBurdenResponse, marginal_employee_tax_rate: "oops" }] }
+  ])("rejects malformed income series responses", async (body) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchIncomeSeries(seriesRequest)).rejects.toMatchObject({
+      message: "Malformed income series response"
     });
   });
 });
