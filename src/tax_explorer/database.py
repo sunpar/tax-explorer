@@ -70,6 +70,18 @@ EXISTS (
               AND threshold.filing_status = federal.filing_status
         )
   )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM payroll_tax_parameters AS payroll
+      INNER JOIN additional_medicare_thresholds AS threshold
+          ON threshold.year = payroll.year
+         AND threshold.filing_status = 'single'
+      WHERE payroll.year = years.year
+        AND tax_explorer_money_cents(threshold.threshold)
+            IS NOT tax_explorer_money_cents(
+                payroll.additional_medicare_threshold_single
+            )
+  )
   AND EXISTS (
       SELECT 1
       FROM payroll_tax_parameters AS payroll
@@ -89,6 +101,9 @@ def connect(database_path: str | Path = DEFAULT_DATABASE_PATH) -> sqlite3.Connec
     connection = sqlite3.connect(path)
     connection.execute("PRAGMA foreign_keys = ON")
     connection.row_factory = sqlite3.Row
+    connection.create_function(
+        "tax_explorer_money_cents", 1, _money_cents_for_sql, deterministic=True
+    )
     return connection
 
 
@@ -403,6 +418,14 @@ def _non_negative_money(value: object, field_name: str) -> Decimal:
         raise ValueError(f"{field_name} must fit cents precision") from None
 
 
+def _money_cents_for_sql(value: object) -> str | None:
+    try:
+        amount = _non_negative_money(value, "money")
+    except ValueError:
+        return None
+    return str(int(amount * 100))
+
+
 def _rate(value: object, field_name: str) -> Decimal:
     rate = _finite_decimal(value, field_name)
     if rate < 0 or rate > 1:
@@ -466,6 +489,16 @@ def load_payroll_tax_parameters(
         row["additional_medicare_threshold_single"],
         "additional_medicare_threshold_single",
     )
+    if (
+        "single" in additional_medicare_thresholds
+        and additional_medicare_thresholds["single"]
+        != additional_medicare_threshold_single
+    ):
+        raise ValueError(
+            "additional_medicare_threshold_single "
+            f"{additional_medicare_threshold_single} does not match "
+            f"additional_medicare_threshold for {year} single"
+        )
     additional_medicare_thresholds.setdefault(
         "single",
         additional_medicare_threshold_single,
