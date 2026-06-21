@@ -9,6 +9,7 @@ from tax_explorer.database import (
     get_available_tax_years,
     get_filing_statuses,
     initialize_database,
+    is_tax_year_available,
     load_federal_tax_parameters,
     load_payroll_tax_parameters,
     load_pretax_deduction_parameters,
@@ -116,6 +117,28 @@ def test_available_tax_years_exclude_incomplete_parameter_sets(tmp_path):
         years = get_available_tax_years(connection)
 
     assert years == [2026]
+
+
+def test_tax_year_availability_matches_complete_years(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        available = is_tax_year_available(connection, 2026)
+
+    assert available is True
+
+
+def test_tax_year_availability_excludes_incomplete_years(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_tax_year(connection, 2030)
+        insert_federal_tax_parameters(connection, 2030, "single")
+        insert_federal_tax_bracket(connection, 2030, "single")
+        connection.commit()
+        available = is_tax_year_available(connection, 2030)
+
+    assert available is False
 
 
 def test_available_tax_years_exclude_missing_additional_medicare_thresholds(tmp_path):

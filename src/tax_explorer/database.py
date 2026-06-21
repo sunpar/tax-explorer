@@ -19,6 +19,63 @@ DEFAULT_DATABASE_PATH = Path(
     os.environ.get("TAX_EXPLORER_DB", Path.cwd() / "data" / "tax_explorer.sqlite3")
 )
 
+_AVAILABLE_TAX_YEAR_CTES = """
+advertised_federal_statuses AS (
+    SELECT federal.year, federal.filing_status
+    FROM federal_tax_parameters AS federal
+),
+bracketed_federal_statuses AS (
+    SELECT federal.year, federal.filing_status
+    FROM federal_tax_parameters AS federal
+    WHERE EXISTS (
+        SELECT 1
+        FROM federal_tax_brackets AS bracket
+        WHERE bracket.year = federal.year
+          AND bracket.filing_status = federal.filing_status
+    )
+)
+"""
+
+_AVAILABLE_TAX_YEAR_PREDICATE = """
+EXISTS (
+    SELECT 1
+    FROM bracketed_federal_statuses AS federal
+    WHERE federal.year = years.year
+)
+  AND NOT EXISTS (
+      SELECT 1
+      FROM advertised_federal_statuses AS federal
+      WHERE federal.year = years.year
+        AND NOT EXISTS (
+            SELECT 1
+            FROM bracketed_federal_statuses AS bracketed
+            WHERE bracketed.year = federal.year
+              AND bracketed.filing_status = federal.filing_status
+        )
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM advertised_federal_statuses AS federal
+      WHERE federal.year = years.year
+        AND NOT EXISTS (
+            SELECT 1
+            FROM additional_medicare_thresholds AS threshold
+            WHERE threshold.year = federal.year
+              AND threshold.filing_status = federal.filing_status
+        )
+  )
+  AND EXISTS (
+      SELECT 1
+      FROM payroll_tax_parameters AS payroll
+      WHERE payroll.year = years.year
+  )
+  AND EXISTS (
+      SELECT 1
+      FROM pretax_deduction_parameters AS pretax
+      WHERE pretax.year = years.year
+  )
+"""
+
 
 def connect(database_path: str | Path = DEFAULT_DATABASE_PATH) -> sqlite3.Connection:
     path = Path(database_path)
@@ -230,64 +287,30 @@ def seed_default_tax_data(connection: sqlite3.Connection) -> None:
 
 def get_available_tax_years(connection: sqlite3.Connection) -> list[int]:
     rows = connection.execute(
-        """
-        WITH advertised_federal_statuses AS (
-            SELECT federal.year, federal.filing_status
-            FROM federal_tax_parameters AS federal
-        ),
-        bracketed_federal_statuses AS (
-            SELECT federal.year, federal.filing_status
-            FROM federal_tax_parameters AS federal
-            WHERE EXISTS (
-                SELECT 1
-                FROM federal_tax_brackets AS bracket
-                WHERE bracket.year = federal.year
-                  AND bracket.filing_status = federal.filing_status
-            )
-        )
+        f"""
+        WITH {_AVAILABLE_TAX_YEAR_CTES}
         SELECT years.year
         FROM tax_years AS years
-        WHERE EXISTS (
-            SELECT 1
-            FROM bracketed_federal_statuses AS federal
-            WHERE federal.year = years.year
-        )
-          AND NOT EXISTS (
-              SELECT 1
-              FROM advertised_federal_statuses AS federal
-              WHERE federal.year = years.year
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM bracketed_federal_statuses AS bracketed
-                    WHERE bracketed.year = federal.year
-                      AND bracketed.filing_status = federal.filing_status
-                )
-          )
-          AND NOT EXISTS (
-              SELECT 1
-              FROM advertised_federal_statuses AS federal
-              WHERE federal.year = years.year
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM additional_medicare_thresholds AS threshold
-                    WHERE threshold.year = federal.year
-                      AND threshold.filing_status = federal.filing_status
-                )
-          )
-          AND EXISTS (
-              SELECT 1
-              FROM payroll_tax_parameters AS payroll
-              WHERE payroll.year = years.year
-          )
-          AND EXISTS (
-              SELECT 1
-              FROM pretax_deduction_parameters AS pretax
-              WHERE pretax.year = years.year
-          )
+        WHERE {_AVAILABLE_TAX_YEAR_PREDICATE}
         ORDER BY years.year
         """
     ).fetchall()
     return [int(row["year"]) for row in rows]
+
+
+def is_tax_year_available(connection: sqlite3.Connection, year: int) -> bool:
+    row = connection.execute(
+        f"""
+        WITH {_AVAILABLE_TAX_YEAR_CTES}
+        SELECT 1
+        FROM tax_years AS years
+        WHERE years.year = ?
+          AND {_AVAILABLE_TAX_YEAR_PREDICATE}
+        LIMIT 1
+        """,
+        (year,),
+    ).fetchone()
+    return row is not None
 
 
 def get_filing_statuses(
