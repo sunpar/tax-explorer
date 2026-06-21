@@ -46,7 +46,8 @@ bracketed_federal_statuses AS (
 """.format(supported_filing_statuses=_SUPPORTED_FILING_STATUS_SQL)
 
 _AVAILABLE_TAX_YEAR_PREDICATE = """
-EXISTS (
+years.year >= 0
+  AND EXISTS (
     SELECT 1
     FROM bracketed_federal_statuses AS federal
     WHERE federal.year = years.year
