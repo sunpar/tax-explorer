@@ -206,9 +206,8 @@ def main(argv: list[str] | None = None) -> int:
             pretax_deductions = load_pretax_deduction_parameters(
                 connection, args.year
             )
-            available = is_tax_year_available(connection, args.year)
-        if not available:
-            raise ValueError(f"No tax parameters for {args.year}")
+            if not is_tax_year_available(connection, args.year):
+                raise ValueError(f"No tax parameters for {args.year}")
         rows = build_income_series(
             start=args.start,
             stop=args.stop,
