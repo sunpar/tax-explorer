@@ -12,6 +12,31 @@ describe("api requests", () => {
     vi.restoreAllMocks();
   });
 
+  const taxParameterResponse = {
+    federal: {
+      tax_year: 2026,
+      filing_status: "single",
+      standard_deduction: "16100.00",
+      brackets: [{ lower_bound: "0.00", rate: "0.10" }]
+    },
+    payroll: {
+      tax_year: 2026,
+      social_security_rate: "0.062",
+      social_security_wage_base: "184500.00",
+      medicare_rate: "0.0145",
+      additional_medicare_rate: "0.009",
+      additional_medicare_threshold_single: "200000.00",
+      additional_medicare_thresholds: { single: "200000.00" }
+    },
+    pretax_deductions: {
+      tax_year: 2026,
+      employee_401k_limit: "24500.00",
+      health_fsa_limit: "3400.00",
+      dependent_care_fsa_limit: "7500.00",
+      gradual_phase_in_start_rate: "0.01"
+    }
+  };
+
   test("uses FastAPI detail text for failed JSON responses", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ detail: "gross_income must be non-negative" }), {
@@ -126,54 +151,47 @@ describe("api requests", () => {
     });
   });
 
+  test("returns valid tax parameter responses", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(taxParameterResponse), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxParameters(2026, "single")).resolves.toEqual(
+      taxParameterResponse
+    );
+  });
+
   test.each([
     {},
     {
+      ...taxParameterResponse,
       federal: {
-        tax_year: 2026,
-        filing_status: "single",
-        standard_deduction: "16100.00",
+        ...taxParameterResponse.federal,
         brackets: [{ lower_bound: "0.00", rate: 0.1 }]
-      },
-      payroll: {
-        tax_year: 2026,
-        social_security_rate: "0.062",
-        social_security_wage_base: "184500.00",
-        medicare_rate: "0.0145",
-        additional_medicare_rate: "0.009",
-        additional_medicare_threshold_single: "200000.00",
-        additional_medicare_thresholds: { single: "200000.00" }
-      },
-      pretax_deductions: {
-        tax_year: 2026,
-        employee_401k_limit: "24500.00",
-        health_fsa_limit: "3400.00",
-        dependent_care_fsa_limit: "7500.00",
-        gradual_phase_in_start_rate: "0.01"
       }
     },
     {
-      federal: {
-        tax_year: 2026,
-        filing_status: "single",
-        standard_deduction: "16100.00",
-        brackets: [{ lower_bound: "0.00", rate: "0.10" }]
-      },
+      ...taxParameterResponse,
       payroll: {
-        tax_year: 2026,
-        social_security_rate: "0.062",
-        social_security_wage_base: "184500.00",
-        medicare_rate: "0.0145",
-        additional_medicare_rate: "0.009",
-        additional_medicare_threshold_single: "200000.00",
+        ...taxParameterResponse.payroll,
         additional_medicare_thresholds: { single: 200000 }
-      },
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_thresholds: ["200000.00"]
+      }
+    },
+    {
+      ...taxParameterResponse,
       pretax_deductions: {
-        tax_year: 2026,
-        employee_401k_limit: "24500.00",
-        health_fsa_limit: "3400.00",
-        dependent_care_fsa_limit: "7500.00",
-        gradual_phase_in_start_rate: "0.01"
+        ...taxParameterResponse.pretax_deductions,
+        health_fsa_limit: 3400
       }
     }
   ])("rejects malformed tax parameter responses", async (body) => {
