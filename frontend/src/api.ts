@@ -29,6 +29,8 @@ export type CalculateRequest = {
   pretaxDeductionMode: "max_available" | "gradual_phase_in";
 };
 
+const DECIMAL_STRING_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+
 async function requestJson<T>(
   url: string,
   init?: RequestInit
@@ -154,69 +156,111 @@ function isFilingStatus(value: unknown): value is FilingStatus {
   );
 }
 
-function isTaxParameters(value: unknown): value is TaxParameters {
+function isTaxParameters(
+  value: unknown,
+  year: number,
+  filingStatus: string
+): value is TaxParameters {
   return (
     isRecord(value) &&
-    isFederalParameters(value.federal) &&
-    isPayrollParameters(value.payroll) &&
-    isPretaxDeductionParameters(value.pretax_deductions)
+    isFederalParameters(value.federal, year, filingStatus) &&
+    isPayrollParameters(value.payroll, year) &&
+    isPretaxDeductionParameters(value.pretax_deductions, year) &&
+    hasSelectedAdditionalMedicareThreshold(value.payroll, filingStatus)
   );
 }
 
-function isFederalParameters(value: unknown): value is TaxParameters["federal"] {
+function isFederalParameters(
+  value: unknown,
+  year: number,
+  filingStatus: string
+): value is TaxParameters["federal"] {
   return (
     isRecord(value) &&
-    isTaxYear(value.tax_year) &&
-    typeof value.filing_status === "string" &&
-    typeof value.standard_deduction === "string" &&
-    Array.isArray(value.brackets) &&
-    value.brackets.every(isFederalBracket)
+    value.tax_year === year &&
+    value.filing_status === filingStatus &&
+    isDecimalString(value.standard_deduction) &&
+    isFederalBrackets(value.brackets)
   );
+}
+
+function isFederalBrackets(value: unknown): value is FederalBracket[] {
+  if (!Array.isArray(value) || value.length === 0) return false;
+  if (!value.every(isFederalBracket)) return false;
+  if (Number(value[0].lower_bound) !== 0) return false;
+
+  for (let index = 1; index < value.length; index += 1) {
+    if (Number(value[index].lower_bound) <= Number(value[index - 1].lower_bound)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isFederalBracket(value: unknown): value is FederalBracket {
   return (
     isRecord(value) &&
-    typeof value.lower_bound === "string" &&
-    typeof value.rate === "string"
+    isDecimalString(value.lower_bound) &&
+    isDecimalString(value.rate)
   );
 }
 
-function isPayrollParameters(value: unknown): value is TaxParameters["payroll"] {
+function isPayrollParameters(
+  value: unknown,
+  year: number
+): value is TaxParameters["payroll"] {
   return (
     isRecord(value) &&
-    isTaxYear(value.tax_year) &&
-    typeof value.social_security_rate === "string" &&
-    typeof value.social_security_wage_base === "string" &&
-    typeof value.medicare_rate === "string" &&
-    typeof value.additional_medicare_rate === "string" &&
-    typeof value.additional_medicare_threshold_single === "string" &&
-    isStringRecord(value.additional_medicare_thresholds)
+    value.tax_year === year &&
+    isDecimalString(value.social_security_rate) &&
+    isDecimalString(value.social_security_wage_base) &&
+    isDecimalString(value.medicare_rate) &&
+    isDecimalString(value.additional_medicare_rate) &&
+    isDecimalString(value.additional_medicare_threshold_single) &&
+    isDecimalStringRecord(value.additional_medicare_thresholds)
   );
 }
 
 function isPretaxDeductionParameters(
-  value: unknown
+  value: unknown,
+  year: number
 ): value is TaxParameters["pretax_deductions"] {
   return (
     isRecord(value) &&
-    isTaxYear(value.tax_year) &&
-    typeof value.employee_401k_limit === "string" &&
-    typeof value.health_fsa_limit === "string" &&
-    typeof value.dependent_care_fsa_limit === "string" &&
-    typeof value.gradual_phase_in_start_rate === "string"
+    value.tax_year === year &&
+    isDecimalString(value.employee_401k_limit) &&
+    isDecimalString(value.health_fsa_limit) &&
+    isDecimalString(value.dependent_care_fsa_limit) &&
+    isDecimalString(value.gradual_phase_in_start_rate)
   );
 }
 
-function isStringRecord(value: unknown): value is Record<string, string> {
+function hasSelectedAdditionalMedicareThreshold(
+  value: TaxParameters["payroll"],
+  filingStatus: string
+): boolean {
+  return (
+    filingStatus === "single" ||
+    Object.prototype.hasOwnProperty.call(
+      value.additional_medicare_thresholds,
+      filingStatus
+    )
+  );
+}
+
+function isDecimalStringRecord(value: unknown): value is Record<string, string> {
   return (
     isRecord(value) &&
-    Object.values(value).every((item) => typeof item === "string")
+    Object.values(value).every(isDecimalString)
   );
 }
 
-function isTaxYear(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+function isDecimalString(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    DECIMAL_STRING_PATTERN.test(value) &&
+    Number.isFinite(Number(value))
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -231,7 +275,7 @@ export async function fetchTaxParameters(
   const response = await requestJson<unknown>(
     `/api/tax-years/${year}/parameters?${params.toString()}`
   );
-  if (!isTaxParameters(response)) {
+  if (!isTaxParameters(response, year, filingStatus)) {
     throw new Error("Malformed tax parameter response");
   }
   return response;

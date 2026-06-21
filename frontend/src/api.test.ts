@@ -164,13 +164,109 @@ describe("api requests", () => {
     );
   });
 
+  test("returns valid non-single tax parameter responses", async () => {
+    const body = {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        filing_status: "married_joint"
+      },
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_thresholds: { married_joint: "250000.00" }
+      }
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxParameters(2026, "married_joint")).resolves.toEqual(body);
+  });
+
   test.each([
     {},
     {
       ...taxParameterResponse,
       federal: {
         ...taxParameterResponse.federal,
+        tax_year: 2025
+      }
+    },
+    {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        filing_status: "married_joint"
+      },
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_thresholds: { married_joint: "250000.00" }
+      }
+    },
+    {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        standard_deduction: "oops"
+      }
+    },
+    {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
         brackets: [{ lower_bound: "0.00", rate: 0.1 }]
+      }
+    },
+    {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        brackets: [{ lower_bound: "0.00", rate: "abc" }]
+      }
+    },
+    {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        brackets: []
+      }
+    },
+    {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        brackets: [{ lower_bound: "1000.00", rate: "0.10" }]
+      }
+    },
+    {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        brackets: [
+          { lower_bound: "0.00", rate: "0.10" },
+          { lower_bound: "0.00", rate: "0.12" }
+        ]
+      }
+    },
+    {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        brackets: [
+          { lower_bound: "0.00", rate: "0.10" },
+          { lower_bound: "100000.00", rate: "0.24" },
+          { lower_bound: "50000.00", rate: "0.22" }
+        ]
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        social_security_rate: "Infinity"
       }
     },
     {
@@ -189,9 +285,34 @@ describe("api requests", () => {
     },
     {
       ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        filing_status: "married_joint"
+      },
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_thresholds: { single: "200000.00" }
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_thresholds: { single: "oops" }
+      }
+    },
+    {
+      ...taxParameterResponse,
       pretax_deductions: {
         ...taxParameterResponse.pretax_deductions,
         health_fsa_limit: 3400
+      }
+    },
+    {
+      ...taxParameterResponse,
+      pretax_deductions: {
+        ...taxParameterResponse.pretax_deductions,
+        gradual_phase_in_start_rate: "NaN"
       }
     }
   ])("rejects malformed tax parameter responses", async (body) => {
