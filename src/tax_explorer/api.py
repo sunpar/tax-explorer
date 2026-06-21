@@ -45,6 +45,7 @@ MISSING_PARAMETER_MESSAGE_PREFIXES = (
     "No federal tax brackets",
     "No payroll tax parameters",
     "No pre-tax deduction parameters",
+    "No tax parameters",
 )
 DEFAULT_TAX_YEAR = 2026
 
@@ -271,6 +272,9 @@ def _load_parameters(
         federal = load_federal_tax_parameters(connection, year, filing_status)
         payroll = load_payroll_tax_parameters(connection, year)
         pretax = load_pretax_deduction_parameters(connection, year)
+        available = is_tax_year_available(connection, year)
+    if not available:
+        raise ValueError(f"No tax parameters for {year}")
     return federal, payroll, pretax
 
 

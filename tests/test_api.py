@@ -89,6 +89,80 @@ def delete_additional_medicare_threshold(database_path):
         connection.commit()
 
 
+def create_incomplete_multi_status_year_test_client(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = TestClient(create_app(database_path=database_path))
+    with connect(database_path) as connection:
+        connection.execute(
+            "INSERT INTO tax_years (year, label) VALUES (?, ?)",
+            (2030, "Tax Year 2030"),
+        )
+        connection.execute(
+            """
+            INSERT INTO federal_tax_parameters
+                (year, filing_status, standard_deduction)
+            VALUES (?, ?, ?)
+            """,
+            (2030, "single", "17000.00"),
+        )
+        connection.execute(
+            """
+            INSERT INTO federal_tax_parameters
+                (year, filing_status, standard_deduction)
+            VALUES (?, ?, ?)
+            """,
+            (2030, "married_joint", "34000.00"),
+        )
+        connection.execute(
+            """
+            INSERT INTO federal_tax_brackets
+                (year, filing_status, lower_bound, rate)
+            VALUES (?, ?, ?, ?)
+            """,
+            (2030, "single", "0.00", "0.10"),
+        )
+        connection.execute(
+            """
+            INSERT INTO payroll_tax_parameters (
+                year,
+                social_security_rate,
+                social_security_wage_base,
+                medicare_rate,
+                additional_medicare_rate,
+                additional_medicare_threshold_single
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (2030, "0.062", "184500.00", "0.0145", "0.009", "200000.00"),
+        )
+        connection.executemany(
+            """
+            INSERT INTO additional_medicare_thresholds
+                (year, filing_status, threshold)
+            VALUES (?, ?, ?)
+            """,
+            (
+                (2030, "single", "200000.00"),
+                (2030, "married_joint", "250000.00"),
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO pretax_deduction_parameters (
+                year,
+                employee_401k_limit,
+                health_fsa_limit,
+                dependent_care_fsa_limit,
+                gradual_phase_in_start_rate
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (2030, "24500.00", "3400.00", "7500.00", "0.01"),
+        )
+        connection.commit()
+    return client
+
+
 def assert_invalid_persisted_parameter_response(response):
     assert response.status_code == 422
     assert response.json()["detail"] == INVALID_PERSISTED_PARAMETER_DETAIL
@@ -246,80 +320,45 @@ def test_filing_statuses_exclude_incomplete_tax_years(tmp_path):
 
 
 def test_parameters_exclude_incomplete_tax_years(tmp_path):
-    database_path = tmp_path / "tax.sqlite3"
-    client = TestClient(create_app(database_path=database_path))
-    with connect(database_path) as connection:
-        connection.execute(
-            "INSERT INTO tax_years (year, label) VALUES (?, ?)",
-            (2030, "Tax Year 2030"),
-        )
-        connection.execute(
-            """
-            INSERT INTO federal_tax_parameters
-                (year, filing_status, standard_deduction)
-            VALUES (?, ?, ?)
-            """,
-            (2030, "single", "17000.00"),
-        )
-        connection.execute(
-            """
-            INSERT INTO federal_tax_parameters
-                (year, filing_status, standard_deduction)
-            VALUES (?, ?, ?)
-            """,
-            (2030, "married_joint", "34000.00"),
-        )
-        connection.execute(
-            """
-            INSERT INTO federal_tax_brackets
-                (year, filing_status, lower_bound, rate)
-            VALUES (?, ?, ?, ?)
-            """,
-            (2030, "single", "0.00", "0.10"),
-        )
-        connection.execute(
-            """
-            INSERT INTO payroll_tax_parameters (
-                year,
-                social_security_rate,
-                social_security_wage_base,
-                medicare_rate,
-                additional_medicare_rate,
-                additional_medicare_threshold_single
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (2030, "0.062", "184500.00", "0.0145", "0.009", "200000.00"),
-        )
-        connection.executemany(
-            """
-            INSERT INTO additional_medicare_thresholds
-                (year, filing_status, threshold)
-            VALUES (?, ?, ?)
-            """,
-            (
-                (2030, "single", "200000.00"),
-                (2030, "married_joint", "250000.00"),
-            ),
-        )
-        connection.execute(
-            """
-            INSERT INTO pretax_deduction_parameters (
-                year,
-                employee_401k_limit,
-                health_fsa_limit,
-                dependent_care_fsa_limit,
-                gradual_phase_in_start_rate
-            )
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (2030, "24500.00", "3400.00", "7500.00", "0.01"),
-        )
-        connection.commit()
+    client = create_incomplete_multi_status_year_test_client(tmp_path)
 
     response = client.get(
         "/api/tax-years/2030/parameters",
         params={"filing_status": "single"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No tax parameters for 2030"
+
+
+def test_calculate_excludes_incomplete_tax_years(tmp_path):
+    client = create_incomplete_multi_status_year_test_client(tmp_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2030,
+            "filing_status": "single",
+            "gross_income": "100000",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No tax parameters for 2030"
+
+
+def test_income_series_excludes_incomplete_tax_years(tmp_path):
+    client = create_incomplete_multi_status_year_test_client(tmp_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2030,
+            "filing_status": "single",
+            "start": "100000",
+            "stop": "100000",
+            "step": "50000",
+        },
     )
 
     assert response.status_code == 404
