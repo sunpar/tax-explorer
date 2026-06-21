@@ -192,6 +192,24 @@ def test_tax_year_availability_excludes_incomplete_years(tmp_path):
     assert available is False
 
 
+def test_available_tax_years_exclude_negative_persisted_years(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_tax_year(connection, -1)
+        insert_federal_tax_parameters(connection, -1, "single")
+        insert_federal_tax_bracket(connection, -1, "single")
+        insert_payroll_tax_parameters(connection, -1)
+        insert_additional_medicare_threshold(connection, -1, "single")
+        insert_pretax_deduction_parameters(connection, -1)
+        connection.commit()
+        years = get_available_tax_years(connection)
+        available = is_tax_year_available(connection, -1)
+
+    assert years == [2026]
+    assert available is False
+
+
 def test_available_tax_years_ignore_unsupported_persisted_filing_statuses(tmp_path):
     db_path = tmp_path / "tax.sqlite3"
 
