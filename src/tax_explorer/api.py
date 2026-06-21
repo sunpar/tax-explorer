@@ -51,11 +51,6 @@ DEFAULT_TAX_YEAR = 2026
 _NON_NEGATIVE_INTEGER_SCHEMA = {"minimum": 0}
 
 
-def _has_plain_integer_syntax(value: str) -> bool:
-    digits = value[1:] if value[:1] in {"+", "-"} else value
-    return bool(digits) and digits.isascii() and digits.isdecimal()
-
-
 def _parse_strict_query_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -72,9 +67,12 @@ def _parse_strict_int(value: Any) -> int:
     if isinstance(value, int):
         return value
     if isinstance(value, str):
-        if not _has_plain_integer_syntax(value):
+        if "_" in value:
             raise ValueError("must be a whole number") from None
-        return int(value)
+        try:
+            return int(value)
+        except ValueError:
+            raise ValueError("must be a whole number") from None
     raise ValueError("must be a whole number")
 
 

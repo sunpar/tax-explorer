@@ -48,15 +48,13 @@ CSV_FIELDS = (
 DEFAULT_TAX_YEAR = 2026
 
 
-def _has_plain_integer_syntax(value: str) -> bool:
-    digits = value[1:] if value[:1] in {"+", "-"} else value
-    return bool(digits) and digits.isascii() and digits.isdecimal()
-
-
 def non_negative_int(value: str) -> int:
-    if not _has_plain_integer_syntax(value):
+    if "_" in value:
         raise argparse.ArgumentTypeError("must be a whole number") from None
-    parsed = int(value)
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a whole number") from None
     if parsed < 0:
         raise argparse.ArgumentTypeError("must be non-negative")
     return parsed

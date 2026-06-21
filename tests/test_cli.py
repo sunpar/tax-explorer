@@ -269,6 +269,26 @@ def test_cli_rejects_invalid_numeric_bounds_before_database_initialization(
     assert not database_path.exists()
 
 
+def test_cli_preserves_integer_whitespace_syntax(tmp_path, capsys):
+    code = main(
+        [
+            "--year",
+            " 2026",
+            "--dependent-count",
+            "\t1",
+            "--stop",
+            "0",
+            "--database-path",
+            str(tmp_path / "tax.sqlite3"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert captured.out.startswith("gross_income,")
+    assert captured.err == ""
+
+
 def test_cli_reports_invalid_secondary_income_as_usage_error(tmp_path, capsys):
     database_path = tmp_path / "tax.sqlite3"
 

@@ -486,7 +486,7 @@ def test_api_rejects_negative_years_before_database_initialization(
         ),
     ],
 )
-def test_api_rejects_decimal_integer_syntax_before_database_initialization(
+def test_api_rejects_decimal_or_underscored_integer_syntax_before_database_initialization(
     tmp_path,
     method,
     path,
@@ -501,8 +501,37 @@ def test_api_rejects_decimal_integer_syntax_before_database_initialization(
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert isinstance(detail, list)
-    assert any(error["loc"] == loc for error in detail)
+    error = next(error for error in detail if error["loc"] == loc)
+    assert "must be a whole number" in error["msg"]
     assert not database_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("path", "kwargs"),
+    [
+        ("/api/tax-years/%202026/filing-statuses", {}),
+        ("/api/tax-years/%202026/parameters", {}),
+        (
+            "/api/income-series",
+            {
+                "params": {
+                    "year": " 2026",
+                    "filing_status": "single",
+                    "start": "0",
+                    "stop": "0",
+                    "step": "10000",
+                    "dependent_count": "\t1",
+                }
+            },
+        ),
+    ],
+)
+def test_api_preserves_integer_whitespace_syntax(tmp_path, path, kwargs):
+    client = create_test_client(tmp_path)
+
+    response = client.get(path, **kwargs)
+
+    assert response.status_code == 200
 
 
 def test_returns_parameters_for_tax_year(tmp_path):
