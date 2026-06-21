@@ -435,8 +435,8 @@ describe("App tax curve controls", () => {
     );
   });
 
-  test("selects the latest returned tax year when tax-year lookup succeeds", async () => {
-    mockFetchTaxYears.mockResolvedValueOnce([2025, 2027]);
+  test("selects the latest tax year when tax-year lookup succeeds", async () => {
+    mockFetchTaxYears.mockResolvedValueOnce([2027, 2025]);
 
     render(<App />);
 

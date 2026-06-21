@@ -1041,7 +1041,7 @@ function App() {
         const nextYears =
           years.length > 0 ? years : [DEFAULT_TAX_YEAR];
         setTaxYears(nextYears);
-        setYear(nextYears[nextYears.length - 1]);
+        setYear(Math.max(...nextYears));
       })
       .catch((nextError: Error) => {
         setTaxYears([DEFAULT_TAX_YEAR]);
