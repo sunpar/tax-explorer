@@ -17,6 +17,12 @@ from tax_explorer.database import (
 
 
 UNSUPPORTED_FILING_STATUS = "qualifying_widow"
+EXPECTED_2026_ADDITIONAL_MEDICARE_THRESHOLDS = {
+    "single": Decimal("200000.00"),
+    "married_joint": Decimal("250000.00"),
+    "married_separate": Decimal("125000.00"),
+    "head_of_household": Decimal("200000.00"),
+}
 
 
 def insert_federal_tax_parameters(
@@ -105,6 +111,26 @@ def insert_unsupported_filing_status_parameters(
         VALUES (?, ?, ?)
         """,
         (year, UNSUPPORTED_FILING_STATUS, "200000.00"),
+    )
+
+
+def insert_unsupported_additional_medicare_threshold(
+    connection: sqlite3.Connection, threshold: str
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO filing_statuses (code, label, sort_order)
+        VALUES (?, ?, ?)
+        """,
+        (UNSUPPORTED_FILING_STATUS, "Qualifying surviving spouse", 99),
+    )
+    connection.execute(
+        """
+        INSERT INTO additional_medicare_thresholds
+            (year, filing_status, threshold)
+        VALUES (?, ?, ?)
+        """,
+        (2026, UNSUPPORTED_FILING_STATUS, threshold),
     )
 
 
@@ -591,12 +617,69 @@ def test_loads_2026_payroll_parameters_from_sqlite(tmp_path):
     assert payroll.medicare_rate == Decimal("0.0145")
     assert payroll.additional_medicare_rate == Decimal("0.009")
     assert payroll.additional_medicare_threshold_single == Decimal("200000.00")
-    assert payroll.additional_medicare_thresholds == {
-        "single": Decimal("200000.00"),
-        "married_joint": Decimal("250000.00"),
-        "married_separate": Decimal("125000.00"),
-        "head_of_household": Decimal("200000.00"),
-    }
+    assert payroll.additional_medicare_thresholds == (
+        EXPECTED_2026_ADDITIONAL_MEDICARE_THRESHOLDS
+    )
+
+
+def test_payroll_parameters_ignore_extra_additional_medicare_threshold_rows(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_unsupported_additional_medicare_threshold(connection, "200000.00")
+        connection.commit()
+        payroll = load_payroll_tax_parameters(connection, 2026)
+
+    assert payroll.additional_medicare_thresholds == (
+        EXPECTED_2026_ADDITIONAL_MEDICARE_THRESHOLDS
+    )
+
+
+def test_payroll_parameters_ignore_invalid_extra_additional_medicare_threshold_rows(
+    tmp_path,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_unsupported_additional_medicare_threshold(connection, "NaN")
+        connection.commit()
+        payroll = load_payroll_tax_parameters(connection, 2026)
+
+    assert payroll.additional_medicare_thresholds == (
+        EXPECTED_2026_ADDITIONAL_MEDICARE_THRESHOLDS
+    )
+
+
+def test_payroll_parameters_validate_single_threshold_when_single_not_advertised(
+    tmp_path,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_tax_year(connection, 2030)
+        insert_federal_tax_parameters(connection, 2030, "married_joint")
+        insert_federal_tax_bracket(connection, 2030, "married_joint")
+        insert_payroll_tax_parameters(connection, 2030)
+        insert_additional_medicare_threshold(connection, 2030, "married_joint")
+        insert_pretax_deduction_parameters(connection, 2030)
+        connection.execute(
+            """
+            INSERT INTO additional_medicare_thresholds
+                (year, filing_status, threshold)
+            VALUES (?, ?, ?)
+            """,
+            (2030, "single", "210000.00"),
+        )
+        connection.commit()
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                "additional_medicare_threshold_single 200000.00 "
+                "does not match additional_medicare_threshold for 2030 single"
+            ),
+        ):
+            load_payroll_tax_parameters(connection, 2030)
 
 
 @pytest.mark.parametrize(
