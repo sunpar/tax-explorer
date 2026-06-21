@@ -30,6 +30,39 @@ export type CalculateRequest = {
 };
 
 const DECIMAL_STRING_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+const TAX_BURDEN_DECIMAL_FIELDS = [
+  "gross_income",
+  "taxable_income",
+  "federal_income_tax",
+  "employee_social_security_tax",
+  "employee_medicare_tax",
+  "employee_additional_medicare_tax",
+  "total_employee_payroll_tax",
+  "total_employee_tax",
+  "effective_employee_tax_rate",
+  "marginal_employee_tax_rate",
+  "employee_401k_contribution",
+  "health_fsa_contribution",
+  "dependent_care_fsa_contribution",
+  "total_pretax_deductions",
+  "employer_social_security_tax",
+  "employer_medicare_tax",
+  "total_employer_payroll_tax",
+  "total_tax_with_employer_payroll",
+  "marginal_tax_rate_with_employer_payroll"
+] as const;
+const PAYROLL_BREAKDOWN_DECIMAL_FIELDS = [
+  "gross_income",
+  "payroll_wages",
+  "employee_social_security_tax",
+  "employee_medicare_tax",
+  "employee_additional_medicare_tax",
+  "total_employee_payroll_tax",
+  "employer_social_security_tax",
+  "employer_medicare_tax",
+  "total_employer_payroll_tax",
+  "total_payroll_tax"
+] as const;
 
 async function requestJson<T>(
   url: string,
@@ -263,6 +296,45 @@ function isDecimalString(value: unknown): value is string {
   );
 }
 
+function hasDecimalStringFields(
+  value: Record<string, unknown>,
+  fields: readonly string[]
+): boolean {
+  return fields.every((field) => isDecimalString(value[field]));
+}
+
+function isTaxBurden(value: unknown): value is TaxBurden {
+  return (
+    isRecord(value) &&
+    hasDecimalStringFields(value, TAX_BURDEN_DECIMAL_FIELDS) &&
+    Array.isArray(value.payroll_breakdown) &&
+    value.payroll_breakdown.every(isPayrollBreakdownItem) &&
+    Array.isArray(value.tax_breakdown) &&
+    value.tax_breakdown.every(isTaxBreakdownItem)
+  );
+}
+
+function isPayrollBreakdownItem(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.label === "string" &&
+    hasDecimalStringFields(value, PAYROLL_BREAKDOWN_DECIMAL_FIELDS)
+  );
+}
+
+function isTaxBreakdownItem(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.code === "string" &&
+    typeof value.label === "string" &&
+    isDecimalString(value.amount)
+  );
+}
+
+function isIncomeSeriesResponse(value: unknown): value is IncomeSeriesResponse {
+  return isRecord(value) && Array.isArray(value.rows) && value.rows.every(isTaxBurden);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -281,7 +353,7 @@ export async function fetchTaxParameters(
   return response;
 }
 
-export function fetchIncomeSeries(
+export async function fetchIncomeSeries(
   request: SeriesRequest
 ): Promise<IncomeSeriesResponse> {
   const params = new URLSearchParams({
@@ -296,13 +368,17 @@ export function fetchIncomeSeries(
     secondary_income: request.secondaryIncome,
     pretax_deduction_mode: request.pretaxDeductionMode
   });
-  return requestJson<IncomeSeriesResponse>(
+  const response = await requestJson<unknown>(
     `/api/income-series?${params.toString()}`
   );
+  if (!isIncomeSeriesResponse(response)) {
+    throw new Error("Malformed income series response");
+  }
+  return response;
 }
 
-export function fetchTaxBurden(request: CalculateRequest): Promise<TaxBurden> {
-  return requestJson<TaxBurden>("/api/calculate", {
+export async function fetchTaxBurden(request: CalculateRequest): Promise<TaxBurden> {
+  const response = await requestJson<unknown>("/api/calculate", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -317,4 +393,8 @@ export function fetchTaxBurden(request: CalculateRequest): Promise<TaxBurden> {
       pretax_deduction_mode: request.pretaxDeductionMode
     })
   });
+  if (!isTaxBurden(response)) {
+    throw new Error("Malformed tax burden response");
+  }
+  return response;
 }
