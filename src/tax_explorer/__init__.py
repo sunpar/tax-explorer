@@ -431,8 +431,8 @@ def _validated_tax_parameters(
 
 
 def _validate_parameter_tax_year(
-    federal_year: int,
-    parameter_year: int,
+    federal_year: object,
+    parameter_year: object,
     parameter_name: str,
 ) -> None:
     _validate_tax_year(federal_year)
