@@ -431,15 +431,26 @@ def _validated_tax_parameters(
 
 
 def _validate_parameter_tax_year(
-    federal_year: int,
-    parameter_year: int,
+    federal_year: object,
+    parameter_year: object,
     parameter_name: str,
 ) -> None:
+    _validate_tax_year(federal_year)
+    _validate_tax_year(parameter_year)
     if parameter_year != federal_year:
         raise ValueError(
             f"{parameter_name} tax_year {parameter_year} "
             f"does not match federal tax_year {federal_year}"
         )
+
+
+def _validate_tax_year(tax_year: object) -> None:
+    if (
+        not isinstance(tax_year, int)
+        or isinstance(tax_year, bool)
+        or tax_year < 0
+    ):
+        raise ValueError("tax_year must be a non-negative integer")
 
 
 def _validated_federal_tax_parameters(
