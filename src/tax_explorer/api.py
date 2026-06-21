@@ -150,8 +150,11 @@ def create_app(
                 federal = load_federal_tax_parameters(connection, year, filing_status)
                 payroll = load_payroll_tax_parameters(connection, year)
                 pretax = load_pretax_deduction_parameters(connection, year)
+                available = is_tax_year_available(connection, year)
         except ValueError as exc:
             raise _parameter_http_exception(exc) from exc
+        if not available:
+            raise HTTPException(status_code=404, detail=f"No tax parameters for {year}")
 
         return {
             "federal": _federal_to_response(federal),
