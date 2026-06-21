@@ -608,6 +608,45 @@ def test_payroll_parameters_accept_legacy_single_additional_medicare_threshold()
     "calculate",
     [
         lambda payroll: calculate_tax_burden(
+            TaxScenario(gross_income=money("250000")),
+            payroll=payroll,
+        ),
+        lambda payroll: build_income_series(
+            start=0,
+            stop=250000,
+            step=250000,
+            payroll=payroll,
+        ),
+    ],
+    ids=["calculate_tax_burden", "build_income_series"],
+)
+def test_single_filing_status_rejects_conflicting_additional_medicare_thresholds(
+    calculate,
+):
+    payroll = PayrollTaxParameters(
+        tax_year=2026,
+        social_security_rate=Decimal("0.062"),
+        social_security_wage_base=money("184500.00"),
+        medicare_rate=Decimal("0.0145"),
+        additional_medicare_rate=Decimal("0.009"),
+        additional_medicare_threshold_single=money("200000.00"),
+        additional_medicare_thresholds={"single": money("250000.00")},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "additional_medicare_threshold_single 200000.00 does not match "
+            "additional_medicare_threshold for 2026 single"
+        ),
+    ):
+        calculate(payroll)
+
+
+@pytest.mark.parametrize(
+    "calculate",
+    [
+        lambda payroll: calculate_tax_burden(
             TaxScenario(gross_income=money("300000")),
             federal=FEDERAL_2026_MARRIED_JOINT,
             payroll=payroll,
