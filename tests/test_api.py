@@ -420,14 +420,13 @@ def test_api_rejects_negative_years_before_database_initialization(
 
 
 @pytest.mark.parametrize(
-    ("method", "path", "kwargs", "loc"),
+    ("path", "kwargs", "loc"),
     [
-        ("get", "/api/tax-years/2026.0/filing-statuses", {}, ["path", "year"]),
-        ("get", "/api/tax-years/2026.0/parameters", {}, ["path", "year"]),
-        ("get", "/api/tax-years/2_026/filing-statuses", {}, ["path", "year"]),
-        ("get", "/api/tax-years/2_026/parameters", {}, ["path", "year"]),
+        ("/api/tax-years/2026.0/filing-statuses", {}, ["path", "year"]),
+        ("/api/tax-years/2026.0/parameters", {}, ["path", "year"]),
+        ("/api/tax-years/2_026/filing-statuses", {}, ["path", "year"]),
+        ("/api/tax-years/2_026/parameters", {}, ["path", "year"]),
         (
-            "get",
             "/api/income-series",
             {
                 "params": {
@@ -441,7 +440,6 @@ def test_api_rejects_negative_years_before_database_initialization(
             ["query", "year"],
         ),
         (
-            "get",
             "/api/income-series",
             {
                 "params": {
@@ -455,7 +453,6 @@ def test_api_rejects_negative_years_before_database_initialization(
             ["query", "year"],
         ),
         (
-            "get",
             "/api/income-series",
             {
                 "params": {
@@ -470,7 +467,6 @@ def test_api_rejects_negative_years_before_database_initialization(
             ["query", "dependent_count"],
         ),
         (
-            "get",
             "/api/income-series",
             {
                 "params": {
@@ -488,7 +484,6 @@ def test_api_rejects_negative_years_before_database_initialization(
 )
 def test_api_rejects_decimal_or_underscored_integer_syntax_before_database_initialization(
     tmp_path,
-    method,
     path,
     kwargs,
     loc,
@@ -496,7 +491,7 @@ def test_api_rejects_decimal_or_underscored_integer_syntax_before_database_initi
     database_path = tmp_path / "tax.sqlite3"
     client = create_deferred_test_client(database_path)
 
-    response = getattr(client, method)(path, **kwargs)
+    response = client.get(path, **kwargs)
 
     assert response.status_code == 422
     detail = response.json()["detail"]
