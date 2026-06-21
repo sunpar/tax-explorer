@@ -471,28 +471,36 @@ def load_payroll_tax_parameters(
         """,
         (year,),
     ).fetchall()
-    additional_medicare_thresholds = {
-        str(threshold_row["filing_status"]): _non_negative_money(
-            threshold_row["threshold"], "additional_medicare_threshold"
-        )
-        for threshold_row in threshold_rows
-    }
     supported_filing_statuses = [
         status["code"] for status in get_filing_statuses(connection, year)
     ]
+    threshold_validation_statuses = set(supported_filing_statuses)
+    threshold_validation_statuses.add("single")
+    supported_thresholds_by_status = {}
+    for threshold_row in threshold_rows:
+        filing_status = str(threshold_row["filing_status"])
+        if filing_status not in threshold_validation_statuses:
+            continue
+        supported_thresholds_by_status[filing_status] = _non_negative_money(
+            threshold_row["threshold"], "additional_medicare_threshold"
+        )
+    additional_medicare_thresholds = {}
     for filing_status in supported_filing_statuses:
-        if filing_status not in additional_medicare_thresholds:
+        if filing_status not in supported_thresholds_by_status:
             raise ValueError(
                 f"additional_medicare_threshold missing for {year} {filing_status}"
             )
+        additional_medicare_thresholds[filing_status] = supported_thresholds_by_status[
+            filing_status
+        ]
     additional_medicare_threshold_single = _non_negative_money(
         row["additional_medicare_threshold_single"],
         "additional_medicare_threshold_single",
     )
+    stored_single_threshold = supported_thresholds_by_status.get("single")
     if (
-        "single" in additional_medicare_thresholds
-        and additional_medicare_thresholds["single"]
-        != additional_medicare_threshold_single
+        stored_single_threshold is not None
+        and stored_single_threshold != additional_medicare_threshold_single
     ):
         raise ValueError(
             "additional_medicare_threshold_single "
