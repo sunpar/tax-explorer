@@ -177,6 +177,14 @@ function thousandsToDollars(value: string): string {
   return trimTrailingZeros((amount * 1000).toFixed(2));
 }
 
+function positiveDollarsFromThousands(value: string): string | null {
+  const trimmedValue = value.trim();
+  if (trimmedValue === "") return null;
+  const amount = Number(trimmedValue);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return trimTrailingZeros((amount * 1000).toFixed(2));
+}
+
 function dollarsToThousands(value: string | number): string {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "0";
@@ -997,7 +1005,7 @@ function App() {
   const start = thousandsToDollars(startThousands);
   const stop = thousandsToDollars(stopThousands);
   const effectiveStop = clampStopDollarsAtStart(start, stop);
-  const step = thousandsToDollars(stepThousands);
+  const step = positiveDollarsFromThousands(stepThousands);
   const dependentCount = sanitizeDependentCount(dependentCountInput);
   const rawSecondaryIncome = Number(
     thousandsToDollars(secondaryIncomeThousands)
@@ -1106,6 +1114,13 @@ function App() {
         cancelled = true;
       };
     }
+    if (step === null) {
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    const validStep = step;
 
     setLoading(true);
     setScenarioError(null);
@@ -1132,7 +1147,7 @@ function App() {
         filingStatus,
         start,
         stop: resolvedStop,
-        step,
+        step: validStep,
         includeEmployerPayrollTax: includeEmployer,
         includeMarginalBreakpoints: true,
         dependentCount,
@@ -1819,6 +1834,11 @@ function App() {
               min="1"
               value={stepThousands}
               onChange={(event) => setStepThousands(event.target.value)}
+              onBlur={() => {
+                if (positiveDollarsFromThousands(stepThousands) === null) {
+                  setStepThousands("1");
+                }
+              }}
             />
           </label>
 

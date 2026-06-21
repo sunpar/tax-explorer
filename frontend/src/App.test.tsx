@@ -840,6 +840,31 @@ describe("App tax curve controls", () => {
     expectNoInvertedIncomeSeriesRequests();
   });
 
+  test("blank Step edits do not request a zero-step income series", async () => {
+    await renderLoadedApp();
+    mockFetchIncomeSeries.mockClear();
+
+    const stepInput = screen.getByLabelText("Step ($k)");
+    fireEvent.change(stepInput, { target: { value: "" } });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockFetchIncomeSeries).not.toHaveBeenCalledWith(
+      expect.objectContaining({ step: "0" })
+    );
+
+    fireEvent.blur(stepInput);
+
+    await waitFor(() => expect(stepInput).toHaveValue(1));
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({ step: "1000" })
+      )
+    );
+  });
+
   test("manual Stop replacement keeps the original Start anchor while focused", async () => {
     await renderLoadedApp();
 
