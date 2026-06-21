@@ -49,6 +49,8 @@ DEFAULT_TAX_YEAR = 2026
 
 
 def non_negative_int(value: str) -> int:
+    if "_" in value:
+        raise argparse.ArgumentTypeError("must be a whole number") from None
     try:
         parsed = int(value)
     except ValueError:

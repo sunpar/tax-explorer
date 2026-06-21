@@ -246,7 +246,9 @@ def test_cli_reports_invalid_decimal_arguments_as_usage_errors(
         ("--step", "1e27", "must fit cents precision"),
         ("--secondary-income", "-1", "must be non-negative"),
         ("--dependent-count", "1.5", "must be a whole number"),
+        ("--dependent-count", "1_0", "must be a whole number"),
         ("--year", "2026.5", "must be a whole number"),
+        ("--year", "2_026", "must be a whole number"),
         ("--year", "-1", "must be non-negative"),
     ],
 )
@@ -265,6 +267,26 @@ def test_cli_rejects_invalid_numeric_bounds_before_database_initialization(
     assert exc_info.value.code == 2
     assert f"argument {flag}: {message}" in capsys.readouterr().err
     assert not database_path.exists()
+
+
+def test_cli_preserves_integer_whitespace_syntax(tmp_path, capsys):
+    code = main(
+        [
+            "--year",
+            " 2026",
+            "--dependent-count",
+            "\t1",
+            "--stop",
+            "0",
+            "--database-path",
+            str(tmp_path / "tax.sqlite3"),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert captured.out.startswith("gross_income,")
+    assert captured.err == ""
 
 
 def test_cli_reports_invalid_secondary_income_as_usage_error(tmp_path, capsys):

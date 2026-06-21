@@ -67,6 +67,8 @@ def _parse_strict_int(value: Any) -> int:
     if isinstance(value, int):
         return value
     if isinstance(value, str):
+        if "_" in value:
+            raise ValueError("must be a whole number") from None
         try:
             return int(value)
         except ValueError:
