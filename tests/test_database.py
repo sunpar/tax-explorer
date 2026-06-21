@@ -16,6 +16,9 @@ from tax_explorer.database import (
 )
 
 
+UNSUPPORTED_FILING_STATUS = "qualifying_widow"
+
+
 def insert_federal_tax_parameters(
     connection: sqlite3.Connection, year: int, filing_status: str
 ) -> None:
@@ -83,6 +86,28 @@ def insert_additional_medicare_threshold(
     )
 
 
+def insert_unsupported_filing_status_parameters(
+    connection: sqlite3.Connection, year: int
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO filing_statuses (code, label, sort_order)
+        VALUES (?, ?, ?)
+        """,
+        (UNSUPPORTED_FILING_STATUS, "Qualifying surviving spouse", 99),
+    )
+    insert_federal_tax_parameters(connection, year, UNSUPPORTED_FILING_STATUS)
+    insert_federal_tax_bracket(connection, year, UNSUPPORTED_FILING_STATUS)
+    connection.execute(
+        """
+        INSERT INTO additional_medicare_thresholds
+            (year, filing_status, threshold)
+        VALUES (?, ?, ?)
+        """,
+        (year, UNSUPPORTED_FILING_STATUS, "200000.00"),
+    )
+
+
 def insert_pretax_deduction_parameters(connection: sqlite3.Connection, year: int) -> None:
     connection.execute(
         """
@@ -139,6 +164,35 @@ def test_tax_year_availability_excludes_incomplete_years(tmp_path):
         available = is_tax_year_available(connection, 2030)
 
     assert available is False
+
+
+def test_available_tax_years_ignore_unsupported_persisted_filing_statuses(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_tax_year(connection, 2030)
+        insert_unsupported_filing_status_parameters(connection, 2030)
+        insert_payroll_tax_parameters(connection, 2030)
+        insert_pretax_deduction_parameters(connection, 2030)
+        connection.commit()
+        years = get_available_tax_years(connection)
+        available = is_tax_year_available(connection, 2030)
+
+    assert years == [2026]
+    assert available is False
+
+
+def test_unsupported_persisted_filing_status_does_not_hide_supported_year(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_unsupported_filing_status_parameters(connection, 2026)
+        connection.commit()
+        years = get_available_tax_years(connection)
+        available = is_tax_year_available(connection, 2026)
+
+    assert years == [2026]
+    assert available is True
 
 
 def test_available_tax_years_exclude_missing_additional_medicare_thresholds(tmp_path):
@@ -272,6 +326,34 @@ def test_loads_all_supported_2026_filing_statuses_from_sqlite(tmp_path):
     assert federal_by_status["head_of_household"].brackets[-1].lower_bound == Decimal(
         "640600.00"
     )
+
+
+def test_filing_statuses_exclude_unsupported_persisted_statuses(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_unsupported_filing_status_parameters(connection, 2026)
+        connection.commit()
+        statuses = get_filing_statuses(connection, 2026)
+
+    assert statuses == [
+        {"code": "single", "label": "Single"},
+        {"code": "married_joint", "label": "Married filing jointly"},
+        {"code": "married_separate", "label": "Married filing separately"},
+        {"code": "head_of_household", "label": "Head of household"},
+    ]
+
+
+def test_federal_parameters_reject_unsupported_persisted_statuses(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_unsupported_filing_status_parameters(connection, 2026)
+        connection.commit()
+        with pytest.raises(
+            ValueError, match=f"unsupported filing_status: {UNSUPPORTED_FILING_STATUS}"
+        ):
+            load_federal_tax_parameters(connection, 2026, UNSUPPORTED_FILING_STATUS)
 
 
 @pytest.mark.parametrize("standard_deduction", ["-1.00", "-0.004"])

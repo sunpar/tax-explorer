@@ -7,6 +7,8 @@ from itertools import pairwise
 from pathlib import Path
 
 from tax_explorer import (
+    FILING_STATUS_CHOICES,
+    FILING_STATUSES,
     FederalTaxParameters,
     MONEY,
     PayrollTaxParameters,
@@ -18,23 +20,27 @@ from tax_explorer import (
 DEFAULT_DATABASE_PATH = Path(
     os.environ.get("TAX_EXPLORER_DB", Path.cwd() / "data" / "tax_explorer.sqlite3")
 )
+_SUPPORTED_FILING_STATUS_SQL = ", ".join(
+    f"'{filing_status}'" for filing_status in FILING_STATUS_CHOICES
+)
 
 _AVAILABLE_TAX_YEAR_CTES = """
 advertised_federal_statuses AS (
     SELECT federal.year, federal.filing_status
     FROM federal_tax_parameters AS federal
+    WHERE federal.filing_status IN ({supported_filing_statuses})
 ),
 bracketed_federal_statuses AS (
     SELECT federal.year, federal.filing_status
-    FROM federal_tax_parameters AS federal
+    FROM advertised_federal_statuses AS federal
     WHERE EXISTS (
-        SELECT 1
-        FROM federal_tax_brackets AS bracket
-        WHERE bracket.year = federal.year
-          AND bracket.filing_status = federal.filing_status
-    )
+          SELECT 1
+          FROM federal_tax_brackets AS bracket
+          WHERE bracket.year = federal.year
+            AND bracket.filing_status = federal.filing_status
+      )
 )
-"""
+""".format(supported_filing_statuses=_SUPPORTED_FILING_STATUS_SQL)
 
 _AVAILABLE_TAX_YEAR_PREDICATE = """
 EXISTS (
@@ -317,12 +323,13 @@ def get_filing_statuses(
     connection: sqlite3.Connection, year: int
 ) -> list[dict[str, str]]:
     rows = connection.execute(
-        """
-        SELECT DISTINCT statuses.code, statuses.label, statuses.sort_order
+        f"""
+        SELECT statuses.code, statuses.label, statuses.sort_order
         FROM filing_statuses AS statuses
         INNER JOIN federal_tax_parameters AS federal
             ON federal.filing_status = statuses.code
         WHERE federal.year = ?
+          AND statuses.code IN ({_SUPPORTED_FILING_STATUS_SQL})
         ORDER BY statuses.sort_order
         """,
         (year,),
@@ -343,6 +350,8 @@ def load_federal_tax_parameters(
     ).fetchone()
     if parameter_row is None:
         raise ValueError(f"No federal tax parameters for {year} {filing_status}")
+    if str(parameter_row["filing_status"]) not in FILING_STATUSES:
+        raise ValueError(f"unsupported filing_status: {parameter_row['filing_status']}")
 
     bracket_rows = connection.execute(
         """
