@@ -48,6 +48,7 @@ MISSING_PARAMETER_MESSAGE_PREFIXES = (
     "No tax parameters",
 )
 DEFAULT_TAX_YEAR = 2026
+_NON_NEGATIVE_INTEGER_SCHEMA = {"minimum": 0}
 
 
 def _parse_strict_query_bool(value: Any) -> bool:
@@ -60,13 +61,33 @@ def _parse_strict_query_bool(value: Any) -> bool:
     raise ValueError("must be true or false")
 
 
+def _parse_strict_int(value: Any) -> int:
+    if isinstance(value, bool):
+        raise ValueError("must be a whole number")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            raise ValueError("must be a whole number") from None
+    raise ValueError("must be a whole number")
+
+
 StrictQueryBool = Annotated[
     bool,
     BeforeValidator(_parse_strict_query_bool),
     Query(),
 ]
-TaxYearPath = Annotated[int, ApiPath(ge=0)]
-TaxYearQuery = Annotated[int, Query(ge=0)]
+StrictInt = Annotated[int, BeforeValidator(_parse_strict_int)]
+TaxYearPath = Annotated[
+    StrictInt,
+    ApiPath(ge=0, json_schema_extra=_NON_NEGATIVE_INTEGER_SCHEMA),
+]
+TaxYearQuery = Annotated[
+    StrictInt,
+    Query(ge=0, json_schema_extra=_NON_NEGATIVE_INTEGER_SCHEMA),
+]
 
 
 class CalculateRequest(BaseModel):
@@ -203,7 +224,10 @@ def create_app(
         step: Decimal = Query(default=Decimal("10000"), gt=0),
         include_employer_payroll_tax: StrictQueryBool = False,
         include_marginal_breakpoints: StrictQueryBool = False,
-        dependent_count: int = Query(default=0, ge=0),
+        dependent_count: Annotated[
+            StrictInt,
+            Query(ge=0, json_schema_extra=_NON_NEGATIVE_INTEGER_SCHEMA),
+        ] = 0,
         secondary_income: Decimal = Query(default=Decimal("0"), ge=0),
         pretax_deduction_mode: PretaxDeductionMode = Query(
             default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE
