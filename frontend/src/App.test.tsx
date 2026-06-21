@@ -840,20 +840,21 @@ describe("App tax curve controls", () => {
     expectNoInvertedIncomeSeriesRequests();
   });
 
-  test("blank Step edits do not request a zero-step income series", async () => {
+  test.each([
+    ["blank", ""],
+    ["below-min", "0.5"]
+  ])("%s Step edits do not request an invalid income series", async (_name, value) => {
     await renderLoadedApp();
     mockFetchIncomeSeries.mockClear();
 
     const stepInput = screen.getByLabelText("Step ($k)");
-    fireEvent.change(stepInput, { target: { value: "" } });
+    fireEvent.change(stepInput, { target: { value } });
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(mockFetchIncomeSeries).not.toHaveBeenCalledWith(
-      expect.objectContaining({ step: "0" })
-    );
+    expect(mockFetchIncomeSeries).not.toHaveBeenCalled();
 
     fireEvent.blur(stepInput);
 

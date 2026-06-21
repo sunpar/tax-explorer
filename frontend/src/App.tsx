@@ -177,11 +177,11 @@ function thousandsToDollars(value: string): string {
   return trimTrailingZeros((amount * 1000).toFixed(2));
 }
 
-function positiveDollarsFromThousands(value: string): string | null {
+function stepDollarsFromThousands(value: string): string | null {
   const trimmedValue = value.trim();
   if (trimmedValue === "") return null;
   const amount = Number(trimmedValue);
-  if (!Number.isFinite(amount) || amount <= 0) return null;
+  if (!Number.isFinite(amount) || amount < 1) return null;
   return trimTrailingZeros((amount * 1000).toFixed(2));
 }
 
@@ -1005,7 +1005,7 @@ function App() {
   const start = thousandsToDollars(startThousands);
   const stop = thousandsToDollars(stopThousands);
   const effectiveStop = clampStopDollarsAtStart(start, stop);
-  const step = positiveDollarsFromThousands(stepThousands);
+  const step = stepDollarsFromThousands(stepThousands);
   const dependentCount = sanitizeDependentCount(dependentCountInput);
   const rawSecondaryIncome = Number(
     thousandsToDollars(secondaryIncomeThousands)
@@ -1835,7 +1835,7 @@ function App() {
               value={stepThousands}
               onChange={(event) => setStepThousands(event.target.value)}
               onBlur={() => {
-                if (positiveDollarsFromThousands(stepThousands) === null) {
+                if (stepDollarsFromThousands(stepThousands) === null) {
                   setStepThousands("1");
                 }
               }}
