@@ -419,12 +419,20 @@ describe("api requests", () => {
     },
     {
       ...taxBurdenResponse,
+      payroll_breakdown: []
+    },
+    {
+      ...taxBurdenResponse,
       payroll_breakdown: [
         {
           ...taxBurdenResponse.payroll_breakdown[0],
           total_payroll_tax: 7389.9
         }
       ]
+    },
+    {
+      ...taxBurdenResponse,
+      tax_breakdown: []
     },
     {
       ...taxBurdenResponse,
@@ -462,6 +470,7 @@ describe("api requests", () => {
 
   test.each([
     {},
+    { rows: [] },
     { rows: taxBurdenResponse },
     { rows: [{ ...taxBurdenResponse, marginal_employee_tax_rate: "oops" }] }
   ])("rejects malformed income series responses", async (body) => {

@@ -319,8 +319,10 @@ function isTaxBurden(value: unknown): value is TaxBurden {
     isRecord(value) &&
     hasDecimalStringFields(value, TAX_BURDEN_DECIMAL_FIELDS) &&
     Array.isArray(value.payroll_breakdown) &&
+    value.payroll_breakdown.length > 0 &&
     value.payroll_breakdown.every(isPayrollBreakdownItem) &&
     Array.isArray(value.tax_breakdown) &&
+    value.tax_breakdown.length > 0 &&
     value.tax_breakdown.every(isTaxBreakdownItem)
   );
 }
@@ -343,7 +345,12 @@ function isTaxBreakdownItem(value: unknown): value is TaxBreakdownItem {
 }
 
 function isIncomeSeriesResponse(value: unknown): value is IncomeSeriesResponse {
-  return isRecord(value) && Array.isArray(value.rows) && value.rows.every(isTaxBurden);
+  return (
+    isRecord(value) &&
+    Array.isArray(value.rows) &&
+    value.rows.length > 0 &&
+    value.rows.every(isTaxBurden)
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
