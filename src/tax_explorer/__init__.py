@@ -518,6 +518,16 @@ def _validated_payroll_tax_parameters(
         )
         for threshold_status, threshold in payroll.additional_medicare_thresholds.items()
     }
+    stored_single_threshold = additional_medicare_thresholds.get("single")
+    if (
+        stored_single_threshold is not None
+        and stored_single_threshold != additional_medicare_threshold_single
+    ):
+        raise ValueError(
+            "additional_medicare_threshold_single "
+            f"{additional_medicare_threshold_single} does not match "
+            f"additional_medicare_threshold for {payroll.tax_year} single"
+        )
     if filing_status != "single" and filing_status not in additional_medicare_thresholds:
         raise ValueError(
             f"additional_medicare_threshold missing for "
