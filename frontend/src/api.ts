@@ -33,8 +33,10 @@ type TaxBurdenDecimalField = Exclude<
   keyof TaxBurden,
   "payroll_breakdown" | "tax_breakdown"
 >;
+type PayrollBreakdownItem = TaxBurden["payroll_breakdown"][number];
+type TaxBreakdownItem = TaxBurden["tax_breakdown"][number];
 type PayrollBreakdownDecimalField = Exclude<
-  keyof TaxBurden["payroll_breakdown"][number],
+  keyof PayrollBreakdownItem,
   "label"
 >;
 
@@ -323,7 +325,7 @@ function isTaxBurden(value: unknown): value is TaxBurden {
   );
 }
 
-function isPayrollBreakdownItem(value: unknown): boolean {
+function isPayrollBreakdownItem(value: unknown): value is PayrollBreakdownItem {
   return (
     isRecord(value) &&
     typeof value.label === "string" &&
@@ -331,7 +333,7 @@ function isPayrollBreakdownItem(value: unknown): boolean {
   );
 }
 
-function isTaxBreakdownItem(value: unknown): boolean {
+function isTaxBreakdownItem(value: unknown): value is TaxBreakdownItem {
   return (
     isRecord(value) &&
     typeof value.code === "string" &&
