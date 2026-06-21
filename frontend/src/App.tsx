@@ -986,6 +986,9 @@ function App() {
   const [selectedBurden, setSelectedBurden] = useState<TaxBurden | null>(null);
   const [comparisonSeries, setComparisonSeries] = useState<CurveSeries[]>([]);
   const [loading, setLoading] = useState(true);
+  const [taxYearDiscoveryError, setTaxYearDiscoveryError] = useState<
+    string | null
+  >(null);
   const [scenarioError, setScenarioError] = useState<string | null>(null);
   const [selectedIncomeError, setSelectedIncomeError] = useState<string | null>(
     null
@@ -1011,7 +1014,10 @@ function App() {
     loadedFilingStatusesYear === year &&
     filingStatuses.some((status) => status.code === filingStatus);
   const filingStatusLoadFailedForYear = failedFilingStatusesYear === year;
-  const displayedError = scenarioError ?? selectedIncomeError;
+  const displayedErrors = [
+    taxYearDiscoveryError,
+    scenarioError ?? selectedIncomeError
+  ].filter((error): error is string => Boolean(error));
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -1041,11 +1047,12 @@ function App() {
         const nextYears =
           years.length > 0 ? years : [DEFAULT_TAX_YEAR];
         setTaxYears(nextYears);
+        setTaxYearDiscoveryError(null);
         setYear(Math.max(...nextYears));
       })
       .catch((nextError: Error) => {
         setTaxYears([DEFAULT_TAX_YEAR]);
-        setScenarioError(nextError.message);
+        setTaxYearDiscoveryError(nextError.message);
       });
   }, []);
 
@@ -1951,9 +1958,11 @@ function App() {
             </div>
           </div>
 
-          {displayedError ? (
-            <div className="error-box">{displayedError}</div>
-          ) : null}
+          {displayedErrors.map((displayedError, index) => (
+            <div className="error-box" key={`${displayedError}-${index}`}>
+              {displayedError}
+            </div>
+          ))}
 
           <div className="chart-frame">
             <ResponsiveContainer width="100%" height={360}>

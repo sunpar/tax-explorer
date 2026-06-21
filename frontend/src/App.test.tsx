@@ -421,6 +421,7 @@ describe("App tax curve controls", () => {
     expect(within(taxYearSelect).getByRole("option", { name: "2026" })).toHaveValue(
       "2026"
     );
+    expect(screen.getByText("tax years unavailable")).toBeInTheDocument();
   });
 
   test("keeps the default tax year selectable when tax-year lookup is empty", async () => {
