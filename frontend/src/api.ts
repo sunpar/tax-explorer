@@ -1,4 +1,5 @@
 import type {
+  FederalBracket,
   FilingStatus,
   IncomeSeriesResponse,
   TaxBurden,
@@ -27,6 +28,8 @@ export type CalculateRequest = {
   secondaryIncome: string;
   pretaxDeductionMode: "max_available" | "gradual_phase_in";
 };
+
+const DECIMAL_STRING_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
 
 async function requestJson<T>(
   url: string,
@@ -153,18 +156,129 @@ function isFilingStatus(value: unknown): value is FilingStatus {
   );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
+function isTaxParameters(
+  value: unknown,
+  year: number,
+  filingStatus: string
+): value is TaxParameters {
+  return (
+    isRecord(value) &&
+    isFederalParameters(value.federal, year, filingStatus) &&
+    isPayrollParameters(value.payroll, year) &&
+    isPretaxDeductionParameters(value.pretax_deductions, year) &&
+    hasSelectedAdditionalMedicareThreshold(value.payroll, filingStatus)
+  );
 }
 
-export function fetchTaxParameters(
+function isFederalParameters(
+  value: unknown,
+  year: number,
+  filingStatus: string
+): value is TaxParameters["federal"] {
+  return (
+    isRecord(value) &&
+    value.tax_year === year &&
+    value.filing_status === filingStatus &&
+    isDecimalString(value.standard_deduction) &&
+    isFederalBrackets(value.brackets)
+  );
+}
+
+function isFederalBrackets(value: unknown): value is FederalBracket[] {
+  if (!Array.isArray(value) || value.length === 0) return false;
+  if (!value.every(isFederalBracket)) return false;
+  if (Number(value[0].lower_bound) !== 0) return false;
+
+  for (let index = 1; index < value.length; index += 1) {
+    if (Number(value[index].lower_bound) <= Number(value[index - 1].lower_bound)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isFederalBracket(value: unknown): value is FederalBracket {
+  return (
+    isRecord(value) &&
+    isDecimalString(value.lower_bound) &&
+    isDecimalString(value.rate)
+  );
+}
+
+function isPayrollParameters(
+  value: unknown,
+  year: number
+): value is TaxParameters["payroll"] {
+  return (
+    isRecord(value) &&
+    value.tax_year === year &&
+    isDecimalString(value.social_security_rate) &&
+    isDecimalString(value.social_security_wage_base) &&
+    isDecimalString(value.medicare_rate) &&
+    isDecimalString(value.additional_medicare_rate) &&
+    isDecimalString(value.additional_medicare_threshold_single) &&
+    isDecimalStringRecord(value.additional_medicare_thresholds)
+  );
+}
+
+function isPretaxDeductionParameters(
+  value: unknown,
+  year: number
+): value is TaxParameters["pretax_deductions"] {
+  return (
+    isRecord(value) &&
+    value.tax_year === year &&
+    isDecimalString(value.employee_401k_limit) &&
+    isDecimalString(value.health_fsa_limit) &&
+    isDecimalString(value.dependent_care_fsa_limit) &&
+    isDecimalString(value.gradual_phase_in_start_rate)
+  );
+}
+
+function hasSelectedAdditionalMedicareThreshold(
+  value: TaxParameters["payroll"],
+  filingStatus: string
+): boolean {
+  return (
+    filingStatus === "single" ||
+    Object.prototype.hasOwnProperty.call(
+      value.additional_medicare_thresholds,
+      filingStatus
+    )
+  );
+}
+
+function isDecimalStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    isRecord(value) &&
+    Object.values(value).every(isDecimalString)
+  );
+}
+
+function isDecimalString(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    DECIMAL_STRING_PATTERN.test(value) &&
+    Number.isFinite(Number(value))
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+export async function fetchTaxParameters(
   year: number,
   filingStatus: string
 ): Promise<TaxParameters> {
   const params = new URLSearchParams({ filing_status: filingStatus });
-  return requestJson<TaxParameters>(
+  const response = await requestJson<unknown>(
     `/api/tax-years/${year}/parameters?${params.toString()}`
   );
+  if (!isTaxParameters(response, year, filingStatus)) {
+    throw new Error("Malformed tax parameter response");
+  }
+  return response;
 }
 
 export function fetchIncomeSeries(
