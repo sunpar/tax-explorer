@@ -419,6 +419,61 @@ def test_api_rejects_negative_years_before_database_initialization(
     assert not database_path.exists()
 
 
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs", "loc"),
+    [
+        ("get", "/api/tax-years/2026.0/filing-statuses", {}, ["path", "year"]),
+        ("get", "/api/tax-years/2026.0/parameters", {}, ["path", "year"]),
+        (
+            "get",
+            "/api/income-series",
+            {
+                "params": {
+                    "year": "2026.0",
+                    "filing_status": "single",
+                    "start": "0",
+                    "stop": "100000",
+                    "step": "10000",
+                }
+            },
+            ["query", "year"],
+        ),
+        (
+            "get",
+            "/api/income-series",
+            {
+                "params": {
+                    "year": 2026,
+                    "filing_status": "single",
+                    "start": "0",
+                    "stop": "100000",
+                    "step": "10000",
+                    "dependent_count": "1.0",
+                }
+            },
+            ["query", "dependent_count"],
+        ),
+    ],
+)
+def test_api_rejects_decimal_integer_syntax_before_database_initialization(
+    tmp_path,
+    method,
+    path,
+    kwargs,
+    loc,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = getattr(client, method)(path, **kwargs)
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    assert any(error["loc"] == loc for error in detail)
+    assert not database_path.exists()
+
+
 def test_returns_parameters_for_tax_year(tmp_path):
     client = create_test_client(tmp_path)
 
