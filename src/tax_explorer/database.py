@@ -106,6 +106,15 @@ EXISTS (
   )
   AND NOT EXISTS (
       SELECT 1
+      FROM advertised_federal_statuses AS federal
+      INNER JOIN additional_medicare_thresholds AS threshold
+          ON threshold.year = federal.year
+         AND threshold.filing_status = federal.filing_status
+      WHERE federal.year = years.year
+        AND tax_explorer_money_cents(threshold.threshold) IS NULL
+  )
+  AND NOT EXISTS (
+      SELECT 1
       FROM payroll_tax_parameters AS payroll
       INNER JOIN additional_medicare_thresholds AS threshold
           ON threshold.year = payroll.year
@@ -120,11 +129,23 @@ EXISTS (
       SELECT 1
       FROM payroll_tax_parameters AS payroll
       WHERE payroll.year = years.year
+        AND tax_explorer_rate_valid(payroll.social_security_rate)
+        AND tax_explorer_money_cents(payroll.social_security_wage_base)
+            IS NOT NULL
+        AND tax_explorer_rate_valid(payroll.medicare_rate)
+        AND tax_explorer_rate_valid(payroll.additional_medicare_rate)
+        AND tax_explorer_money_cents(
+            payroll.additional_medicare_threshold_single
+        ) IS NOT NULL
   )
   AND EXISTS (
       SELECT 1
       FROM pretax_deduction_parameters AS pretax
       WHERE pretax.year = years.year
+        AND tax_explorer_money_cents(pretax.employee_401k_limit) IS NOT NULL
+        AND tax_explorer_money_cents(pretax.health_fsa_limit) IS NOT NULL
+        AND tax_explorer_money_cents(pretax.dependent_care_fsa_limit) IS NOT NULL
+        AND tax_explorer_rate_valid(pretax.gradual_phase_in_start_rate)
   )
 """
 

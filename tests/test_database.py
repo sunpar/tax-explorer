@@ -342,6 +342,132 @@ def test_available_tax_years_exclude_duplicate_federal_brackets_after_rounding(
     assert available is False
 
 
+@pytest.mark.parametrize(
+    ("table", "column", "value", "where", "params"),
+    [
+        (
+            "payroll_tax_parameters",
+            "social_security_rate",
+            "NaN",
+            "year = ?",
+            (2026,),
+        ),
+        (
+            "payroll_tax_parameters",
+            "social_security_rate",
+            "1.10",
+            "year = ?",
+            (2026,),
+        ),
+        (
+            "payroll_tax_parameters",
+            "social_security_wage_base",
+            "-1.00",
+            "year = ?",
+            (2026,),
+        ),
+        (
+            "payroll_tax_parameters",
+            "medicare_rate",
+            "NaN",
+            "year = ?",
+            (2026,),
+        ),
+        (
+            "payroll_tax_parameters",
+            "additional_medicare_rate",
+            "1.10",
+            "year = ?",
+            (2026,),
+        ),
+        (
+            "payroll_tax_parameters",
+            "additional_medicare_threshold_single",
+            "NaN",
+            "year = ?",
+            (2026,),
+        ),
+        (
+            "pretax_deduction_parameters",
+            "employee_401k_limit",
+            "NaN",
+            "year = ?",
+            (2026,),
+        ),
+        (
+            "pretax_deduction_parameters",
+            "health_fsa_limit",
+            "-1.00",
+            "year = ?",
+            (2026,),
+        ),
+        (
+            "pretax_deduction_parameters",
+            "dependent_care_fsa_limit",
+            "-1.00",
+            "year = ?",
+            (2026,),
+        ),
+        (
+            "pretax_deduction_parameters",
+            "gradual_phase_in_start_rate",
+            "1.10",
+            "year = ?",
+            (2026,),
+        ),
+    ],
+)
+def test_available_tax_years_exclude_invalid_shared_parameters(
+    tmp_path,
+    table,
+    column,
+    value,
+    where,
+    params,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            f"""
+            UPDATE {table}
+            SET {column} = ?
+            WHERE {where}
+            """,
+            (value, *params),
+        )
+        connection.commit()
+
+        years = get_available_tax_years(connection)
+        available = is_tax_year_available(connection, 2026)
+
+    assert years == []
+    assert available is False
+
+
+def test_available_tax_years_exclude_invalid_advertised_medicare_thresholds(
+    tmp_path,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE additional_medicare_thresholds
+            SET threshold = ?
+            WHERE year = ? AND filing_status = ?
+            """,
+            ("NaN", 2026, "married_joint"),
+        )
+        connection.commit()
+
+        years = get_available_tax_years(connection)
+        available = is_tax_year_available(connection, 2026)
+
+    assert years == []
+    assert available is False
+
+
 def test_available_tax_years_check_thresholds_for_all_advertised_statuses(tmp_path):
     db_path = tmp_path / "tax.sqlite3"
 
