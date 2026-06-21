@@ -199,17 +199,23 @@ describe("api requests", () => {
     });
   });
 
-  test("rejects malformed filing status discovery responses", async () => {
+  test.each([
+    { statuses: [] },
+    { statuses: [{ label: "Single" }] },
+    { statuses: [{ code: "", label: "Single" }] },
+    { statuses: [{ code: "single", label: "" }] },
+    {
+      statuses: [
+        { code: "single", label: "Single" },
+        { code: "single", label: "Single duplicate" }
+      ]
+    }
+  ])("rejects malformed filing status discovery responses", async (body) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          statuses: [{ label: "Single" }]
-        }),
-        {
-          headers: { "Content-Type": "application/json" },
-          status: 200
-        }
-      )
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
     );
 
     await expect(fetchFilingStatuses(2026)).rejects.toMatchObject({

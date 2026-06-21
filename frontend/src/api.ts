@@ -188,7 +188,10 @@ function isFilingStatusesResponse(
   return (
     isRecord(value) &&
     Array.isArray(value.statuses) &&
-    value.statuses.every(isFilingStatus)
+    value.statuses.length > 0 &&
+    value.statuses.every(isFilingStatus) &&
+    new Set(value.statuses.map((status) => status.code)).size ===
+      value.statuses.length
   );
 }
 
@@ -196,7 +199,9 @@ function isFilingStatus(value: unknown): value is FilingStatus {
   return (
     isRecord(value) &&
     typeof value.code === "string" &&
-    typeof value.label === "string"
+    value.code.trim() !== "" &&
+    typeof value.label === "string" &&
+    value.label.trim() !== ""
   );
 }
 
