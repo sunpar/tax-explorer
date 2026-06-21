@@ -126,6 +126,13 @@ function sanitizeThousandsValue(value: string | number | null): string {
   return trimTrailingZeros(amount.toFixed(3));
 }
 
+function sanitizeStoredPrimaryIncomeThousands(value: string): string | null {
+  if (value.trim() === "") return null;
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return trimTrailingZeros(amount.toFixed(3));
+}
+
 function readStoredSecondaryIncomeThousands(): string {
   if (typeof window === "undefined") return "0";
   return sanitizeThousandsValue(
@@ -136,7 +143,9 @@ function readStoredSecondaryIncomeThousands(): string {
 function readStoredPrimaryIncomeThousands(): string | null {
   if (typeof window === "undefined") return null;
   const storedValue = window.localStorage.getItem(PRIMARY_INCOME_STORAGE_KEY);
-  return storedValue === null ? null : sanitizeThousandsValue(storedValue);
+  return storedValue === null
+    ? null
+    : sanitizeStoredPrimaryIncomeThousands(storedValue);
 }
 
 function secondaryIncomeSplitThousands(totalIncome: number): string {

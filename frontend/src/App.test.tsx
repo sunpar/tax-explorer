@@ -1630,6 +1630,60 @@ describe("App tax curve controls", () => {
     );
   });
 
+  test.each(["", " ", "-1", "Infinity", "NaN", "not-a-number"])(
+    "invalid stored primary income %j is ignored when restoring a two-income split",
+    async (storedPrimaryIncome) => {
+      localStorage.setItem(
+        "taxExplorer.primaryIncomeThousands",
+        storedPrimaryIncome
+      );
+      localStorage.setItem("taxExplorer.secondaryIncomeThousands", "50");
+      await renderLoadedApp();
+
+      fireEvent.click(
+        screen.getByRole("radio", { name: "Married filing jointly" })
+      );
+
+      await waitFor(() =>
+        expect(screen.getByLabelText(/Selected income/)).toHaveValue("256800")
+      );
+      await waitFor(() => {
+        expect(screen.getByLabelText("Income 1 ($k)")).toHaveValue(154.08);
+        expect(screen.getByLabelText("Income 2 ($k)")).toHaveValue(102.72);
+      });
+      await waitFor(() =>
+        expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+          expect.objectContaining({
+            filingStatus: "married_joint",
+            secondaryIncome: "102720"
+          })
+        )
+      );
+    }
+  );
+
+  test("stored primary income zero is restored as a valid two-income split", async () => {
+    localStorage.setItem("taxExplorer.primaryIncomeThousands", "0");
+    localStorage.setItem("taxExplorer.secondaryIncomeThousands", "50");
+    await renderLoadedApp();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Selected income/)).toHaveValue("50000")
+    );
+    expect(screen.getByLabelText("Income 1 ($k)")).toHaveValue(0);
+    expect(screen.getByLabelText("Income 2 ($k)")).toHaveValue(50);
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filingStatus: "married_joint",
+          secondaryIncome: "50000"
+        })
+      )
+    );
+  });
+
   test("employer payroll toggle shows dual-earner employer and payroll breakdown", async () => {
     await renderLoadedApp();
 
