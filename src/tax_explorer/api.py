@@ -94,13 +94,11 @@ NonNegativeStrictIntQuery = Annotated[
     Query(ge=0, json_schema_extra=_NON_NEGATIVE_INTEGER_SCHEMA),
 ]
 NonNegativeStrictDecimalQuery = Annotated[
-    Decimal,
-    BeforeValidator(_parse_strict_decimal),
+    StrictDecimal,
     Query(ge=0, json_schema_extra={"minimum": 0}),
 ]
 PositiveStrictDecimalQuery = Annotated[
-    Decimal,
-    BeforeValidator(_parse_strict_decimal),
+    StrictDecimal,
     Query(gt=0, json_schema_extra={"exclusiveMinimum": 0}),
 ]
 TaxYearPath = Annotated[

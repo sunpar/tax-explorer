@@ -232,11 +232,14 @@ def test_cli_reports_invalid_decimal_arguments_as_usage_errors(
     tmp_path,
     capsys,
 ):
+    database_path = tmp_path / "tax.sqlite3"
+
     with pytest.raises(SystemExit) as exc_info:
-        main([flag, value, "--database-path", str(tmp_path / "tax.sqlite3")])
+        main([flag, value, "--database-path", str(database_path)])
 
     assert exc_info.value.code == 2
     assert f"argument {flag}: must be a decimal number" in capsys.readouterr().err
+    assert not database_path.exists()
 
 
 @pytest.mark.parametrize(

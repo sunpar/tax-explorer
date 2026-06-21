@@ -1174,6 +1174,24 @@ def test_openapi_documents_request_validation_constraints(tmp_path):
         "minimum"
     ] == 0
     assert (
+        numeric_schema(parameter_schema(income_series_parameters, "start"))[
+            "minimum"
+        ]
+        == 0
+    )
+    assert (
+        numeric_schema(parameter_schema(income_series_parameters, "stop"))[
+            "minimum"
+        ]
+        == 0
+    )
+    assert (
+        numeric_schema(parameter_schema(income_series_parameters, "step"))[
+            "exclusiveMinimum"
+        ]
+        == 0
+    )
+    assert (
         numeric_schema(parameter_schema(income_series_parameters, "secondary_income"))[
             "minimum"
         ]
