@@ -131,7 +131,7 @@ function isTaxYearsResponse(value: unknown): value is { years: number[] } {
   return (
     isRecord(value) &&
     Array.isArray(value.years) &&
-    value.years.every((year) => typeof year === "number")
+    value.years.every((year) => Number.isInteger(year) && year >= 0)
   );
 }
 
