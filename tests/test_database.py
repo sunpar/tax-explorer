@@ -227,6 +227,70 @@ def test_available_tax_years_check_thresholds_for_all_advertised_statuses(tmp_pa
     assert years == [2026]
 
 
+def test_available_tax_years_exclude_conflicting_single_additional_medicare_thresholds(
+    tmp_path,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_tax_year(connection, 2030)
+        insert_federal_tax_parameters(connection, 2030, "single")
+        insert_federal_tax_bracket(connection, 2030, "single")
+        insert_payroll_tax_parameters(connection, 2030)
+        insert_additional_medicare_threshold(connection, 2030, "single")
+        insert_pretax_deduction_parameters(connection, 2030)
+        connection.execute(
+            """
+            UPDATE additional_medicare_thresholds
+            SET threshold = ?
+            WHERE year = ? AND filing_status = ?
+            """,
+            ("210000.00", 2030, "single"),
+        )
+        connection.commit()
+        years = get_available_tax_years(connection)
+        available = is_tax_year_available(connection, 2030)
+
+    assert years == [2026]
+    assert available is False
+
+
+def test_available_tax_years_compare_single_additional_medicare_thresholds_exactly(
+    tmp_path,
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        insert_tax_year(connection, 2030)
+        insert_federal_tax_parameters(connection, 2030, "single")
+        insert_federal_tax_bracket(connection, 2030, "single")
+        insert_payroll_tax_parameters(connection, 2030)
+        insert_additional_medicare_threshold(connection, 2030, "single")
+        insert_pretax_deduction_parameters(connection, 2030)
+        connection.execute(
+            """
+            UPDATE payroll_tax_parameters
+            SET additional_medicare_threshold_single = ?
+            WHERE year = ?
+            """,
+            ("99999999999999999999999999.99", 2030),
+        )
+        connection.execute(
+            """
+            UPDATE additional_medicare_thresholds
+            SET threshold = ?
+            WHERE year = ? AND filing_status = ?
+            """,
+            ("99999999999999999999999999.98", 2030, "single"),
+        )
+        connection.commit()
+        years = get_available_tax_years(connection)
+        available = is_tax_year_available(connection, 2030)
+
+    assert years == [2026]
+    assert available is False
+
+
 def test_available_tax_years_require_brackets_for_all_advertised_statuses(tmp_path):
     db_path = tmp_path / "tax.sqlite3"
 
@@ -658,6 +722,30 @@ def test_rejects_invalid_additional_medicare_thresholds_from_sqlite(
         connection.commit()
 
         with pytest.raises(ValueError, match=message):
+            load_payroll_tax_parameters(connection, 2026)
+
+
+def test_rejects_conflicting_single_additional_medicare_thresholds(tmp_path):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE additional_medicare_thresholds
+            SET threshold = ?
+            WHERE year = ? AND filing_status = ?
+            """,
+            ("210000.00", 2026, "single"),
+        )
+        connection.commit()
+
+        with pytest.raises(
+            ValueError,
+            match=(
+                "additional_medicare_threshold_single 200000.00 "
+                "does not match additional_medicare_threshold for 2026 single"
+            ),
+        ):
             load_payroll_tax_parameters(connection, 2026)
 
 
