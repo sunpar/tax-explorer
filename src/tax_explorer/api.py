@@ -80,14 +80,15 @@ StrictQueryBool = Annotated[
     Query(),
 ]
 StrictInt = Annotated[int, BeforeValidator(_parse_strict_int)]
+NonNegativeStrictIntQuery = Annotated[
+    StrictInt,
+    Query(ge=0, json_schema_extra=_NON_NEGATIVE_INTEGER_SCHEMA),
+]
 TaxYearPath = Annotated[
     StrictInt,
     ApiPath(ge=0, json_schema_extra=_NON_NEGATIVE_INTEGER_SCHEMA),
 ]
-TaxYearQuery = Annotated[
-    StrictInt,
-    Query(ge=0, json_schema_extra=_NON_NEGATIVE_INTEGER_SCHEMA),
-]
+TaxYearQuery = NonNegativeStrictIntQuery
 
 
 class CalculateRequest(BaseModel):
@@ -224,10 +225,7 @@ def create_app(
         step: Decimal = Query(default=Decimal("10000"), gt=0),
         include_employer_payroll_tax: StrictQueryBool = False,
         include_marginal_breakpoints: StrictQueryBool = False,
-        dependent_count: Annotated[
-            StrictInt,
-            Query(ge=0, json_schema_extra=_NON_NEGATIVE_INTEGER_SCHEMA),
-        ] = 0,
+        dependent_count: NonNegativeStrictIntQuery = 0,
         secondary_income: Decimal = Query(default=Decimal("0"), ge=0),
         pretax_deduction_mode: PretaxDeductionMode = Query(
             default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE
