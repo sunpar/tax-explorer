@@ -424,6 +424,8 @@ def test_api_rejects_negative_years_before_database_initialization(
     [
         ("get", "/api/tax-years/2026.0/filing-statuses", {}, ["path", "year"]),
         ("get", "/api/tax-years/2026.0/parameters", {}, ["path", "year"]),
+        ("get", "/api/tax-years/2_026/filing-statuses", {}, ["path", "year"]),
+        ("get", "/api/tax-years/2_026/parameters", {}, ["path", "year"]),
         (
             "get",
             "/api/income-series",
@@ -443,12 +445,41 @@ def test_api_rejects_negative_years_before_database_initialization(
             "/api/income-series",
             {
                 "params": {
+                    "year": "2_026",
+                    "filing_status": "single",
+                    "start": "0",
+                    "stop": "100000",
+                    "step": "10000",
+                }
+            },
+            ["query", "year"],
+        ),
+        (
+            "get",
+            "/api/income-series",
+            {
+                "params": {
                     "year": 2026,
                     "filing_status": "single",
                     "start": "0",
                     "stop": "100000",
                     "step": "10000",
                     "dependent_count": "1.0",
+                }
+            },
+            ["query", "dependent_count"],
+        ),
+        (
+            "get",
+            "/api/income-series",
+            {
+                "params": {
+                    "year": 2026,
+                    "filing_status": "single",
+                    "start": "0",
+                    "stop": "100000",
+                    "step": "10000",
+                    "dependent_count": "1_0",
                 }
             },
             ["query", "dependent_count"],
