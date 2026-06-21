@@ -442,6 +442,11 @@ describe("App tax curve controls", () => {
 
     const taxYearSelect = await screen.findByLabelText("Tax year");
     await waitFor(() => expect(taxYearSelect).toHaveValue("2027"));
+    expect(
+      within(taxYearSelect)
+        .getAllByRole("option")
+        .map((option) => option.textContent)
+    ).toEqual(["2027", "2025"]);
     expect(mockFetchFilingStatuses).toHaveBeenCalledWith(2027);
   });
 
