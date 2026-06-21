@@ -1,4 +1,5 @@
 import type {
+  FederalBracket,
   FilingStatus,
   IncomeSeriesResponse,
   TaxBurden,
@@ -153,18 +154,84 @@ function isFilingStatus(value: unknown): value is FilingStatus {
   );
 }
 
+function isTaxParameters(value: unknown): value is TaxParameters {
+  return (
+    isRecord(value) &&
+    isFederalParameters(value.federal) &&
+    isPayrollParameters(value.payroll) &&
+    isPretaxDeductionParameters(value.pretax_deductions)
+  );
+}
+
+function isFederalParameters(value: unknown): value is TaxParameters["federal"] {
+  return (
+    isRecord(value) &&
+    isTaxYear(value.tax_year) &&
+    typeof value.filing_status === "string" &&
+    typeof value.standard_deduction === "string" &&
+    Array.isArray(value.brackets) &&
+    value.brackets.every(isFederalBracket)
+  );
+}
+
+function isFederalBracket(value: unknown): value is FederalBracket {
+  return (
+    isRecord(value) &&
+    typeof value.lower_bound === "string" &&
+    typeof value.rate === "string"
+  );
+}
+
+function isPayrollParameters(value: unknown): value is TaxParameters["payroll"] {
+  return (
+    isRecord(value) &&
+    isTaxYear(value.tax_year) &&
+    typeof value.social_security_rate === "string" &&
+    typeof value.social_security_wage_base === "string" &&
+    typeof value.medicare_rate === "string" &&
+    typeof value.additional_medicare_rate === "string" &&
+    typeof value.additional_medicare_threshold_single === "string" &&
+    isStringRecord(value.additional_medicare_thresholds)
+  );
+}
+
+function isPretaxDeductionParameters(
+  value: unknown
+): value is TaxParameters["pretax_deductions"] {
+  return (
+    isRecord(value) &&
+    isTaxYear(value.tax_year) &&
+    typeof value.employee_401k_limit === "string" &&
+    typeof value.health_fsa_limit === "string" &&
+    typeof value.dependent_care_fsa_limit === "string" &&
+    typeof value.gradual_phase_in_start_rate === "string"
+  );
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every((item) => typeof item === "string");
+}
+
+function isTaxYear(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
-export function fetchTaxParameters(
+export async function fetchTaxParameters(
   year: number,
   filingStatus: string
 ): Promise<TaxParameters> {
   const params = new URLSearchParams({ filing_status: filingStatus });
-  return requestJson<TaxParameters>(
+  const response = await requestJson<unknown>(
     `/api/tax-years/${year}/parameters?${params.toString()}`
   );
+  if (!isTaxParameters(response)) {
+    throw new Error("Malformed tax parameter response");
+  }
+  return response;
 }
 
 export function fetchIncomeSeries(

@@ -3,6 +3,7 @@ import {
   fetchFilingStatuses,
   fetchIncomeSeries,
   fetchTaxBurden,
+  fetchTaxParameters,
   fetchTaxYears
 } from "./api";
 
@@ -122,6 +123,69 @@ describe("api requests", () => {
 
     await expect(fetchFilingStatuses(2026)).rejects.toMatchObject({
       message: "Malformed filing status response"
+    });
+  });
+
+  test.each([
+    {},
+    {
+      federal: {
+        tax_year: 2026,
+        filing_status: "single",
+        standard_deduction: "16100.00",
+        brackets: [{ lower_bound: "0.00", rate: 0.1 }]
+      },
+      payroll: {
+        tax_year: 2026,
+        social_security_rate: "0.062",
+        social_security_wage_base: "184500.00",
+        medicare_rate: "0.0145",
+        additional_medicare_rate: "0.009",
+        additional_medicare_threshold_single: "200000.00",
+        additional_medicare_thresholds: { single: "200000.00" }
+      },
+      pretax_deductions: {
+        tax_year: 2026,
+        employee_401k_limit: "24500.00",
+        health_fsa_limit: "3400.00",
+        dependent_care_fsa_limit: "7500.00",
+        gradual_phase_in_start_rate: "0.01"
+      }
+    },
+    {
+      federal: {
+        tax_year: 2026,
+        filing_status: "single",
+        standard_deduction: "16100.00",
+        brackets: [{ lower_bound: "0.00", rate: "0.10" }]
+      },
+      payroll: {
+        tax_year: 2026,
+        social_security_rate: "0.062",
+        social_security_wage_base: "184500.00",
+        medicare_rate: "0.0145",
+        additional_medicare_rate: "0.009",
+        additional_medicare_threshold_single: "200000.00",
+        additional_medicare_thresholds: { single: 200000 }
+      },
+      pretax_deductions: {
+        tax_year: 2026,
+        employee_401k_limit: "24500.00",
+        health_fsa_limit: "3400.00",
+        dependent_care_fsa_limit: "7500.00",
+        gradual_phase_in_start_rate: "0.01"
+      }
+    }
+  ])("rejects malformed tax parameter responses", async (body) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxParameters(2026, "single")).rejects.toMatchObject({
+      message: "Malformed tax parameter response"
     });
   });
 });
