@@ -185,14 +185,15 @@ function isTaxYearsResponse(value: unknown): value is { years: number[] } {
 function isFilingStatusesResponse(
   value: unknown
 ): value is { statuses: FilingStatus[] } {
-  return (
-    isRecord(value) &&
-    Array.isArray(value.statuses) &&
-    value.statuses.length > 0 &&
-    value.statuses.every(isFilingStatus) &&
-    new Set(value.statuses.map((status) => status.code)).size ===
-      value.statuses.length
-  );
+  if (!isRecord(value) || !Array.isArray(value.statuses)) return false;
+  if (value.statuses.length === 0) return false;
+
+  const codes = new Set<string>();
+  for (const status of value.statuses) {
+    if (!isFilingStatus(status) || codes.has(status.code)) return false;
+    codes.add(status.code);
+  }
+  return true;
 }
 
 function isFilingStatus(value: unknown): value is FilingStatus {

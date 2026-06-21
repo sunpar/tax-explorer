@@ -199,11 +199,30 @@ describe("api requests", () => {
     });
   });
 
+  test("returns valid filing status discovery responses", async () => {
+    const body = {
+      statuses: [
+        { code: "single", label: "Single" },
+        { code: "married_joint", label: "Married filing jointly" }
+      ]
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchFilingStatuses(2026)).resolves.toEqual(body.statuses);
+  });
+
   test.each([
     { statuses: [] },
     { statuses: [{ label: "Single" }] },
     { statuses: [{ code: "", label: "Single" }] },
+    { statuses: [{ code: "   ", label: "Single" }] },
     { statuses: [{ code: "single", label: "" }] },
+    { statuses: [{ code: "single", label: "   " }] },
     {
       statuses: [
         { code: "single", label: "Single" },
