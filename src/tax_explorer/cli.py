@@ -61,6 +61,8 @@ def non_negative_int(value: str) -> int:
 
 
 def _finite_decimal_argument(value: str) -> Decimal:
+    if "_" in value:
+        raise argparse.ArgumentTypeError("must be a decimal number") from None
     try:
         parsed = Decimal(value)
     except InvalidOperation:
