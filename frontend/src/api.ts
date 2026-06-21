@@ -211,7 +211,6 @@ function isPretaxDeductionParameters(
 function isStringRecord(value: unknown): value is Record<string, string> {
   return (
     isRecord(value) &&
-    !Array.isArray(value) &&
     Object.values(value).every((item) => typeof item === "string")
   );
 }
@@ -221,7 +220,7 @@ function isTaxYear(value: unknown): value is number {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 export async function fetchTaxParameters(
