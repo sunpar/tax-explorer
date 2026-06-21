@@ -245,6 +245,87 @@ def test_filing_statuses_exclude_incomplete_tax_years(tmp_path):
     assert response.json()["detail"] == "No filing statuses for 2030"
 
 
+def test_parameters_exclude_incomplete_tax_years(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = TestClient(create_app(database_path=database_path))
+    with connect(database_path) as connection:
+        connection.execute(
+            "INSERT INTO tax_years (year, label) VALUES (?, ?)",
+            (2030, "Tax Year 2030"),
+        )
+        connection.execute(
+            """
+            INSERT INTO federal_tax_parameters
+                (year, filing_status, standard_deduction)
+            VALUES (?, ?, ?)
+            """,
+            (2030, "single", "17000.00"),
+        )
+        connection.execute(
+            """
+            INSERT INTO federal_tax_parameters
+                (year, filing_status, standard_deduction)
+            VALUES (?, ?, ?)
+            """,
+            (2030, "married_joint", "34000.00"),
+        )
+        connection.execute(
+            """
+            INSERT INTO federal_tax_brackets
+                (year, filing_status, lower_bound, rate)
+            VALUES (?, ?, ?, ?)
+            """,
+            (2030, "single", "0.00", "0.10"),
+        )
+        connection.execute(
+            """
+            INSERT INTO payroll_tax_parameters (
+                year,
+                social_security_rate,
+                social_security_wage_base,
+                medicare_rate,
+                additional_medicare_rate,
+                additional_medicare_threshold_single
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (2030, "0.062", "184500.00", "0.0145", "0.009", "200000.00"),
+        )
+        connection.executemany(
+            """
+            INSERT INTO additional_medicare_thresholds
+                (year, filing_status, threshold)
+            VALUES (?, ?, ?)
+            """,
+            (
+                (2030, "single", "200000.00"),
+                (2030, "married_joint", "250000.00"),
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO pretax_deduction_parameters (
+                year,
+                employee_401k_limit,
+                health_fsa_limit,
+                dependent_care_fsa_limit,
+                gradual_phase_in_start_rate
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (2030, "24500.00", "3400.00", "7500.00", "0.01"),
+        )
+        connection.commit()
+
+    response = client.get(
+        "/api/tax-years/2030/parameters",
+        params={"filing_status": "single"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No tax parameters for 2030"
+
+
 @pytest.mark.parametrize(
     ("method", "path", "kwargs", "year_loc"),
     [
