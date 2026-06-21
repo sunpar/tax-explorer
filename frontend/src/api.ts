@@ -29,6 +29,15 @@ export type CalculateRequest = {
   pretaxDeductionMode: "max_available" | "gradual_phase_in";
 };
 
+type TaxBurdenDecimalField = Exclude<
+  keyof TaxBurden,
+  "payroll_breakdown" | "tax_breakdown"
+>;
+type PayrollBreakdownDecimalField = Exclude<
+  keyof TaxBurden["payroll_breakdown"][number],
+  "label"
+>;
+
 const DECIMAL_STRING_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
 const TAX_BURDEN_DECIMAL_FIELDS = [
   "gross_income",
@@ -50,7 +59,7 @@ const TAX_BURDEN_DECIMAL_FIELDS = [
   "total_employer_payroll_tax",
   "total_tax_with_employer_payroll",
   "marginal_tax_rate_with_employer_payroll"
-] as const;
+] as const satisfies readonly TaxBurdenDecimalField[];
 const PAYROLL_BREAKDOWN_DECIMAL_FIELDS = [
   "gross_income",
   "payroll_wages",
@@ -62,7 +71,7 @@ const PAYROLL_BREAKDOWN_DECIMAL_FIELDS = [
   "employer_medicare_tax",
   "total_employer_payroll_tax",
   "total_payroll_tax"
-] as const;
+] as const satisfies readonly PayrollBreakdownDecimalField[];
 
 async function requestJson<T>(
   url: string,
