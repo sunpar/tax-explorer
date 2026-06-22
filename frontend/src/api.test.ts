@@ -201,6 +201,20 @@ describe("api requests", () => {
     });
   });
 
+  test.each([{ years: [] }, { years: [2025, 2026] }])(
+    "returns valid tax year discovery responses",
+    async (body) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify(body), {
+          headers: { "Content-Type": "application/json" },
+          status: 200
+        })
+      );
+
+      await expect(fetchTaxYears()).resolves.toEqual(body.years);
+    }
+  );
+
   test("returns valid filing status discovery responses", async () => {
     const body = {
       statuses: [
