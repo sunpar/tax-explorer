@@ -76,15 +76,30 @@ def _parse_strict_int(value: Any) -> int:
     raise ValueError("must be a whole number")
 
 
+def _parse_strict_decimal(value: Any) -> Any:
+    if isinstance(value, str) and "_" in value:
+        raise ValueError("must be a decimal number") from None
+    return value
+
+
 StrictQueryBool = Annotated[
     bool,
     BeforeValidator(_parse_strict_query_bool),
     Query(),
 ]
 StrictInt = Annotated[int, BeforeValidator(_parse_strict_int)]
+StrictDecimal = Annotated[Decimal, BeforeValidator(_parse_strict_decimal)]
 NonNegativeStrictIntQuery = Annotated[
     StrictInt,
     Query(ge=0, json_schema_extra=_NON_NEGATIVE_INTEGER_SCHEMA),
+]
+NonNegativeStrictDecimalQuery = Annotated[
+    StrictDecimal,
+    Query(ge=0, json_schema_extra={"minimum": 0}),
+]
+PositiveStrictDecimalQuery = Annotated[
+    StrictDecimal,
+    Query(gt=0, json_schema_extra={"exclusiveMinimum": 0}),
 ]
 TaxYearPath = Annotated[
     StrictInt,
@@ -96,10 +111,10 @@ TaxYearQuery = NonNegativeStrictIntQuery
 class CalculateRequest(BaseModel):
     year: int = Field(strict=True, ge=0)
     filing_status: str = "single"
-    gross_income: Decimal = Field(ge=0)
+    gross_income: StrictDecimal = Field(ge=0)
     include_employer_payroll_tax: bool = Field(default=False, strict=True)
     dependent_count: int = Field(default=0, ge=0, strict=True)
-    secondary_income: Decimal = Field(default=Decimal("0"), ge=Decimal("0"))
+    secondary_income: StrictDecimal = Field(default=Decimal("0"), ge=Decimal("0"))
     pretax_deduction_mode: PretaxDeductionMode = PRETAX_DEDUCTION_MODE_MAX_AVAILABLE
 
     @model_validator(mode="after")
@@ -222,13 +237,13 @@ def create_app(
     def income_series(
         year: TaxYearQuery,
         filing_status: str = Query(default="single"),
-        start: Decimal = Query(default=Decimal("0"), ge=0),
-        stop: Decimal = Query(default=Decimal("500000"), ge=0),
-        step: Decimal = Query(default=Decimal("10000"), gt=0),
+        start: NonNegativeStrictDecimalQuery = Decimal("0"),
+        stop: NonNegativeStrictDecimalQuery = Decimal("500000"),
+        step: PositiveStrictDecimalQuery = Decimal("10000"),
         include_employer_payroll_tax: StrictQueryBool = False,
         include_marginal_breakpoints: StrictQueryBool = False,
         dependent_count: NonNegativeStrictIntQuery = 0,
-        secondary_income: Decimal = Query(default=Decimal("0"), ge=0),
+        secondary_income: NonNegativeStrictDecimalQuery = Decimal("0"),
         pretax_deduction_mode: PretaxDeductionMode = Query(
             default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE
         ),

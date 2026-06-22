@@ -529,6 +529,113 @@ def test_api_preserves_integer_whitespace_syntax(tmp_path, path, kwargs):
     assert response.status_code == 200
 
 
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs", "loc"),
+    [
+        (
+            "get",
+            "/api/income-series",
+            {
+                "params": {
+                    "year": 2026,
+                    "filing_status": "single",
+                    "start": "100_000",
+                    "stop": "100000",
+                    "step": "10000",
+                }
+            },
+            ["query", "start"],
+        ),
+        (
+            "get",
+            "/api/income-series",
+            {
+                "params": {
+                    "year": 2026,
+                    "filing_status": "single",
+                    "start": "0",
+                    "stop": "100_000",
+                    "step": "10000",
+                }
+            },
+            ["query", "stop"],
+        ),
+        (
+            "get",
+            "/api/income-series",
+            {
+                "params": {
+                    "year": 2026,
+                    "filing_status": "single",
+                    "start": "0",
+                    "stop": "100000",
+                    "step": "10_000",
+                }
+            },
+            ["query", "step"],
+        ),
+        (
+            "get",
+            "/api/income-series",
+            {
+                "params": {
+                    "year": 2026,
+                    "filing_status": "married_joint",
+                    "start": "100000",
+                    "stop": "100000",
+                    "step": "10000",
+                    "secondary_income": "25_000",
+                }
+            },
+            ["query", "secondary_income"],
+        ),
+        (
+            "post",
+            "/api/calculate",
+            {
+                "json": {
+                    "year": 2026,
+                    "filing_status": "single",
+                    "gross_income": "100_000",
+                }
+            },
+            ["body", "gross_income"],
+        ),
+        (
+            "post",
+            "/api/calculate",
+            {
+                "json": {
+                    "year": 2026,
+                    "filing_status": "married_joint",
+                    "gross_income": "100000",
+                    "secondary_income": "25_000",
+                }
+            },
+            ["body", "secondary_income"],
+        ),
+    ],
+)
+def test_api_rejects_underscored_decimal_syntax_before_database_initialization(
+    tmp_path,
+    method,
+    path,
+    kwargs,
+    loc,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = getattr(client, method)(path, **kwargs)
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    error = next(error for error in detail if error["loc"] == loc)
+    assert "must be a decimal number" in error["msg"]
+    assert not database_path.exists()
+
+
 def test_returns_parameters_for_tax_year(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -1066,6 +1173,24 @@ def test_openapi_documents_request_validation_constraints(tmp_path):
     assert parameter_schema(income_series_parameters, "dependent_count")[
         "minimum"
     ] == 0
+    assert (
+        numeric_schema(parameter_schema(income_series_parameters, "start"))[
+            "minimum"
+        ]
+        == 0
+    )
+    assert (
+        numeric_schema(parameter_schema(income_series_parameters, "stop"))[
+            "minimum"
+        ]
+        == 0
+    )
+    assert (
+        numeric_schema(parameter_schema(income_series_parameters, "step"))[
+            "exclusiveMinimum"
+        ]
+        == 0
+    )
     assert (
         numeric_schema(parameter_schema(income_series_parameters, "secondary_income"))[
             "minimum"
