@@ -498,6 +498,15 @@ describe("api requests", () => {
       tax_breakdown: [
         {
           ...taxBurdenResponse.tax_breakdown[0],
+          code: "   "
+        }
+      ]
+    },
+    {
+      ...taxBurdenResponse,
+      tax_breakdown: [
+        {
+          ...taxBurdenResponse.tax_breakdown[0],
           label: "   "
         }
       ]
