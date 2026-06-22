@@ -473,7 +473,34 @@ describe("api requests", () => {
     },
     {
       ...taxBurdenResponse,
+      payroll_breakdown: [
+        {
+          ...taxBurdenResponse.payroll_breakdown[0],
+          label: "   "
+        }
+      ]
+    },
+    {
+      ...taxBurdenResponse,
       tax_breakdown: []
+    },
+    {
+      ...taxBurdenResponse,
+      tax_breakdown: [
+        {
+          ...taxBurdenResponse.tax_breakdown[0],
+          code: ""
+        }
+      ]
+    },
+    {
+      ...taxBurdenResponse,
+      tax_breakdown: [
+        {
+          ...taxBurdenResponse.tax_breakdown[0],
+          label: "   "
+        }
+      ]
     },
     {
       ...taxBurdenResponse,

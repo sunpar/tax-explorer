@@ -339,6 +339,7 @@ function isPayrollBreakdownItem(value: unknown): value is PayrollBreakdownItem {
   return (
     isRecord(value) &&
     typeof value.label === "string" &&
+    value.label.trim() !== "" &&
     hasDecimalStringFields(value, PAYROLL_BREAKDOWN_DECIMAL_FIELDS)
   );
 }
@@ -347,7 +348,9 @@ function isTaxBreakdownItem(value: unknown): value is TaxBreakdownItem {
   return (
     isRecord(value) &&
     typeof value.code === "string" &&
+    value.code.trim() !== "" &&
     typeof value.label === "string" &&
+    value.label.trim() !== "" &&
     isDecimalString(value.amount)
   );
 }
