@@ -201,10 +201,8 @@ function isFilingStatusesResponse(
 function isFilingStatus(value: unknown): value is FilingStatus {
   return (
     isRecord(value) &&
-    typeof value.code === "string" &&
-    value.code.trim() !== "" &&
-    typeof value.label === "string" &&
-    value.label.trim() !== ""
+    isNonBlankString(value.code) &&
+    isNonBlankString(value.label)
   );
 }
 
@@ -338,7 +336,7 @@ function isTaxBurden(value: unknown): value is TaxBurden {
 function isPayrollBreakdownItem(value: unknown): value is PayrollBreakdownItem {
   return (
     isRecord(value) &&
-    typeof value.label === "string" &&
+    isNonBlankString(value.label) &&
     hasDecimalStringFields(value, PAYROLL_BREAKDOWN_DECIMAL_FIELDS)
   );
 }
@@ -346,8 +344,8 @@ function isPayrollBreakdownItem(value: unknown): value is PayrollBreakdownItem {
 function isTaxBreakdownItem(value: unknown): value is TaxBreakdownItem {
   return (
     isRecord(value) &&
-    typeof value.code === "string" &&
-    typeof value.label === "string" &&
+    isNonBlankString(value.code) &&
+    isNonBlankString(value.label) &&
     isDecimalString(value.amount)
   );
 }
@@ -363,6 +361,10 @@ function isIncomeSeriesResponse(value: unknown): value is IncomeSeriesResponse {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "";
 }
 
 export async function fetchTaxParameters(
