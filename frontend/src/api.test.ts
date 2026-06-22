@@ -185,7 +185,9 @@ describe("api requests", () => {
   test.each([
     { years: [2026, "2025"] },
     { years: [2026.5] },
-    { years: [-1] }
+    { years: [-1] },
+    { years: [2026, 2026] },
+    { years: [2026, 2025] }
   ])("rejects malformed tax year discovery responses", async (body) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify(body), {
