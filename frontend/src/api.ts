@@ -175,11 +175,13 @@ export async function fetchFilingStatuses(year: number): Promise<FilingStatus[]>
 }
 
 function isTaxYearsResponse(value: unknown): value is { years: number[] } {
-  return (
-    isRecord(value) &&
-    Array.isArray(value.years) &&
-    value.years.every((year) => Number.isInteger(year) && year >= 0)
-  );
+  if (!isRecord(value) || !Array.isArray(value.years)) return false;
+
+  const { years } = value;
+  return years.every((year, index) => {
+    if (!Number.isInteger(year) || year < 0) return false;
+    return index === 0 || year > years[index - 1];
+  });
 }
 
 function isFilingStatusesResponse(
