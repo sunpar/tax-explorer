@@ -177,9 +177,10 @@ export async function fetchFilingStatuses(year: number): Promise<FilingStatus[]>
 function isTaxYearsResponse(value: unknown): value is { years: number[] } {
   if (!isRecord(value) || !Array.isArray(value.years)) return false;
 
-  return value.years.every((year, index) => {
+  const { years } = value;
+  return years.every((year, index) => {
     if (!Number.isInteger(year) || year < 0) return false;
-    return index === 0 || year > value.years[index - 1];
+    return index === 0 || year > years[index - 1];
   });
 }
 
