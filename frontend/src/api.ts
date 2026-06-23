@@ -251,7 +251,7 @@ function isFederalBracket(value: unknown): value is FederalBracket {
   return (
     isRecord(value) &&
     isDecimalString(value.lower_bound) &&
-    isDecimalString(value.rate)
+    isUnitRateString(value.rate)
   );
 }
 
@@ -311,6 +311,12 @@ function isDecimalString(value: unknown): value is string {
     DECIMAL_STRING_PATTERN.test(value) &&
     Number.isFinite(Number(value))
   );
+}
+
+function isUnitRateString(value: unknown): value is string {
+  if (!isDecimalString(value)) return false;
+  const rate = Number(value);
+  return rate >= 0 && rate <= 1;
 }
 
 function hasDecimalStringFields(

@@ -338,6 +338,20 @@ describe("api requests", () => {
       ...taxParameterResponse,
       federal: {
         ...taxParameterResponse.federal,
+        brackets: [{ lower_bound: "0.00", rate: "-0.10" }]
+      }
+    },
+    {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        brackets: [{ lower_bound: "0.00", rate: "1.10" }]
+      }
+    },
+    {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
         brackets: []
       }
     },
