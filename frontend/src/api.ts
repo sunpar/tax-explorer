@@ -315,13 +315,17 @@ function isDecimalString(value: unknown): value is string {
 
 function isUnitRateString(value: unknown): value is string {
   if (!isDecimalString(value)) return false;
-  const unsignedValue = value.startsWith("+") ? value.slice(1) : value;
-  if (unsignedValue.startsWith("-")) return false;
+  const isNegative = value.startsWith("-");
+  const unsignedValue =
+    value.startsWith("+") || isNegative ? value.slice(1) : value;
 
   const [integerPart, fractionalPart = ""] = unsignedValue.split(".");
   const normalizedIntegerPart = integerPart.replace(/^0+/, "") || "0";
-  if (normalizedIntegerPart === "0") return true;
+  if (normalizedIntegerPart === "0") {
+    return !isNegative || fractionalPart.replace(/0/g, "") === "";
+  }
   return (
+    !isNegative &&
     normalizedIntegerPart === "1" &&
     fractionalPart.replace(/0/g, "") === ""
   );

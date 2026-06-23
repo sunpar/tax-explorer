@@ -293,6 +293,24 @@ describe("api requests", () => {
     await expect(fetchTaxParameters(2026, "married_joint")).resolves.toEqual(body);
   });
 
+  test("returns signed zero federal bracket rates accepted by persisted validation", async () => {
+    const body = {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        brackets: [{ lower_bound: "0.00", rate: "-0.00" }]
+      }
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxParameters(2026, "single")).resolves.toEqual(body);
+  });
+
   test.each([
     {},
     {
