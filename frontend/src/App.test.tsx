@@ -1493,6 +1493,22 @@ describe("App tax curve controls", () => {
     );
   });
 
+  test("fractional stored dependents are ignored", async () => {
+    localStorage.setItem("taxExplorer.dependentCount", "2.9");
+
+    await renderLoadedApp();
+
+    expect(screen.getByLabelText("Dependents")).toHaveValue(0);
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dependentCount: 0
+        })
+      )
+    );
+    expect(localStorage.getItem("taxExplorer.dependentCount")).toBe("0");
+  });
+
   test("married joint secondary income is saved and sent with requests", async () => {
     await renderLoadedApp();
 
