@@ -1493,6 +1493,25 @@ describe("App tax curve controls", () => {
     );
   });
 
+  test.each(["2.9", "2.0"])(
+    "decimal stored dependents %j are ignored",
+    async (storedDependentCount) => {
+      localStorage.setItem("taxExplorer.dependentCount", storedDependentCount);
+
+      await renderLoadedApp();
+
+      expect(screen.getByLabelText("Dependents")).toHaveValue(0);
+      await waitFor(() =>
+        expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+          expect.objectContaining({
+            dependentCount: 0
+          })
+        )
+      );
+      expect(localStorage.getItem("taxExplorer.dependentCount")).toBe("0");
+    }
+  );
+
   test("married joint secondary income is saved and sent with requests", async () => {
     await renderLoadedApp();
 

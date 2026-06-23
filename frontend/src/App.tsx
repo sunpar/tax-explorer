@@ -109,8 +109,9 @@ const DEFAULT_TAX_YEAR = 2026;
 const SELECTED_INCOME_MAX = 3000000;
 
 function sanitizeDependentCount(value: string | number | null): number {
-  const parsed = Math.floor(Number(value));
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  if (typeof value === "string" && !/^\d+$/.test(value)) return 0;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function readStoredDependentCount(): string {
