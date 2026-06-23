@@ -251,7 +251,7 @@ function isFederalBracket(value: unknown): value is FederalBracket {
   return (
     isRecord(value) &&
     isDecimalString(value.lower_bound) &&
-    isDecimalString(value.rate)
+    isUnitRateString(value.rate)
   );
 }
 
@@ -310,6 +310,24 @@ function isDecimalString(value: unknown): value is string {
     typeof value === "string" &&
     DECIMAL_STRING_PATTERN.test(value) &&
     Number.isFinite(Number(value))
+  );
+}
+
+function isUnitRateString(value: unknown): value is string {
+  if (!isDecimalString(value)) return false;
+  const isNegative = value.startsWith("-");
+  const unsignedValue =
+    value.startsWith("+") || isNegative ? value.slice(1) : value;
+
+  const [integerPart, fractionalPart = ""] = unsignedValue.split(".");
+  const normalizedIntegerPart = integerPart.replace(/^0+/, "") || "0";
+  if (normalizedIntegerPart === "0") {
+    return !isNegative || fractionalPart.replace(/0/g, "") === "";
+  }
+  return (
+    !isNegative &&
+    normalizedIntegerPart === "1" &&
+    fractionalPart.replace(/0/g, "") === ""
   );
 }
 
