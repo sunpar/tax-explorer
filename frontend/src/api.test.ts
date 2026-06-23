@@ -482,6 +482,16 @@ describe("api requests", () => {
     },
     {
       ...taxBurdenResponse,
+      payroll_breakdown: [
+        taxBurdenResponse.payroll_breakdown[0],
+        {
+          ...taxBurdenResponse.payroll_breakdown[0],
+          gross_income: "0.00"
+        }
+      ]
+    },
+    {
+      ...taxBurdenResponse,
       tax_breakdown: []
     },
     {
@@ -508,6 +518,17 @@ describe("api requests", () => {
         {
           ...taxBurdenResponse.tax_breakdown[0],
           label: "   "
+        }
+      ]
+    },
+    {
+      ...taxBurdenResponse,
+      tax_breakdown: [
+        taxBurdenResponse.tax_breakdown[0],
+        {
+          ...taxBurdenResponse.tax_breakdown[0],
+          label: "Duplicate federal income tax",
+          amount: "0.00"
         }
       ]
     },

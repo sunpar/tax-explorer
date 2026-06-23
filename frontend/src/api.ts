@@ -320,16 +320,47 @@ function hasDecimalStringFields(
   return fields.every((field) => isDecimalString(value[field]));
 }
 
+function hasUniqueStringValues<T>(
+  values: readonly T[],
+  valueFor: (value: T) => string
+): boolean {
+  const seen = new Set<string>();
+  for (const value of values) {
+    const nextValue = valueFor(value);
+    if (seen.has(nextValue)) return false;
+    seen.add(nextValue);
+  }
+  return true;
+}
+
 function isTaxBurden(value: unknown): value is TaxBurden {
+  if (
+    !isRecord(value) ||
+    !hasDecimalStringFields(value, TAX_BURDEN_DECIMAL_FIELDS)
+  ) {
+    return false;
+  }
+  if (
+    !Array.isArray(value.payroll_breakdown) ||
+    value.payroll_breakdown.length === 0
+  ) {
+    return false;
+  }
+  if (
+    !Array.isArray(value.tax_breakdown) ||
+    value.tax_breakdown.length === 0
+  ) {
+    return false;
+  }
+
+  const { payroll_breakdown: payrollBreakdown, tax_breakdown: taxBreakdown } =
+    value;
+  if (!payrollBreakdown.every(isPayrollBreakdownItem)) return false;
+  if (!taxBreakdown.every(isTaxBreakdownItem)) return false;
+
   return (
-    isRecord(value) &&
-    hasDecimalStringFields(value, TAX_BURDEN_DECIMAL_FIELDS) &&
-    Array.isArray(value.payroll_breakdown) &&
-    value.payroll_breakdown.length > 0 &&
-    value.payroll_breakdown.every(isPayrollBreakdownItem) &&
-    Array.isArray(value.tax_breakdown) &&
-    value.tax_breakdown.length > 0 &&
-    value.tax_breakdown.every(isTaxBreakdownItem)
+    hasUniqueStringValues(payrollBreakdown, (row) => row.label) &&
+    hasUniqueStringValues(taxBreakdown, (item) => item.code)
   );
 }
 
