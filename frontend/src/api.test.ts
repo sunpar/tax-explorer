@@ -419,6 +419,27 @@ describe("api requests", () => {
       ...taxParameterResponse,
       payroll: {
         ...taxParameterResponse.payroll,
+        social_security_rate: "-0.10"
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        medicare_rate: "1.10"
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_rate: "1.0000000000000000001"
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
         additional_medicare_thresholds: { single: 200000 }
       }
     },
