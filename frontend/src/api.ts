@@ -315,8 +315,16 @@ function isDecimalString(value: unknown): value is string {
 
 function isUnitRateString(value: unknown): value is string {
   if (!isDecimalString(value)) return false;
-  const rate = Number(value);
-  return rate >= 0 && rate <= 1;
+  const unsignedValue = value.startsWith("+") ? value.slice(1) : value;
+  if (unsignedValue.startsWith("-")) return false;
+
+  const [integerPart, fractionalPart = ""] = unsignedValue.split(".");
+  const normalizedIntegerPart = integerPart.replace(/^0+/, "") || "0";
+  if (normalizedIntegerPart === "0") return true;
+  return (
+    normalizedIntegerPart === "1" &&
+    fractionalPart.replace(/0/g, "") === ""
+  );
 }
 
 function hasDecimalStringFields(
