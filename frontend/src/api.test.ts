@@ -481,6 +481,27 @@ describe("api requests", () => {
         ...taxParameterResponse.pretax_deductions,
         gradual_phase_in_start_rate: "NaN"
       }
+    },
+    {
+      ...taxParameterResponse,
+      pretax_deductions: {
+        ...taxParameterResponse.pretax_deductions,
+        gradual_phase_in_start_rate: "-0.10"
+      }
+    },
+    {
+      ...taxParameterResponse,
+      pretax_deductions: {
+        ...taxParameterResponse.pretax_deductions,
+        gradual_phase_in_start_rate: "1.10"
+      }
+    },
+    {
+      ...taxParameterResponse,
+      pretax_deductions: {
+        ...taxParameterResponse.pretax_deductions,
+        gradual_phase_in_start_rate: "1.0000000000000000001"
+      }
     }
   ])("rejects malformed tax parameter responses", async (body) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(

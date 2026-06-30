@@ -281,7 +281,7 @@ function isPretaxDeductionParameters(
     isDecimalString(value.employee_401k_limit) &&
     isDecimalString(value.health_fsa_limit) &&
     isDecimalString(value.dependent_care_fsa_limit) &&
-    isDecimalString(value.gradual_phase_in_start_rate)
+    isUnitRateString(value.gradual_phase_in_start_rate)
   );
 }
 
