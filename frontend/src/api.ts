@@ -262,10 +262,10 @@ function isPayrollParameters(
   return (
     isRecord(value) &&
     value.tax_year === year &&
-    isDecimalString(value.social_security_rate) &&
+    isUnitRateString(value.social_security_rate) &&
     isDecimalString(value.social_security_wage_base) &&
-    isDecimalString(value.medicare_rate) &&
-    isDecimalString(value.additional_medicare_rate) &&
+    isUnitRateString(value.medicare_rate) &&
+    isUnitRateString(value.additional_medicare_rate) &&
     isDecimalString(value.additional_medicare_threshold_single) &&
     isDecimalStringRecord(value.additional_medicare_thresholds)
   );
