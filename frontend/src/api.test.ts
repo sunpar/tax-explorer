@@ -479,6 +479,27 @@ describe("api requests", () => {
       ...taxParameterResponse,
       pretax_deductions: {
         ...taxParameterResponse.pretax_deductions,
+        employee_401k_limit: "-1.00"
+      }
+    },
+    {
+      ...taxParameterResponse,
+      pretax_deductions: {
+        ...taxParameterResponse.pretax_deductions,
+        health_fsa_limit: "-0.01"
+      }
+    },
+    {
+      ...taxParameterResponse,
+      pretax_deductions: {
+        ...taxParameterResponse.pretax_deductions,
+        dependent_care_fsa_limit: "-7500.00"
+      }
+    },
+    {
+      ...taxParameterResponse,
+      pretax_deductions: {
+        ...taxParameterResponse.pretax_deductions,
         gradual_phase_in_start_rate: "NaN"
       }
     },
