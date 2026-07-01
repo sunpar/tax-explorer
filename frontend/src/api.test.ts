@@ -426,6 +426,13 @@ describe("api requests", () => {
       ...taxParameterResponse,
       payroll: {
         ...taxParameterResponse.payroll,
+        social_security_wage_base: "-1.00"
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
         social_security_rate: "-0.10"
       }
     },
