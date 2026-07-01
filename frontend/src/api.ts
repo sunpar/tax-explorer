@@ -229,7 +229,7 @@ function isFederalParameters(
     isRecord(value) &&
     value.tax_year === year &&
     value.filing_status === filingStatus &&
-    isDecimalString(value.standard_deduction) &&
+    isNonNegativeDecimalString(value.standard_deduction) &&
     isFederalBrackets(value.brackets)
   );
 }
