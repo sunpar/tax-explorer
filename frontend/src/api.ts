@@ -278,9 +278,9 @@ function isPretaxDeductionParameters(
   return (
     isRecord(value) &&
     value.tax_year === year &&
-    isDecimalString(value.employee_401k_limit) &&
-    isDecimalString(value.health_fsa_limit) &&
-    isDecimalString(value.dependent_care_fsa_limit) &&
+    isNonNegativeDecimalString(value.employee_401k_limit) &&
+    isNonNegativeDecimalString(value.health_fsa_limit) &&
+    isNonNegativeDecimalString(value.dependent_care_fsa_limit) &&
     isUnitRateString(value.gradual_phase_in_start_rate)
   );
 }
@@ -311,6 +311,12 @@ function isDecimalString(value: unknown): value is string {
     DECIMAL_STRING_PATTERN.test(value) &&
     Number.isFinite(Number(value))
   );
+}
+
+function isNonNegativeDecimalString(value: unknown): value is string {
+  if (!isDecimalString(value)) return false;
+  if (!value.startsWith("-")) return true;
+  return value.slice(1).replace(".", "").replace(/0/g, "") === "";
 }
 
 function isUnitRateString(value: unknown): value is string {
