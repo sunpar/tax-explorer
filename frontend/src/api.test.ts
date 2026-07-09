@@ -590,6 +590,10 @@ describe("api requests", () => {
     },
     {
       ...taxBurdenResponse,
+      total_employee_tax: "-1.00"
+    },
+    {
+      ...taxBurdenResponse,
       payroll_breakdown: []
     },
     {
@@ -598,6 +602,15 @@ describe("api requests", () => {
         {
           ...taxBurdenResponse.payroll_breakdown[0],
           total_payroll_tax: 7389.9
+        }
+      ]
+    },
+    {
+      ...taxBurdenResponse,
+      payroll_breakdown: [
+        {
+          ...taxBurdenResponse.payroll_breakdown[0],
+          total_payroll_tax: "-1.00"
         }
       ]
     },
@@ -630,6 +643,15 @@ describe("api requests", () => {
         {
           ...taxBurdenResponse.tax_breakdown[0],
           code: ""
+        }
+      ]
+    },
+    {
+      ...taxBurdenResponse,
+      tax_breakdown: [
+        {
+          ...taxBurdenResponse.tax_breakdown[0],
+          amount: "-1.00"
         }
       ]
     },
