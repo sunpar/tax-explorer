@@ -267,7 +267,7 @@ function isPayrollParameters(
     isUnitRateString(value.medicare_rate) &&
     isUnitRateString(value.additional_medicare_rate) &&
     isNonNegativeDecimalString(value.additional_medicare_threshold_single) &&
-    isDecimalStringRecord(value.additional_medicare_thresholds)
+    isNonNegativeDecimalStringRecord(value.additional_medicare_thresholds)
   );
 }
 
@@ -298,10 +298,12 @@ function hasSelectedAdditionalMedicareThreshold(
   );
 }
 
-function isDecimalStringRecord(value: unknown): value is Record<string, string> {
+function isNonNegativeDecimalStringRecord(
+  value: unknown
+): value is Record<string, string> {
   return (
     isRecord(value) &&
-    Object.values(value).every(isDecimalString)
+    Object.values(value).every(isNonNegativeDecimalString)
   );
 }
 

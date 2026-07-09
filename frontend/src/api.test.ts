@@ -491,6 +491,13 @@ describe("api requests", () => {
     },
     {
       ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_thresholds: { single: "-1.00" }
+      }
+    },
+    {
+      ...taxParameterResponse,
       pretax_deductions: {
         ...taxParameterResponse.pretax_deductions,
         health_fsa_limit: 3400
