@@ -346,18 +346,12 @@ function isUnitRateString(value: unknown): value is string {
   );
 }
 
-function hasDecimalStringFields(
+function hasFieldsMatching(
   value: Record<string, unknown>,
-  fields: readonly string[]
+  fields: readonly string[],
+  matches: (value: unknown) => boolean
 ): boolean {
-  return fields.every((field) => isDecimalString(value[field]));
-}
-
-function hasNonNegativeDecimalStringFields(
-  value: Record<string, unknown>,
-  fields: readonly string[]
-): boolean {
-  return fields.every((field) => isNonNegativeDecimalString(value[field]));
+  return fields.every((field) => matches(value[field]));
 }
 
 function hasUniqueStringValues<T>(
@@ -376,8 +370,12 @@ function hasUniqueStringValues<T>(
 function isTaxBurden(value: unknown): value is TaxBurden {
   if (
     !isRecord(value) ||
-    !hasNonNegativeDecimalStringFields(value, TAX_BURDEN_AMOUNT_FIELDS) ||
-    !hasDecimalStringFields(value, TAX_BURDEN_RATE_FIELDS)
+    !hasFieldsMatching(
+      value,
+      TAX_BURDEN_AMOUNT_FIELDS,
+      isNonNegativeDecimalString
+    ) ||
+    !hasFieldsMatching(value, TAX_BURDEN_RATE_FIELDS, isDecimalString)
   ) {
     return false;
   }
@@ -409,7 +407,11 @@ function isPayrollBreakdownItem(value: unknown): value is PayrollBreakdownItem {
   return (
     isRecord(value) &&
     isNonBlankString(value.label) &&
-    hasNonNegativeDecimalStringFields(value, PAYROLL_BREAKDOWN_DECIMAL_FIELDS)
+    hasFieldsMatching(
+      value,
+      PAYROLL_BREAKDOWN_DECIMAL_FIELDS,
+      isNonNegativeDecimalString
+    )
   );
 }
 
