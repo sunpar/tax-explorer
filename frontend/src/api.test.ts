@@ -454,6 +454,13 @@ describe("api requests", () => {
       ...taxParameterResponse,
       payroll: {
         ...taxParameterResponse.payroll,
+        additional_medicare_threshold_single: "-1.00"
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
         additional_medicare_thresholds: { single: 200000 }
       }
     },
