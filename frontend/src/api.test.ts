@@ -839,7 +839,12 @@ describe("api requests", () => {
   });
 
   test("returns valid income series responses", async () => {
-    const body = { rows: [taxBurdenResponse] };
+    const body = {
+      rows: [
+        { ...taxBurdenResponse, gross_income: "0.00" },
+        taxBurdenResponse
+      ]
+    };
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify(body), {
         headers: { "Content-Type": "application/json" },
@@ -854,7 +859,20 @@ describe("api requests", () => {
     {},
     { rows: [] },
     { rows: taxBurdenResponse },
-    { rows: [{ ...taxBurdenResponse, marginal_employee_tax_rate: "oops" }] }
+    { rows: [{ ...taxBurdenResponse, marginal_employee_tax_rate: "oops" }] },
+    {
+      rows: [
+        taxBurdenResponse,
+        { ...taxBurdenResponse, gross_income: "0.00" }
+      ]
+    },
+    { rows: [taxBurdenResponse, taxBurdenResponse] },
+    {
+      rows: [
+        { ...taxBurdenResponse, gross_income: "9007199254740992.00" },
+        { ...taxBurdenResponse, gross_income: "9007199254740993.00" }
+      ]
+    }
   ])("rejects malformed income series responses", async (body) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify(body), {
