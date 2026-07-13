@@ -311,28 +311,6 @@ describe("api requests", () => {
     await expect(fetchTaxParameters(2026, "single")).resolves.toEqual(body);
   });
 
-  test("returns adjacent federal bracket bounds above safe integer precision", async () => {
-    const body = {
-      ...taxParameterResponse,
-      federal: {
-        ...taxParameterResponse.federal,
-        brackets: [
-          { lower_bound: "0.00", rate: "0.10" },
-          { lower_bound: "9007199254740992.00", rate: "0.12" },
-          { lower_bound: "9007199254740993.00", rate: "0.22" }
-        ]
-      }
-    };
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify(body), {
-        headers: { "Content-Type": "application/json" },
-        status: 200
-      })
-    );
-
-    await expect(fetchTaxParameters(2026, "single")).resolves.toEqual(body);
-  });
-
   test.each([
     {},
     {
@@ -407,6 +385,17 @@ describe("api requests", () => {
       federal: {
         ...taxParameterResponse.federal,
         brackets: []
+      }
+    },
+    {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        brackets: [
+          { lower_bound: "0.00", rate: "0.10" },
+          { lower_bound: "9007199254740992.00", rate: "0.12" },
+          { lower_bound: "9007199254740993.00", rate: "0.22" }
+        ]
       }
     },
     {
