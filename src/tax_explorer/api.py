@@ -121,13 +121,13 @@ class CalculateRequest(BaseModel):
     def validate_income_split(self) -> "CalculateRequest":
         gross_income = self.gross_income
         secondary_income = self.secondary_income
-        if _has_supported_tax_parameters(self.year, self.filing_status):
-            rounded_gross_income = _try_round_query_money(self.gross_income)
-            rounded_secondary_income = _try_round_query_money(self.secondary_income)
-            if rounded_gross_income is None or rounded_secondary_income is None:
-                return self
+        rounded_gross_income = _try_round_query_money(self.gross_income)
+        rounded_secondary_income = _try_round_query_money(self.secondary_income)
+        if rounded_gross_income is not None and rounded_secondary_income is not None:
             gross_income = rounded_gross_income
             secondary_income = rounded_secondary_income
+        elif _has_supported_tax_parameters(self.year, self.filing_status):
+            return self
         if secondary_income > gross_income:
             raise ValueError("secondary_income cannot exceed gross_income")
         return self

@@ -1027,6 +1027,38 @@ def test_calculate_rejects_secondary_income_above_gross_income_as_request_valida
     assert "secondary_income cannot exceed gross_income" in detail[0]["msg"]
 
 
+def test_calculate_compares_complete_custom_year_income_split_after_money_rounding(
+    tmp_path,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_incomplete_multi_status_year_test_client(tmp_path)
+    with connect(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO federal_tax_brackets
+                (year, filing_status, lower_bound, rate)
+            VALUES (?, ?, ?, ?)
+            """,
+            (2030, "married_joint", "0.00", "0.10"),
+        )
+        connection.commit()
+
+    assert 2030 in client.get("/api/tax-years").json()["years"]
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2030,
+            "filing_status": "married_joint",
+            "gross_income": "100.001",
+            "secondary_income": "100.004",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["gross_income"] == "100.00"
+
+
 def test_calculate_rejects_negative_dependent_count(tmp_path):
     client = create_test_client(tmp_path)
 
