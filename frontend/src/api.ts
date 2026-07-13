@@ -375,7 +375,11 @@ function isTaxBurden(value: unknown): value is TaxBurden {
       TAX_BURDEN_AMOUNT_FIELDS,
       isNonNegativeDecimalString
     ) ||
-    !hasFieldsMatching(value, TAX_BURDEN_RATE_FIELDS, isDecimalString)
+    !hasFieldsMatching(
+      value,
+      TAX_BURDEN_RATE_FIELDS,
+      isNonNegativeDecimalString
+    )
   ) {
     return false;
   }
