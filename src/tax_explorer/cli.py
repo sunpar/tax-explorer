@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sqlite3
 import sys
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
@@ -225,6 +226,8 @@ def main(argv: list[str] | None = None) -> int:
             payroll=payroll,
             pretax_deductions=pretax_deductions,
         )
+    except (OSError, sqlite3.Error) as exc:
+        parser.error(f"database error: {exc}")
     except ValueError as exc:
         parser.error(str(exc))
 
