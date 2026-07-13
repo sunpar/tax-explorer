@@ -222,6 +222,23 @@ describe("api requests", () => {
     await expect(request()).rejects.toMatchObject({ message });
   });
 
+  test("preserves successful response body read errors", async () => {
+    const bodyError = new TypeError("response body stream failed");
+    const body = new ReadableStream({
+      start(controller) {
+        controller.error(bodyError);
+      }
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(body, {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxYears()).rejects.toBe(bodyError);
+  });
+
   test.each([
     { years: [2026, "2025"] },
     { years: [2026.5] },

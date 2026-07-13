@@ -93,8 +93,9 @@ async function requestJson(url: string, init?: RequestInit): Promise<unknown> {
   }
   try {
     return await response.json();
-  } catch {
-    return null;
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
   }
 }
 
