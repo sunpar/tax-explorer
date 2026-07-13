@@ -247,10 +247,17 @@ function isFederalParameters(
 function isFederalBrackets(value: unknown): value is FederalBracket[] {
   if (!Array.isArray(value) || value.length === 0) return false;
   if (!value.every(isFederalBracket)) return false;
-  if (Number(value[0].lower_bound) !== 0) return false;
+  if (compareNonNegativeDecimalStrings(value[0].lower_bound, "0") !== 0) {
+    return false;
+  }
 
   for (let index = 1; index < value.length; index += 1) {
-    if (Number(value[index].lower_bound) <= Number(value[index - 1].lower_bound)) {
+    if (
+      compareNonNegativeDecimalStrings(
+        value[index].lower_bound,
+        value[index - 1].lower_bound
+      ) <= 0
+    ) {
       return false;
     }
   }
@@ -260,7 +267,7 @@ function isFederalBrackets(value: unknown): value is FederalBracket[] {
 function isFederalBracket(value: unknown): value is FederalBracket {
   return (
     isRecord(value) &&
-    isDecimalString(value.lower_bound) &&
+    isNonNegativeDecimalString(value.lower_bound) &&
     isUnitRateString(value.rate)
   );
 }
@@ -329,6 +336,32 @@ function isNonNegativeDecimalString(value: unknown): value is string {
   if (!isDecimalString(value)) return false;
   if (!value.startsWith("-")) return true;
   return value.slice(1).replace(".", "").replace(/0/g, "") === "";
+}
+
+function compareNonNegativeDecimalStrings(left: string, right: string): number {
+  const [leftInteger, leftFraction = ""] = unsignedDecimalParts(left);
+  const [rightInteger, rightFraction = ""] = unsignedDecimalParts(right);
+  const normalizedLeftInteger = leftInteger.replace(/^0+/, "") || "0";
+  const normalizedRightInteger = rightInteger.replace(/^0+/, "") || "0";
+
+  if (normalizedLeftInteger.length !== normalizedRightInteger.length) {
+    return normalizedLeftInteger.length < normalizedRightInteger.length ? -1 : 1;
+  }
+  if (normalizedLeftInteger !== normalizedRightInteger) {
+    return normalizedLeftInteger < normalizedRightInteger ? -1 : 1;
+  }
+
+  const fractionLength = Math.max(leftFraction.length, rightFraction.length);
+  const normalizedLeftFraction = leftFraction.padEnd(fractionLength, "0");
+  const normalizedRightFraction = rightFraction.padEnd(fractionLength, "0");
+  if (normalizedLeftFraction === normalizedRightFraction) return 0;
+  return normalizedLeftFraction < normalizedRightFraction ? -1 : 1;
+}
+
+function unsignedDecimalParts(value: string): string[] {
+  const unsignedValue =
+    value.startsWith("+") || value.startsWith("-") ? value.slice(1) : value;
+  return unsignedValue.split(".");
 }
 
 function isUnitRateString(value: unknown): value is string {
