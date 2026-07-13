@@ -153,6 +153,26 @@ def test_cli_reports_database_parent_path_errors_without_a_traceback(
     assert "Traceback" not in error
 
 
+def test_cli_does_not_label_income_series_os_errors_as_database_errors(
+    monkeypatch,
+    tmp_path,
+):
+    downstream_error = OSError("downstream failure")
+
+    def fail_to_build_income_series(**_kwargs):
+        raise downstream_error
+
+    monkeypatch.setattr(
+        "tax_explorer.cli.build_income_series",
+        fail_to_build_income_series,
+    )
+
+    with pytest.raises(OSError) as exc_info:
+        main(["--stop", "0", "--database-path", str(tmp_path / "tax.sqlite3")])
+
+    assert exc_info.value is downstream_error
+
+
 def test_cli_accepts_gradual_pretax_deduction_mode(monkeypatch, tmp_path):
     output = io.StringIO()
     monkeypatch.setattr("sys.stdout", output)

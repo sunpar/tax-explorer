@@ -203,16 +203,19 @@ def main(argv: list[str] | None = None) -> int:
     validate_secondary_income_arguments(args, parser)
 
     try:
-        with initialize_database(args.database_path) as connection:
-            federal = load_federal_tax_parameters(
-                connection, args.year, args.filing_status
-            )
-            payroll = load_payroll_tax_parameters(connection, args.year)
-            pretax_deductions = load_pretax_deduction_parameters(
-                connection, args.year
-            )
-            if not is_tax_year_available(connection, args.year):
-                raise ValueError(f"No tax parameters for {args.year}")
+        try:
+            with initialize_database(args.database_path) as connection:
+                federal = load_federal_tax_parameters(
+                    connection, args.year, args.filing_status
+                )
+                payroll = load_payroll_tax_parameters(connection, args.year)
+                pretax_deductions = load_pretax_deduction_parameters(
+                    connection, args.year
+                )
+                if not is_tax_year_available(connection, args.year):
+                    raise ValueError(f"No tax parameters for {args.year}")
+        except (OSError, sqlite3.Error) as exc:
+            parser.error(f"database error: {exc}")
         rows = build_income_series(
             start=args.start,
             stop=args.stop,
@@ -226,8 +229,6 @@ def main(argv: list[str] | None = None) -> int:
             payroll=payroll,
             pretax_deductions=pretax_deductions,
         )
-    except (OSError, sqlite3.Error) as exc:
-        parser.error(f"database error: {exc}")
     except ValueError as exc:
         parser.error(str(exc))
 
