@@ -1,6 +1,8 @@
+import json
 import os
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -15,6 +17,8 @@ INVALID_FEDERAL_BRACKET_START_DETAIL = "federal tax brackets must start at 0.00"
 MISSING_ADDITIONAL_MEDICARE_THRESHOLD_DETAIL = (
     "additional_medicare_threshold missing for 2026 married_joint"
 )
+SQLITE_INTEGER_MAX = (1 << 63) - 1
+SQLITE_INTEGER_LIMIT = SQLITE_INTEGER_MAX + 1
 
 
 def create_test_client(tmp_path):
@@ -249,6 +253,55 @@ def parameter_schema(parameters, name):
     )
 
 
+def tax_year_request_cases(year):
+    return [
+        (
+            "get",
+            f"/api/tax-years/{year}/filing-statuses",
+            {},
+            ["path", "year"],
+        ),
+        (
+            "get",
+            f"/api/tax-years/{year}/parameters",
+            {},
+            ["path", "year"],
+        ),
+        (
+            "get",
+            "/api/income-series",
+            {
+                "params": {
+                    "year": year,
+                    "filing_status": "single",
+                    "start": "0",
+                    "stop": "100000",
+                    "step": "10000",
+                }
+            },
+            ["query", "year"],
+        ),
+        (
+            "post",
+            "/api/calculate",
+            {
+                "json": {
+                    "year": year,
+                    "filing_status": "single",
+                    "gross_income": "100000",
+                }
+            },
+            ["body", "year"],
+        ),
+    ]
+
+
+def assert_tax_year_schema(schema):
+    assert schema["minimum"] == 0
+    assert schema["exclusiveMaximum"] == SQLITE_INTEGER_LIMIT
+    assert isinstance(schema["exclusiveMaximum"], int)
+
+
 def assert_pretax_mode_validation_error(response, expected_loc):
     assert response.status_code == 422
     detail = response.json()["detail"]
@@ -383,36 +436,7 @@ def test_income_series_excludes_incomplete_tax_years(tmp_path):
 
 @pytest.mark.parametrize(
     ("method", "path", "kwargs", "year_loc"),
-    [
-        ("get", "/api/tax-years/-1/filing-statuses", {}, ["path", "year"]),
-        ("get", "/api/tax-years/-1/parameters", {}, ["path", "year"]),
-        (
-            "get",
-            "/api/income-series",
-            {
-                "params": {
-                    "year": -1,
-                    "filing_status": "single",
-                    "start": "0",
-                    "stop": "100000",
-                    "step": "10000",
-                }
-            },
-            ["query", "year"],
-        ),
-        (
-            "post",
-            "/api/calculate",
-            {
-                "json": {
-                    "year": -1,
-                    "filing_status": "single",
-                    "gross_income": "100000",
-                }
-            },
-            ["body", "year"],
-        ),
-    ],
+    tax_year_request_cases(-1),
 )
 def test_api_rejects_negative_years_before_database_initialization(
     tmp_path,
@@ -433,6 +457,51 @@ def test_api_rejects_negative_years_before_database_initialization(
     assert year_error["type"] == "greater_than_equal"
     assert year_error["ctx"] == {"ge": 0}
     assert not database_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs", "year_loc"),
+    tax_year_request_cases(SQLITE_INTEGER_LIMIT),
+)
+def test_api_rejects_oversized_years_before_database_initialization(
+    tmp_path,
+    method,
+    path,
+    kwargs,
+    year_loc,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = TestClient(
+        create_app(
+            database_path=database_path,
+            initialize_database_on_create=False,
+        ),
+        raise_server_exceptions=False,
+    )
+
+    response = getattr(client, method)(path, **kwargs)
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    year_error = next(error for error in detail if error["loc"] == year_loc)
+    assert year_error["type"] == "less_than"
+    assert year_error["ctx"] == {"lt": SQLITE_INTEGER_LIMIT}
+    assert not database_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs", "_year_loc"),
+    tax_year_request_cases(SQLITE_INTEGER_MAX),
+)
+def test_api_accepts_sqlite_maximum_year(tmp_path, method, path, kwargs, _year_loc):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = getattr(client, method)(path, **kwargs)
+
+    assert response.status_code == 404
+    assert database_path.exists()
 
 
 @pytest.mark.parametrize(
@@ -1203,7 +1272,7 @@ def test_openapi_documents_request_validation_constraints(tmp_path):
     response = client.get("/openapi.json")
 
     assert response.status_code == 200
-    openapi = response.json()
+    openapi = json.loads(response.text, parse_float=Decimal)
     calculate_mode_schema = openapi["components"]["schemas"]["CalculateRequest"][
         "properties"
     ]["pretax_deduction_mode"]
@@ -1220,14 +1289,14 @@ def test_openapi_documents_request_validation_constraints(tmp_path):
         "max_available",
         "gradual_phase_in",
     ]
-    assert calculate_year_schema["minimum"] == 0
+    assert_tax_year_schema(calculate_year_schema)
     assert calculate_dependent_count_schema["minimum"] == 0
     assert numeric_schema(calculate_secondary_income_schema)["minimum"] == 0
 
     income_series_parameters = openapi["paths"]["/api/income-series"]["get"][
         "parameters"
     ]
-    assert parameter_schema(income_series_parameters, "year")["minimum"] == 0
+    assert_tax_year_schema(parameter_schema(income_series_parameters, "year"))
     assert parameter_schema(income_series_parameters, "pretax_deduction_mode")[
         "enum"
     ] == [
@@ -1273,7 +1342,7 @@ def test_openapi_documents_request_validation_constraints(tmp_path):
         "/api/tax-years/{year}/parameters",
     ):
         path_parameters = openapi["paths"][path]["get"]["parameters"]
-        assert parameter_schema(path_parameters, "year")["minimum"] == 0
+        assert_tax_year_schema(parameter_schema(path_parameters, "year"))
 
 
 def test_calculate_response_breaks_tax_down_by_component(tmp_path):

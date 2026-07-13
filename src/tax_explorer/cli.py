@@ -17,6 +17,7 @@ from tax_explorer import (
 )
 from tax_explorer.database import (
     DEFAULT_DATABASE_PATH,
+    SQLITE_INTEGER_MAX,
     initialize_database,
     is_tax_year_available,
     load_federal_tax_parameters,
@@ -59,6 +60,13 @@ def non_negative_int(value: str) -> int:
     if parsed < 0:
         raise argparse.ArgumentTypeError("must be non-negative")
     return parsed
+
+
+def tax_year_argument(value: str) -> int:
+    year = non_negative_int(value)
+    if year > SQLITE_INTEGER_MAX:
+        raise argparse.ArgumentTypeError(f"must be at most {SQLITE_INTEGER_MAX}")
+    return year
 
 
 def _finite_decimal_argument(value: str) -> Decimal:
@@ -165,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--step", type=positive_money_increment_argument, default="10000"
     )
-    parser.add_argument("--year", type=non_negative_int, default=DEFAULT_TAX_YEAR)
+    parser.add_argument("--year", type=tax_year_argument, default=DEFAULT_TAX_YEAR)
     parser.add_argument("--filing-status", default="single")
     parser.add_argument(
         "--secondary-income", type=non_negative_decimal_argument, default="0"

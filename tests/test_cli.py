@@ -23,6 +23,7 @@ LEGACY_CSV_FIELDS = (
     "total_employer_payroll_tax",
     "total_tax_with_employer_payroll",
 )
+SQLITE_INTEGER_MAX = (1 << 63) - 1
 
 
 def create_hidden_multi_status_year_database(database_path):
@@ -313,6 +314,11 @@ def test_cli_reports_invalid_decimal_arguments_as_usage_errors(
         ("--year", "2026.5", "must be a whole number"),
         ("--year", "2_026", "must be a whole number"),
         ("--year", "-1", "must be non-negative"),
+        (
+            "--year",
+            str(SQLITE_INTEGER_MAX + 1),
+            f"must be at most {SQLITE_INTEGER_MAX}",
+        ),
     ],
 )
 def test_cli_rejects_invalid_numeric_bounds_before_database_initialization(
@@ -330,6 +336,30 @@ def test_cli_rejects_invalid_numeric_bounds_before_database_initialization(
     assert exc_info.value.code == 2
     assert f"argument {flag}: {message}" in capsys.readouterr().err
     assert not database_path.exists()
+
+
+def test_cli_accepts_sqlite_maximum_year_through_argument_validation(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--year",
+                str(SQLITE_INTEGER_MAX),
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    error = capsys.readouterr().err
+    assert exc_info.value.code == 2
+    assert f"No federal tax parameters for {SQLITE_INTEGER_MAX} single" in error
+    assert f"must be at most {SQLITE_INTEGER_MAX}" not in error
+    assert "Traceback" not in error
+    assert database_path.exists()
 
 
 def test_cli_preserves_integer_whitespace_syntax(tmp_path, capsys):
