@@ -37,6 +37,10 @@ type TaxBurdenRateField =
   | "effective_employee_tax_rate"
   | "marginal_employee_tax_rate"
   | "marginal_tax_rate_with_employer_payroll";
+type TaxBurdenMarginalRateField = Exclude<
+  TaxBurdenRateField,
+  "effective_employee_tax_rate"
+>;
 type TaxBurdenAmountField = Exclude<TaxBurdenDecimalField, TaxBurdenRateField>;
 type PayrollBreakdownItem = TaxBurden["payroll_breakdown"][number];
 type TaxBreakdownItem = TaxBurden["tax_breakdown"][number];
@@ -64,11 +68,10 @@ const TAX_BURDEN_AMOUNT_FIELDS = [
   "total_employer_payroll_tax",
   "total_tax_with_employer_payroll"
 ] as const satisfies readonly TaxBurdenAmountField[];
-const TAX_BURDEN_RATE_FIELDS = [
-  "effective_employee_tax_rate",
+const TAX_BURDEN_MARGINAL_RATE_FIELDS = [
   "marginal_employee_tax_rate",
   "marginal_tax_rate_with_employer_payroll"
-] as const satisfies readonly TaxBurdenRateField[];
+] as const satisfies readonly TaxBurdenMarginalRateField[];
 const PAYROLL_BREAKDOWN_DECIMAL_FIELDS = [
   "gross_income",
   "payroll_wages",
@@ -375,7 +378,12 @@ function isTaxBurden(value: unknown): value is TaxBurden {
       TAX_BURDEN_AMOUNT_FIELDS,
       isNonNegativeDecimalString
     ) ||
-    !hasFieldsMatching(value, TAX_BURDEN_RATE_FIELDS, isDecimalString)
+    !isNonNegativeDecimalString(value.effective_employee_tax_rate) ||
+    !hasFieldsMatching(
+      value,
+      TAX_BURDEN_MARGINAL_RATE_FIELDS,
+      isDecimalString
+    )
   ) {
     return false;
   }
