@@ -163,6 +163,22 @@ def create_incomplete_multi_status_year_test_client(tmp_path):
     return client
 
 
+def create_complete_multi_status_year_test_client(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_incomplete_multi_status_year_test_client(tmp_path)
+    with connect(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO federal_tax_brackets
+                (year, filing_status, lower_bound, rate)
+            VALUES (?, ?, ?, ?)
+            """,
+            (2030, "married_joint", "0.00", "0.10"),
+        )
+        connection.commit()
+    return client
+
+
 def assert_invalid_persisted_parameter_response(response):
     assert response.status_code == 422
     assert response.json()["detail"] == INVALID_PERSISTED_PARAMETER_DETAIL
@@ -981,11 +997,17 @@ def test_calculate_preserves_unsupported_split_bounds_for_unroundable_secondary(
         ),
     ],
 )
+@pytest.mark.parametrize(
+    ("gross_income", "secondary_income"),
+    [("100000", "25000"), ("100.001", "100.004")],
+)
 def test_calculate_preserves_unknown_parameter_errors_for_secondary_income(
     tmp_path,
     year,
     filing_status,
     expected_detail,
+    gross_income,
+    secondary_income,
 ):
     database_path = tmp_path / "tax.sqlite3"
     client = create_deferred_test_client(database_path)
@@ -995,8 +1017,8 @@ def test_calculate_preserves_unknown_parameter_errors_for_secondary_income(
         json={
             "year": year,
             "filing_status": filing_status,
-            "gross_income": "100000",
-            "secondary_income": "25000",
+            "gross_income": gross_income,
+            "secondary_income": secondary_income,
         },
     )
 
@@ -1024,6 +1046,48 @@ def test_calculate_rejects_secondary_income_above_gross_income_as_request_valida
     detail = response.json()["detail"]
     assert isinstance(detail, list)
     assert detail[0]["loc"] == ["body"]
+    assert "secondary_income cannot exceed gross_income" in detail[0]["msg"]
+
+
+def test_calculate_compares_complete_custom_year_income_split_after_money_rounding(
+    tmp_path,
+):
+    client = create_complete_multi_status_year_test_client(tmp_path)
+
+    assert 2030 in client.get("/api/tax-years").json()["years"]
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2030,
+            "filing_status": "married_joint",
+            "gross_income": "100.001",
+            "secondary_income": "100.004",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["gross_income"] == "100.00"
+
+
+def test_calculate_rejects_complete_custom_year_income_split_after_money_rounding(
+    tmp_path,
+):
+    client = create_complete_multi_status_year_test_client(tmp_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2030,
+            "filing_status": "married_joint",
+            "gross_income": "100.001",
+            "secondary_income": "100.005",
+        },
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
     assert "secondary_income cannot exceed gross_income" in detail[0]["msg"]
 
 
