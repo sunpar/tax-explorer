@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sqlite3
 import sys
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
@@ -202,16 +203,19 @@ def main(argv: list[str] | None = None) -> int:
     validate_secondary_income_arguments(args, parser)
 
     try:
-        with initialize_database(args.database_path) as connection:
-            federal = load_federal_tax_parameters(
-                connection, args.year, args.filing_status
-            )
-            payroll = load_payroll_tax_parameters(connection, args.year)
-            pretax_deductions = load_pretax_deduction_parameters(
-                connection, args.year
-            )
-            if not is_tax_year_available(connection, args.year):
-                raise ValueError(f"No tax parameters for {args.year}")
+        try:
+            with initialize_database(args.database_path) as connection:
+                federal = load_federal_tax_parameters(
+                    connection, args.year, args.filing_status
+                )
+                payroll = load_payroll_tax_parameters(connection, args.year)
+                pretax_deductions = load_pretax_deduction_parameters(
+                    connection, args.year
+                )
+                if not is_tax_year_available(connection, args.year):
+                    raise ValueError(f"No tax parameters for {args.year}")
+        except (OSError, sqlite3.Error) as exc:
+            parser.error(f"database error: {exc}")
         rows = build_income_series(
             start=args.start,
             stop=args.stop,

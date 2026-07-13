@@ -117,6 +117,62 @@ def test_csv_export_preserves_existing_columns_and_appends_marginal_rates(
     assert row["total_pretax_deductions"] == "27900.00"
 
 
+def test_cli_reports_sqlite_database_path_errors_without_a_traceback(
+    tmp_path,
+    capsys,
+):
+    with pytest.raises(SystemExit) as exc_info:
+        main(["--stop", "0", "--database-path", str(tmp_path)])
+
+    error = capsys.readouterr().err
+    assert exc_info.value.code == 2
+    assert "database error: unable to open database file" in error
+    assert "Traceback" not in error
+
+
+def test_cli_reports_database_parent_path_errors_without_a_traceback(
+    tmp_path,
+    capsys,
+):
+    parent_path = tmp_path / "not-a-directory"
+    parent_path.write_text("")
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--stop",
+                "0",
+                "--database-path",
+                str(parent_path / "tax.sqlite3"),
+            ]
+        )
+
+    error = capsys.readouterr().err
+    assert exc_info.value.code == 2
+    assert "database error:" in error
+    assert "Traceback" not in error
+
+
+def test_cli_does_not_label_income_series_os_errors_as_database_errors(
+    monkeypatch,
+    tmp_path,
+):
+    downstream_error = OSError("downstream failure")
+
+    def fail_to_build_income_series(**_kwargs):
+        raise downstream_error
+
+    monkeypatch.setattr(
+        "tax_explorer.cli.build_income_series",
+        fail_to_build_income_series,
+    )
+
+    with pytest.raises(OSError) as exc_info:
+        main(["--stop", "0", "--database-path", str(tmp_path / "tax.sqlite3")])
+
+    assert exc_info.value is downstream_error
+
+
 def test_cli_accepts_gradual_pretax_deduction_mode(monkeypatch, tmp_path):
     output = io.StringIO()
     monkeypatch.setattr("sys.stdout", output)
