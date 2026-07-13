@@ -622,6 +622,22 @@ describe("api requests", () => {
     await expect(fetchTaxBurden(calculateRequest)).resolves.toEqual(body);
   });
 
+  test("returns negative marginal tax burden rate responses", async () => {
+    const body = {
+      ...taxBurdenResponse,
+      marginal_employee_tax_rate: "-0.0001",
+      marginal_tax_rate_with_employer_payroll: "-0.0001"
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxBurden(calculateRequest)).resolves.toEqual(body);
+  });
+
   test.each([
     {},
     {
@@ -635,14 +651,6 @@ describe("api requests", () => {
     {
       ...taxBurdenResponse,
       effective_employee_tax_rate: "-0.0001"
-    },
-    {
-      ...taxBurdenResponse,
-      marginal_employee_tax_rate: "-0.0001"
-    },
-    {
-      ...taxBurdenResponse,
-      marginal_tax_rate_with_employer_payroll: "-0.0001"
     },
     {
       ...taxBurdenResponse,
