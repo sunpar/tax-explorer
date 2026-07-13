@@ -183,6 +183,46 @@ describe("api requests", () => {
   });
 
   test.each([
+    {
+      name: "tax year",
+      request: () => fetchTaxYears(),
+      message: "Malformed tax year response"
+    },
+    {
+      name: "filing status",
+      request: () => fetchFilingStatuses(2026),
+      message: "Malformed filing status response"
+    },
+    {
+      name: "tax parameter",
+      request: () => fetchTaxParameters(2026, "single"),
+      message: "Malformed tax parameter response"
+    },
+    {
+      name: "income series",
+      request: () => fetchIncomeSeries(seriesRequest),
+      message: "Malformed income series response"
+    },
+    {
+      name: "tax burden",
+      request: () => fetchTaxBurden(calculateRequest),
+      message: "Malformed tax burden response"
+    }
+  ])("uses the $name error for invalid JSON success responses", async ({
+    request,
+    message
+  }) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("{", {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(request()).rejects.toMatchObject({ message });
+  });
+
+  test.each([
     { years: [2026, "2025"] },
     { years: [2026.5] },
     { years: [-1] },

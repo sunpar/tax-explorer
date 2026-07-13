@@ -85,16 +85,17 @@ const PAYROLL_BREAKDOWN_DECIMAL_FIELDS = [
   "total_payroll_tax"
 ] as const satisfies readonly PayrollBreakdownDecimalField[];
 
-async function requestJson<T>(
-  url: string,
-  init?: RequestInit
-): Promise<T> {
+async function requestJson(url: string, init?: RequestInit): Promise<unknown> {
   const response = await fetch(url, init);
   if (!response.ok) {
     const message = await response.text();
     throw new Error(errorMessageFromResponse(message, response.status));
   }
-  return response.json() as Promise<T>;
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
 }
 
 function errorMessageFromResponse(message: string, status: number): string {
@@ -167,7 +168,7 @@ function startsWithJsonObject(value: string): boolean {
 }
 
 export async function fetchTaxYears(): Promise<number[]> {
-  const response = await requestJson<unknown>("/api/tax-years");
+  const response = await requestJson("/api/tax-years");
   if (!isTaxYearsResponse(response)) {
     throw new Error("Malformed tax year response");
   }
@@ -175,7 +176,7 @@ export async function fetchTaxYears(): Promise<number[]> {
 }
 
 export async function fetchFilingStatuses(year: number): Promise<FilingStatus[]> {
-  const response = await requestJson<unknown>(
+  const response = await requestJson(
     `/api/tax-years/${year}/filing-statuses`
   );
   if (!isFilingStatusesResponse(response)) {
@@ -454,7 +455,7 @@ export async function fetchTaxParameters(
   filingStatus: string
 ): Promise<TaxParameters> {
   const params = new URLSearchParams({ filing_status: filingStatus });
-  const response = await requestJson<unknown>(
+  const response = await requestJson(
     `/api/tax-years/${year}/parameters?${params.toString()}`
   );
   if (!isTaxParameters(response, year, filingStatus)) {
@@ -478,7 +479,7 @@ export async function fetchIncomeSeries(
     secondary_income: request.secondaryIncome,
     pretax_deduction_mode: request.pretaxDeductionMode
   });
-  const response = await requestJson<unknown>(
+  const response = await requestJson(
     `/api/income-series?${params.toString()}`
   );
   if (!isIncomeSeriesResponse(response)) {
@@ -488,7 +489,7 @@ export async function fetchIncomeSeries(
 }
 
 export async function fetchTaxBurden(request: CalculateRequest): Promise<TaxBurden> {
-  const response = await requestJson<unknown>("/api/calculate", {
+  const response = await requestJson("/api/calculate", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
