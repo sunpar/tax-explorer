@@ -33,6 +33,11 @@ type TaxBurdenDecimalField = Exclude<
   keyof TaxBurden,
   "payroll_breakdown" | "tax_breakdown"
 >;
+type TaxBurdenRateField =
+  | "effective_employee_tax_rate"
+  | "marginal_employee_tax_rate"
+  | "marginal_tax_rate_with_employer_payroll";
+type TaxBurdenAmountField = Exclude<TaxBurdenDecimalField, TaxBurdenRateField>;
 type PayrollBreakdownItem = TaxBurden["payroll_breakdown"][number];
 type TaxBreakdownItem = TaxBurden["tax_breakdown"][number];
 type PayrollBreakdownDecimalField = Exclude<
@@ -41,7 +46,7 @@ type PayrollBreakdownDecimalField = Exclude<
 >;
 
 const DECIMAL_STRING_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
-const TAX_BURDEN_DECIMAL_FIELDS = [
+const TAX_BURDEN_AMOUNT_FIELDS = [
   "gross_income",
   "taxable_income",
   "federal_income_tax",
@@ -50,8 +55,6 @@ const TAX_BURDEN_DECIMAL_FIELDS = [
   "employee_additional_medicare_tax",
   "total_employee_payroll_tax",
   "total_employee_tax",
-  "effective_employee_tax_rate",
-  "marginal_employee_tax_rate",
   "employee_401k_contribution",
   "health_fsa_contribution",
   "dependent_care_fsa_contribution",
@@ -59,9 +62,13 @@ const TAX_BURDEN_DECIMAL_FIELDS = [
   "employer_social_security_tax",
   "employer_medicare_tax",
   "total_employer_payroll_tax",
-  "total_tax_with_employer_payroll",
+  "total_tax_with_employer_payroll"
+] as const satisfies readonly TaxBurdenAmountField[];
+const TAX_BURDEN_RATE_FIELDS = [
+  "effective_employee_tax_rate",
+  "marginal_employee_tax_rate",
   "marginal_tax_rate_with_employer_payroll"
-] as const satisfies readonly TaxBurdenDecimalField[];
+] as const satisfies readonly TaxBurdenRateField[];
 const PAYROLL_BREAKDOWN_DECIMAL_FIELDS = [
   "gross_income",
   "payroll_wages",
@@ -339,11 +346,12 @@ function isUnitRateString(value: unknown): value is string {
   );
 }
 
-function hasDecimalStringFields(
+function hasFieldsMatching(
   value: Record<string, unknown>,
-  fields: readonly string[]
+  fields: readonly string[],
+  matches: (value: unknown) => boolean
 ): boolean {
-  return fields.every((field) => isDecimalString(value[field]));
+  return fields.every((field) => matches(value[field]));
 }
 
 function hasUniqueStringValues<T>(
@@ -362,7 +370,12 @@ function hasUniqueStringValues<T>(
 function isTaxBurden(value: unknown): value is TaxBurden {
   if (
     !isRecord(value) ||
-    !hasDecimalStringFields(value, TAX_BURDEN_DECIMAL_FIELDS)
+    !hasFieldsMatching(
+      value,
+      TAX_BURDEN_AMOUNT_FIELDS,
+      isNonNegativeDecimalString
+    ) ||
+    !hasFieldsMatching(value, TAX_BURDEN_RATE_FIELDS, isDecimalString)
   ) {
     return false;
   }
@@ -394,7 +407,11 @@ function isPayrollBreakdownItem(value: unknown): value is PayrollBreakdownItem {
   return (
     isRecord(value) &&
     isNonBlankString(value.label) &&
-    hasDecimalStringFields(value, PAYROLL_BREAKDOWN_DECIMAL_FIELDS)
+    hasFieldsMatching(
+      value,
+      PAYROLL_BREAKDOWN_DECIMAL_FIELDS,
+      isNonNegativeDecimalString
+    )
   );
 }
 
@@ -403,7 +420,7 @@ function isTaxBreakdownItem(value: unknown): value is TaxBreakdownItem {
     isRecord(value) &&
     isNonBlankString(value.code) &&
     isNonBlankString(value.label) &&
-    isDecimalString(value.amount)
+    isNonNegativeDecimalString(value.amount)
   );
 }
 

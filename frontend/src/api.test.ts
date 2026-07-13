@@ -578,6 +578,33 @@ describe("api requests", () => {
     );
   });
 
+  test("returns signed zero tax burden amount responses", async () => {
+    const body = {
+      ...taxBurdenResponse,
+      total_employee_tax: "-0.00",
+      payroll_breakdown: [
+        {
+          ...taxBurdenResponse.payroll_breakdown[0],
+          total_payroll_tax: "-0.00"
+        }
+      ],
+      tax_breakdown: [
+        {
+          ...taxBurdenResponse.tax_breakdown[0],
+          amount: "-0.00"
+        }
+      ]
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxBurden(calculateRequest)).resolves.toEqual(body);
+  });
+
   test.each([
     {},
     {
@@ -590,6 +617,10 @@ describe("api requests", () => {
     },
     {
       ...taxBurdenResponse,
+      total_employee_tax: "-1.00"
+    },
+    {
+      ...taxBurdenResponse,
       payroll_breakdown: []
     },
     {
@@ -598,6 +629,15 @@ describe("api requests", () => {
         {
           ...taxBurdenResponse.payroll_breakdown[0],
           total_payroll_tax: 7389.9
+        }
+      ]
+    },
+    {
+      ...taxBurdenResponse,
+      payroll_breakdown: [
+        {
+          ...taxBurdenResponse.payroll_breakdown[0],
+          total_payroll_tax: "-1.00"
         }
       ]
     },
@@ -630,6 +670,15 @@ describe("api requests", () => {
         {
           ...taxBurdenResponse.tax_breakdown[0],
           code: ""
+        }
+      ]
+    },
+    {
+      ...taxBurdenResponse,
+      tax_breakdown: [
+        {
+          ...taxBurdenResponse.tax_breakdown[0],
+          amount: "-1.00"
         }
       ]
     },
