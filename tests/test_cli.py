@@ -338,6 +338,30 @@ def test_cli_rejects_invalid_numeric_bounds_before_database_initialization(
     assert not database_path.exists()
 
 
+def test_cli_accepts_sqlite_maximum_year_through_argument_validation(
+    tmp_path,
+    capsys,
+):
+    database_path = tmp_path / "tax.sqlite3"
+
+    with pytest.raises(SystemExit) as exc_info:
+        main(
+            [
+                "--year",
+                str(SQLITE_INTEGER_MAX),
+                "--database-path",
+                str(database_path),
+            ]
+        )
+
+    error = capsys.readouterr().err
+    assert exc_info.value.code == 2
+    assert f"No federal tax parameters for {SQLITE_INTEGER_MAX} single" in error
+    assert f"must be at most {SQLITE_INTEGER_MAX}" not in error
+    assert "Traceback" not in error
+    assert database_path.exists()
+
+
 def test_cli_preserves_integer_whitespace_syntax(tmp_path, capsys):
     code = main(
         [

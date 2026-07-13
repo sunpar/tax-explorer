@@ -288,7 +288,22 @@ def create_app(
 
         return {"rows": [_tax_burden_to_response(row) for row in rows]}
 
+    _preserve_exact_tax_year_openapi_limit(app)
     return app
+
+
+def _preserve_exact_tax_year_openapi_limit(app: FastAPI) -> None:
+    generated_openapi = app.openapi
+
+    def openapi() -> dict[str, Any]:
+        schema = generated_openapi()
+        year_schema = schema["components"]["schemas"]["CalculateRequest"][
+            "properties"
+        ]["year"]
+        year_schema["exclusiveMaximum"] = _TAX_YEAR_LIMIT
+        return schema
+
+    app.openapi = openapi
 
 
 @contextmanager
