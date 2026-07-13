@@ -15,6 +15,8 @@ INVALID_FEDERAL_BRACKET_START_DETAIL = "federal tax brackets must start at 0.00"
 MISSING_ADDITIONAL_MEDICARE_THRESHOLD_DETAIL = (
     "additional_medicare_threshold missing for 2026 married_joint"
 )
+SQLITE_INTEGER_MAX = (1 << 63) - 1
+SQLITE_INTEGER_LIMIT = SQLITE_INTEGER_MAX + 1
 
 
 def create_test_client(tmp_path):
@@ -433,6 +435,125 @@ def test_api_rejects_negative_years_before_database_initialization(
     assert year_error["type"] == "greater_than_equal"
     assert year_error["ctx"] == {"ge": 0}
     assert not database_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs", "year_loc"),
+    [
+        (
+            "get",
+            f"/api/tax-years/{SQLITE_INTEGER_MAX + 1}/filing-statuses",
+            {},
+            ["path", "year"],
+        ),
+        (
+            "get",
+            f"/api/tax-years/{SQLITE_INTEGER_MAX + 1}/parameters",
+            {},
+            ["path", "year"],
+        ),
+        (
+            "get",
+            "/api/income-series",
+            {
+                "params": {
+                    "year": SQLITE_INTEGER_MAX + 1,
+                    "filing_status": "single",
+                    "start": "0",
+                    "stop": "100000",
+                    "step": "10000",
+                }
+            },
+            ["query", "year"],
+        ),
+        (
+            "post",
+            "/api/calculate",
+            {
+                "json": {
+                    "year": SQLITE_INTEGER_MAX + 1,
+                    "filing_status": "single",
+                    "gross_income": "100000",
+                }
+            },
+            ["body", "year"],
+        ),
+    ],
+)
+def test_api_rejects_oversized_years_before_database_initialization(
+    tmp_path,
+    method,
+    path,
+    kwargs,
+    year_loc,
+):
+    database_path = tmp_path / "tax.sqlite3"
+    client = TestClient(
+        create_app(
+            database_path=database_path,
+            initialize_database_on_create=False,
+        ),
+        raise_server_exceptions=False,
+    )
+
+    response = getattr(client, method)(path, **kwargs)
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert isinstance(detail, list)
+    year_error = next(error for error in detail if error["loc"] == year_loc)
+    assert year_error["type"] == "less_than"
+    assert year_error["ctx"] == {"lt": SQLITE_INTEGER_LIMIT}
+    assert not database_path.exists()
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs"),
+    [
+        (
+            "get",
+            f"/api/tax-years/{SQLITE_INTEGER_MAX}/filing-statuses",
+            {},
+        ),
+        (
+            "get",
+            f"/api/tax-years/{SQLITE_INTEGER_MAX}/parameters",
+            {},
+        ),
+        (
+            "get",
+            "/api/income-series",
+            {
+                "params": {
+                    "year": SQLITE_INTEGER_MAX,
+                    "filing_status": "single",
+                    "start": "0",
+                    "stop": "100000",
+                    "step": "10000",
+                }
+            },
+        ),
+        (
+            "post",
+            "/api/calculate",
+            {
+                "json": {
+                    "year": SQLITE_INTEGER_MAX,
+                    "filing_status": "single",
+                    "gross_income": "100000",
+                }
+            },
+        ),
+    ],
+)
+def test_api_accepts_sqlite_maximum_year(tmp_path, method, path, kwargs):
+    database_path = tmp_path / "tax.sqlite3"
+    client = create_deferred_test_client(database_path)
+
+    response = getattr(client, method)(path, **kwargs)
+
+    assert response.status_code == 404
+    assert database_path.exists()
 
 
 @pytest.mark.parametrize(
@@ -1221,6 +1342,7 @@ def test_openapi_documents_request_validation_constraints(tmp_path):
         "gradual_phase_in",
     ]
     assert calculate_year_schema["minimum"] == 0
+    assert calculate_year_schema["exclusiveMaximum"] == SQLITE_INTEGER_LIMIT
     assert calculate_dependent_count_schema["minimum"] == 0
     assert numeric_schema(calculate_secondary_income_schema)["minimum"] == 0
 
@@ -1228,6 +1350,10 @@ def test_openapi_documents_request_validation_constraints(tmp_path):
         "parameters"
     ]
     assert parameter_schema(income_series_parameters, "year")["minimum"] == 0
+    assert (
+        parameter_schema(income_series_parameters, "year")["exclusiveMaximum"]
+        == SQLITE_INTEGER_LIMIT
+    )
     assert parameter_schema(income_series_parameters, "pretax_deduction_mode")[
         "enum"
     ] == [
@@ -1274,6 +1400,10 @@ def test_openapi_documents_request_validation_constraints(tmp_path):
     ):
         path_parameters = openapi["paths"][path]["get"]["parameters"]
         assert parameter_schema(path_parameters, "year")["minimum"] == 0
+        assert (
+            parameter_schema(path_parameters, "year")["exclusiveMaximum"]
+            == SQLITE_INTEGER_LIMIT
+        )
 
 
 def test_calculate_response_breaks_tax_down_by_component(tmp_path):

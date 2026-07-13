@@ -23,6 +23,7 @@ LEGACY_CSV_FIELDS = (
     "total_employer_payroll_tax",
     "total_tax_with_employer_payroll",
 )
+SQLITE_INTEGER_MAX = (1 << 63) - 1
 
 
 def create_hidden_multi_status_year_database(database_path):
@@ -313,6 +314,11 @@ def test_cli_reports_invalid_decimal_arguments_as_usage_errors(
         ("--year", "2026.5", "must be a whole number"),
         ("--year", "2_026", "must be a whole number"),
         ("--year", "-1", "must be non-negative"),
+        (
+            "--year",
+            str(SQLITE_INTEGER_MAX + 1),
+            f"must be at most {SQLITE_INTEGER_MAX}",
+        ),
     ],
 )
 def test_cli_rejects_invalid_numeric_bounds_before_database_initialization(

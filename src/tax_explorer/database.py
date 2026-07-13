@@ -20,6 +20,7 @@ from tax_explorer import (
 DEFAULT_DATABASE_PATH = Path(
     os.environ.get("TAX_EXPLORER_DB", Path.cwd() / "data" / "tax_explorer.sqlite3")
 )
+SQLITE_INTEGER_MAX = (1 << 63) - 1
 _SUPPORTED_FILING_STATUS_SQL = ", ".join(
     f"'{filing_status}'" for filing_status in FILING_STATUS_CHOICES
 )

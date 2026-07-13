@@ -25,6 +25,7 @@ from tax_explorer import (
 )
 from tax_explorer.database import (
     DEFAULT_DATABASE_PATH,
+    SQLITE_INTEGER_MAX,
     connect,
     get_available_tax_years,
     get_filing_statuses,
@@ -49,6 +50,8 @@ MISSING_PARAMETER_MESSAGE_PREFIXES = (
 )
 DEFAULT_TAX_YEAR = 2026
 _NON_NEGATIVE_INTEGER_SCHEMA = {"minimum": 0}
+_TAX_YEAR_LIMIT = SQLITE_INTEGER_MAX + 1
+_TAX_YEAR_SCHEMA = {"minimum": 0, "exclusiveMaximum": _TAX_YEAR_LIMIT}
 
 
 def _parse_strict_query_bool(value: Any) -> bool:
@@ -103,13 +106,16 @@ PositiveStrictDecimalQuery = Annotated[
 ]
 TaxYearPath = Annotated[
     StrictInt,
-    ApiPath(ge=0, json_schema_extra=_NON_NEGATIVE_INTEGER_SCHEMA),
+    ApiPath(ge=0, lt=_TAX_YEAR_LIMIT, json_schema_extra=_TAX_YEAR_SCHEMA),
 ]
-TaxYearQuery = NonNegativeStrictIntQuery
+TaxYearQuery = Annotated[
+    StrictInt,
+    Query(ge=0, lt=_TAX_YEAR_LIMIT, json_schema_extra=_TAX_YEAR_SCHEMA),
+]
 
 
 class CalculateRequest(BaseModel):
-    year: int = Field(strict=True, ge=0)
+    year: int = Field(strict=True, ge=0, lt=_TAX_YEAR_LIMIT)
     filing_status: str = "single"
     gross_income: StrictDecimal = Field(ge=0)
     include_employer_payroll_tax: bool = Field(default=False, strict=True)
