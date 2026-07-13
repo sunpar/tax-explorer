@@ -435,11 +435,15 @@ function isTaxBreakdownItem(value: unknown): value is TaxBreakdownItem {
 }
 
 function isIncomeSeriesResponse(value: unknown): value is IncomeSeriesResponse {
-  return (
-    isRecord(value) &&
-    Array.isArray(value.rows) &&
-    value.rows.length > 0 &&
-    value.rows.every(isTaxBurden)
+  if (!isRecord(value) || !Array.isArray(value.rows)) return false;
+
+  const { rows } = value;
+  if (rows.length === 0 || !rows.every(isTaxBurden)) return false;
+
+  return rows.every(
+    (row, index) =>
+      index === 0 ||
+      Number(row.gross_income) > Number(rows[index - 1].gross_income)
   );
 }
 
