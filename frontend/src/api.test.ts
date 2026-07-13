@@ -838,13 +838,15 @@ describe("api requests", () => {
     });
   });
 
-  test("returns valid income series responses", async () => {
-    const body = {
+  test.each([
+    { rows: [taxBurdenResponse] },
+    {
       rows: [
         { ...taxBurdenResponse, gross_income: "0.00" },
         taxBurdenResponse
       ]
-    };
+    }
+  ])("returns valid income series responses", async (body) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify(body), {
         headers: { "Content-Type": "application/json" },
