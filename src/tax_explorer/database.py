@@ -24,11 +24,22 @@ SQLITE_INTEGER_MAX = (1 << 63) - 1
 _SUPPORTED_FILING_STATUS_SQL = ", ".join(
     f"'{filing_status}'" for filing_status in FILING_STATUS_CHOICES
 )
+_ECMASCRIPT_TRIM_CHARACTERS = (
+    "\u0009\u000b\u000c\u0020\u00a0\ufeff\u000a\u000d\u2028\u2029"
+    "\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009"
+    "\u200a\u202f\u205f\u3000"
+)
 
 _AVAILABLE_TAX_YEAR_CTES = """
 advertised_federal_statuses AS (
-    SELECT federal.year, federal.filing_status, federal.standard_deduction
+    SELECT
+        federal.year,
+        federal.filing_status,
+        federal.standard_deduction,
+        statuses.label AS filing_status_label
     FROM federal_tax_parameters AS federal
+    LEFT JOIN filing_statuses AS statuses
+        ON statuses.code = federal.filing_status
     WHERE federal.filing_status IN ({supported_filing_statuses})
 ),
 bracketed_federal_statuses AS (
@@ -53,6 +64,12 @@ years.year >= 0
     FROM bracketed_federal_statuses AS federal
     WHERE federal.year = years.year
 )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM advertised_federal_statuses AS federal
+      WHERE federal.year = years.year
+        AND NOT tax_explorer_non_blank_string(federal.filing_status_label)
+  )
   AND NOT EXISTS (
       SELECT 1
       FROM advertised_federal_statuses AS federal
@@ -163,6 +180,12 @@ def connect(database_path: str | Path = DEFAULT_DATABASE_PATH) -> sqlite3.Connec
     )
     connection.create_function(
         "tax_explorer_rate_valid", 1, _rate_valid_for_sql, deterministic=True
+    )
+    connection.create_function(
+        "tax_explorer_non_blank_string",
+        1,
+        _non_blank_string_for_sql,
+        deterministic=True,
     )
     return connection
 
@@ -498,6 +521,10 @@ def _rate_valid_for_sql(value: object) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _non_blank_string_for_sql(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip(_ECMASCRIPT_TRIM_CHARACTERS))
 
 
 def _rate(value: object, field_name: str) -> Decimal:
