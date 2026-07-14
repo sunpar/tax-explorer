@@ -905,6 +905,63 @@ def test_dual_earner_series_marginal_rates_follow_configured_income_split():
     ]
 
 
+def test_dual_earner_series_marginal_rate_uses_next_worker_pretax_caps():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="married_joint",
+        standard_deduction=money("0.00"),
+        brackets=(TaxBracket(money("0.00"), Decimal("0.10")),),
+    )
+    pretax_deductions = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=money("1.00"),
+        health_fsa_limit=money("0.00"),
+        dependent_care_fsa_limit=money("0.00"),
+    )
+
+    rows = build_income_series(
+        start=money("0.00"),
+        stop=money("1.00"),
+        step=money("1.00"),
+        include_employer_payroll_tax=True,
+        pretax_deduction_mode="gradual_phase_in",
+        secondary_income=money("1.00"),
+        federal=federal,
+        pretax_deductions=pretax_deductions,
+    )
+
+    assert rows[0].marginal_employee_tax_rate == Decimal("0.0873")
+    assert rows[0].marginal_tax_rate_with_employer_payroll == Decimal("0.1638")
+
+
+def test_direct_dual_earner_marginal_rate_keeps_secondary_income_fixed():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="married_joint",
+        standard_deduction=money("0.00"),
+        brackets=(TaxBracket(money("0.00"), Decimal("0.10")),),
+    )
+    no_pretax_deductions = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=money("0.00"),
+        health_fsa_limit=money("0.00"),
+        dependent_care_fsa_limit=money("0.00"),
+    )
+
+    result = calculate_tax_burden(
+        TaxScenario(
+            gross_income=money("184500.00"),
+            secondary_income=money("184500.00"),
+            include_employer_payroll_tax=True,
+        ),
+        federal=federal,
+        pretax_deductions=no_pretax_deductions,
+    )
+
+    assert result.marginal_employee_tax_rate == Decimal("0.1765")
+    assert result.marginal_tax_rate_with_employer_payroll == Decimal("0.2530")
+
+
 def test_build_income_series_can_include_exact_marginal_rate_change_points():
     rows = build_income_series(
         start=0,
