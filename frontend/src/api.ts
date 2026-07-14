@@ -191,7 +191,7 @@ function isTaxYearsResponse(value: unknown): value is { years: number[] } {
 
   const { years } = value;
   return years.every((year, index) => {
-    if (!Number.isInteger(year) || year < 0) return false;
+    if (!Number.isSafeInteger(year) || year < 0) return false;
     return index === 0 || year > years[index - 1];
   });
 }

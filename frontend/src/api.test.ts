@@ -258,7 +258,24 @@ describe("api requests", () => {
     });
   });
 
-  test.each([{ years: [] }, { years: [2025, 2026] }])(
+  test("rejects tax years beyond safe integer precision", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response('{"years":[9007199254740993]}', {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxYears()).rejects.toMatchObject({
+      message: "Malformed tax year response"
+    });
+  });
+
+  test.each([
+    { years: [] },
+    { years: [2025, 2026] },
+    { years: [Number.MAX_SAFE_INTEGER] }
+  ])(
     "returns valid tax year discovery responses",
     async (body) => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
