@@ -868,6 +868,43 @@ def test_build_income_series_samples_inclusive_income_range():
     ]
 
 
+def test_dual_earner_series_marginal_rates_follow_configured_income_split():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="married_joint",
+        standard_deduction=money("0.00"),
+        brackets=(TaxBracket(money("0.00"), Decimal("0.10")),),
+    )
+    no_pretax_deductions = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=money("0.00"),
+        health_fsa_limit=money("0.00"),
+        dependent_care_fsa_limit=money("0.00"),
+    )
+
+    rows = build_income_series(
+        start=money("184500.00"),
+        stop=money("200000.00"),
+        step=money("15500.00"),
+        include_employer_payroll_tax=True,
+        secondary_income=money("200000.00"),
+        federal=federal,
+        pretax_deductions=no_pretax_deductions,
+    )
+
+    assert [
+        (
+            row.gross_income,
+            row.marginal_employee_tax_rate,
+            row.marginal_tax_rate_with_employer_payroll,
+        )
+        for row in rows
+    ] == [
+        (money("184500.00"), Decimal("0.1145"), Decimal("0.1290")),
+        (money("200000.00"), Decimal("0.1765"), Decimal("0.2530")),
+    ]
+
+
 def test_build_income_series_can_include_exact_marginal_rate_change_points():
     rows = build_income_series(
         start=0,

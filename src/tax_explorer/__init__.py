@@ -236,6 +236,7 @@ def _calculate_tax_burden(
     federal: FederalTaxParameters,
     payroll: PayrollTaxParameters,
     pretax_deductions: PretaxDeductionParameters,
+    next_secondary_income: Decimal | None = None,
 ) -> TaxBurden:
     gross_income = _validated_non_negative_money(
         scenario.gross_income, "gross_income"
@@ -258,6 +259,20 @@ def _calculate_tax_burden(
     active_pretax_deductions = _active_pretax_deduction_parameters(
         federal, pretax_deductions, dependent_count, worker_count
     )
+    if next_secondary_income is None:
+        next_secondary_income = secondary_income
+    else:
+        next_secondary_income = _validate_secondary_income(
+            gross_income + ONE_DOLLAR,
+            _validated_non_negative_money(
+                next_secondary_income, "secondary_income"
+            ),
+            federal,
+        )
+    next_worker_count = _worker_count(federal, next_secondary_income)
+    next_active_pretax_deductions = _active_pretax_deduction_parameters(
+        federal, pretax_deductions, dependent_count, next_worker_count
+    )
 
     amounts = _calculate_tax_amounts(
         gross_income,
@@ -273,22 +288,28 @@ def _calculate_tax_burden(
     marginal_employee_tax_rate = _forward_difference_marginal_rate(
         gross_income,
         secondary_income=secondary_income,
+        next_secondary_income=next_secondary_income,
         include_employer_payroll_tax=False,
         pretax_deduction_mode=scenario.pretax_deduction_mode,
         federal=federal,
         payroll=payroll,
         pretax_deductions=active_pretax_deductions,
+        next_pretax_deductions=next_active_pretax_deductions,
         worker_count=worker_count,
+        next_worker_count=next_worker_count,
     )
     marginal_tax_rate_with_employer_payroll = _forward_difference_marginal_rate(
         gross_income,
         secondary_income=secondary_income,
+        next_secondary_income=next_secondary_income,
         include_employer_payroll_tax=include_employer_payroll_tax,
         pretax_deduction_mode=scenario.pretax_deduction_mode,
         federal=federal,
         payroll=payroll,
         pretax_deductions=active_pretax_deductions,
+        next_pretax_deductions=next_active_pretax_deductions,
         worker_count=worker_count,
+        next_worker_count=next_worker_count,
     )
 
     return TaxBurden(
@@ -405,6 +426,9 @@ def build_income_series(
             federal=federal,
             payroll=payroll,
             pretax_deductions=pretax_deductions,
+            next_secondary_income=min(
+                configured_secondary_income, income + ONE_DOLLAR
+            ),
         )
         for income in sorted(incomes)
     ]
@@ -1159,12 +1183,15 @@ def _gradual_phase_in_end_income(
 def _forward_difference_marginal_rate(
     gross_income: Decimal,
     secondary_income: Decimal,
+    next_secondary_income: Decimal,
     include_employer_payroll_tax: bool,
     pretax_deduction_mode: str,
     federal: FederalTaxParameters,
     payroll: PayrollTaxParameters,
     pretax_deductions: PretaxDeductionParameters,
+    next_pretax_deductions: PretaxDeductionParameters,
     worker_count: int,
+    next_worker_count: int,
 ) -> Decimal:
     current = _calculate_tax_amounts(
         gross_income,
@@ -1179,13 +1206,13 @@ def _forward_difference_marginal_rate(
     )
     next_amounts = _calculate_tax_amounts(
         gross_income + ONE_DOLLAR,
-        secondary_income=secondary_income,
+        secondary_income=next_secondary_income,
         include_employer_payroll_tax=include_employer_payroll_tax,
         pretax_deduction_mode=pretax_deduction_mode,
         federal=federal,
         payroll=payroll,
-        pretax_deductions=pretax_deductions,
-        worker_count=worker_count,
+        pretax_deductions=next_pretax_deductions,
+        worker_count=next_worker_count,
         rounded=False,
     )
     current_tax = (
