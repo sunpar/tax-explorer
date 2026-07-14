@@ -50,6 +50,9 @@ type PayrollBreakdownDecimalField = Exclude<
 >;
 
 const DECIMAL_STRING_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
+const DECIMAL_INPUT_PATTERN =
+  /^\s*([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?\s*$/;
+const MAX_SAFE_STRING_LENGTH_DIGITS = String(Number.MAX_SAFE_INTEGER).length;
 const TAX_BURDEN_AMOUNT_FIELDS = [
   "gross_income",
   "taxable_income",
@@ -335,6 +338,59 @@ function normalizedMoneyCents(value: string): string {
   return cents.toString();
 }
 
+function normalizedRequestedMoneyCents(
+  value: string,
+  maximumCentsLength: number
+): string | null {
+  const match = DECIMAL_INPUT_PATTERN.exec(value);
+  if (!match) return null;
+
+  const sign = match[1];
+  const integerPart = match[2] ?? "";
+  const fractionalPart = match[3] ?? match[4] ?? "";
+  const coefficient = `${integerPart}${fractionalPart}`.replace(/^0+/, "");
+  if (coefficient === "") return "0";
+  if (sign === "-") return null;
+
+  const exponentText = match[5] ?? "0";
+  const exponentSign = exponentText[0];
+  let exponentDigitStart =
+    exponentSign === "+" || exponentSign === "-" ? 1 : 0;
+  while (exponentText[exponentDigitStart] === "0") {
+    exponentDigitStart += 1;
+  }
+  if (
+    exponentText.length - exponentDigitStart >
+    MAX_SAFE_STRING_LENGTH_DIGITS
+  ) {
+    return exponentSign === "-" ? "0" : null;
+  }
+  const exponentMagnitude = BigInt(
+    exponentText.slice(exponentDigitStart) || "0"
+  );
+  const exponent = exponentSign === "-" ? -exponentMagnitude : exponentMagnitude;
+  const coefficientLength = BigInt(coefficient.length);
+  const maximumCentsLengthBigInt = BigInt(maximumCentsLength);
+  const centsScale = exponent - BigInt(fractionalPart.length) + 2n;
+  if (centsScale >= 0n) {
+    if (coefficientLength + centsScale > maximumCentsLengthBigInt) {
+      return null;
+    }
+    return `${coefficient}${"0".repeat(Number(centsScale))}`;
+  }
+
+  const retainedLength = coefficientLength + centsScale;
+  if (retainedLength < 0n) return "0";
+  if (retainedLength > maximumCentsLengthBigInt) return null;
+
+  const retainedLengthNumber = Number(retainedLength);
+  const retainedDigits = coefficient.slice(0, retainedLengthNumber) || "0";
+  const roundingDigit = coefficient[retainedLengthNumber];
+  const roundedCents =
+    BigInt(retainedDigits) + (roundingDigit >= "5" ? 1n : 0n);
+  return roundedCents.toString();
+}
+
 function isNonNegativeDecimalStringRecord(
   value: unknown
 ): value is Record<string, string> {
@@ -442,10 +498,12 @@ function hasMatchingGrossIncome(
   value: TaxBurden,
   requestedGrossIncome: string
 ): boolean {
+  const responseCents = normalizedMoneyCents(value.gross_income);
   return (
-    isNonNegativeDecimalString(requestedGrossIncome) &&
-    normalizedMoneyCents(value.gross_income) ===
-      normalizedMoneyCents(requestedGrossIncome)
+    normalizedRequestedMoneyCents(
+      requestedGrossIncome,
+      responseCents.length
+    ) === responseCents
   );
 }
 
