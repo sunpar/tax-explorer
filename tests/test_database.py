@@ -239,6 +239,25 @@ def test_unsupported_persisted_filing_status_does_not_hide_supported_year(tmp_pa
     assert available is True
 
 
+@pytest.mark.parametrize("label", ["   ", "\t\n", "\u2003", "\ufeff"])
+def test_available_tax_years_exclude_blank_supported_filing_status_labels(
+    tmp_path, label
+):
+    db_path = tmp_path / "tax.sqlite3"
+
+    with initialize_database(db_path) as connection:
+        connection.execute(
+            "UPDATE filing_statuses SET label = ? WHERE code = ?",
+            (label, "single"),
+        )
+        connection.commit()
+        years = get_available_tax_years(connection)
+        available = is_tax_year_available(connection, 2026)
+
+    assert years == []
+    assert available is False
+
+
 def test_available_tax_years_exclude_missing_additional_medicare_thresholds(tmp_path):
     db_path = tmp_path / "tax.sqlite3"
 

@@ -388,6 +388,25 @@ def test_filing_statuses_exclude_incomplete_tax_years(tmp_path):
     assert response.json()["detail"] == "No filing statuses for 2030"
 
 
+def test_blank_supported_filing_status_label_hides_tax_year(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = TestClient(create_app(database_path=database_path))
+    with connect(database_path) as connection:
+        connection.execute(
+            "UPDATE filing_statuses SET label = ? WHERE code = ?",
+            ("   ", "single"),
+        )
+        connection.commit()
+
+    years_response = client.get("/api/tax-years")
+    statuses_response = client.get("/api/tax-years/2026/filing-statuses")
+
+    assert years_response.status_code == 200
+    assert years_response.json() == {"years": []}
+    assert statuses_response.status_code == 404
+    assert statuses_response.json()["detail"] == "No filing statuses for 2026"
+
+
 def test_parameters_exclude_incomplete_tax_years(tmp_path):
     client = create_incomplete_multi_status_year_test_client(tmp_path)
 
