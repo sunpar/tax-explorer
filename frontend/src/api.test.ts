@@ -350,6 +350,33 @@ describe("api requests", () => {
     await expect(fetchTaxParameters(2026, "married_joint")).resolves.toEqual(body);
   });
 
+  test.each([
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_thresholds: {}
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_threshold_single: "0200000.0",
+        additional_medicare_thresholds: { single: "+200000.00" }
+      }
+    }
+  ])("returns compatible single threshold response variants", async (body) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxParameters(2026, "single")).resolves.toEqual(body);
+  });
+
   test("returns signed zero federal bracket rates accepted by persisted validation", async () => {
     const body = {
       ...taxParameterResponse,
@@ -523,6 +550,21 @@ describe("api requests", () => {
       payroll: {
         ...taxParameterResponse.payroll,
         additional_medicare_threshold_single: "-1.00"
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_thresholds: { single: "250000.00" }
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_threshold_single: "9007199254740992.00",
+        additional_medicare_thresholds: { single: "9007199254740993.00" }
       }
     },
     {

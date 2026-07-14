@@ -301,13 +301,30 @@ function hasSelectedAdditionalMedicareThreshold(
   value: TaxParameters["payroll"],
   filingStatus: string
 ): boolean {
-  return (
-    filingStatus === "single" ||
-    Object.prototype.hasOwnProperty.call(
-      value.additional_medicare_thresholds,
-      filingStatus
-    )
+  const thresholds = value.additional_medicare_thresholds;
+  if (!Object.prototype.hasOwnProperty.call(thresholds, filingStatus)) {
+    return filingStatus === "single";
+  }
+  if (filingStatus !== "single") return true;
+  return areEquivalentDecimalStrings(
+    value.additional_medicare_threshold_single,
+    thresholds.single
   );
+}
+
+function areEquivalentDecimalStrings(left: string, right: string): boolean {
+  return normalizedDecimalString(left) === normalizedDecimalString(right);
+}
+
+function normalizedDecimalString(value: string): string {
+  const unsignedValue =
+    value.startsWith("+") || value.startsWith("-") ? value.slice(1) : value;
+  const [integerPart = "", fractionalPart = ""] = unsignedValue.split(".");
+  const normalizedInteger = integerPart.replace(/^0+/, "") || "0";
+  const normalizedFraction = fractionalPart.replace(/0+$/, "");
+  return normalizedFraction
+    ? `${normalizedInteger}.${normalizedFraction}`
+    : normalizedInteger;
 }
 
 function isNonNegativeDecimalStringRecord(
