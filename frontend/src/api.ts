@@ -228,7 +228,8 @@ function isTaxParameters(
     isFederalParameters(value.federal, year, filingStatus) &&
     isPayrollParameters(value.payroll, year) &&
     isPretaxDeductionParameters(value.pretax_deductions, year) &&
-    hasSelectedAdditionalMedicareThreshold(value.payroll, filingStatus)
+    hasSelectedAdditionalMedicareThreshold(value.payroll, filingStatus) &&
+    hasConsistentSingleAdditionalMedicareThreshold(value.payroll)
   );
 }
 
@@ -302,29 +303,36 @@ function hasSelectedAdditionalMedicareThreshold(
   filingStatus: string
 ): boolean {
   const thresholds = value.additional_medicare_thresholds;
-  if (!Object.prototype.hasOwnProperty.call(thresholds, filingStatus)) {
-    return filingStatus === "single";
-  }
-  if (filingStatus !== "single") return true;
-  return areEquivalentDecimalStrings(
-    value.additional_medicare_threshold_single,
-    thresholds.single
+  return (
+    filingStatus === "single" ||
+    Object.prototype.hasOwnProperty.call(thresholds, filingStatus)
   );
 }
 
-function areEquivalentDecimalStrings(left: string, right: string): boolean {
-  return normalizedDecimalString(left) === normalizedDecimalString(right);
+function hasConsistentSingleAdditionalMedicareThreshold(
+  value: TaxParameters["payroll"]
+): boolean {
+  const thresholds = value.additional_medicare_thresholds;
+  if (!Object.prototype.hasOwnProperty.call(thresholds, "single")) {
+    return true;
+  }
+  return (
+    normalizedMoneyCents(value.additional_medicare_threshold_single) ===
+    normalizedMoneyCents(thresholds.single)
+  );
 }
 
-function normalizedDecimalString(value: string): string {
+function normalizedMoneyCents(value: string): string {
   const unsignedValue =
     value.startsWith("+") || value.startsWith("-") ? value.slice(1) : value;
   const [integerPart = "", fractionalPart = ""] = unsignedValue.split(".");
-  const normalizedInteger = integerPart.replace(/^0+/, "") || "0";
-  const normalizedFraction = fractionalPart.replace(/0+$/, "");
-  return normalizedFraction
-    ? `${normalizedInteger}.${normalizedFraction}`
-    : normalizedInteger;
+  const wholeDigits = integerPart.replace(/^0+/, "") || "0";
+  const centDigits = fractionalPart.slice(0, 2).padEnd(2, "0");
+  let cents = BigInt(`${wholeDigits}${centDigits}`);
+  if ((fractionalPart[2] ?? "0") >= "5") {
+    cents += 1n;
+  }
+  return cents.toString();
 }
 
 function isNonNegativeDecimalStringRecord(

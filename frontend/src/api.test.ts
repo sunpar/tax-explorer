@@ -365,6 +365,22 @@ describe("api requests", () => {
         additional_medicare_threshold_single: "0200000.0",
         additional_medicare_thresholds: { single: "+200000.00" }
       }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_threshold_single: "200000.004",
+        additional_medicare_thresholds: { single: "200000.00" }
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_threshold_single: "-0.000",
+        additional_medicare_thresholds: { single: "+0.00" }
+      }
     }
   ])("returns compatible single threshold response variants", async (body) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -375,6 +391,33 @@ describe("api requests", () => {
     );
 
     await expect(fetchTaxParameters(2026, "single")).resolves.toEqual(body);
+  });
+
+  test("rejects conflicting mapped single threshold for non-single responses", async () => {
+    const body = {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        filing_status: "married_joint"
+      },
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_thresholds: {
+          married_joint: "250000.00",
+          single: "250001.00"
+        }
+      }
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxParameters(2026, "married_joint")).rejects.toMatchObject({
+      message: "Malformed tax parameter response"
+    });
   });
 
   test("returns signed zero federal bracket rates accepted by persisted validation", async () => {
@@ -557,6 +600,14 @@ describe("api requests", () => {
       payroll: {
         ...taxParameterResponse.payroll,
         additional_medicare_thresholds: { single: "250000.00" }
+      }
+    },
+    {
+      ...taxParameterResponse,
+      payroll: {
+        ...taxParameterResponse.payroll,
+        additional_medicare_threshold_single: "200000.005",
+        additional_medicare_thresholds: { single: "200000.00" }
       }
     },
     {
