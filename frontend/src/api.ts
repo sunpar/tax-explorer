@@ -228,7 +228,8 @@ function isTaxParameters(
     isFederalParameters(value.federal, year, filingStatus) &&
     isPayrollParameters(value.payroll, year) &&
     isPretaxDeductionParameters(value.pretax_deductions, year) &&
-    hasSelectedAdditionalMedicareThreshold(value.payroll, filingStatus)
+    hasSelectedAdditionalMedicareThreshold(value.payroll, filingStatus) &&
+    hasConsistentSingleAdditionalMedicareThreshold(value.payroll)
   );
 }
 
@@ -301,13 +302,37 @@ function hasSelectedAdditionalMedicareThreshold(
   value: TaxParameters["payroll"],
   filingStatus: string
 ): boolean {
+  const thresholds = value.additional_medicare_thresholds;
   return (
     filingStatus === "single" ||
-    Object.prototype.hasOwnProperty.call(
-      value.additional_medicare_thresholds,
-      filingStatus
-    )
+    Object.prototype.hasOwnProperty.call(thresholds, filingStatus)
   );
+}
+
+function hasConsistentSingleAdditionalMedicareThreshold(
+  value: TaxParameters["payroll"]
+): boolean {
+  const thresholds = value.additional_medicare_thresholds;
+  if (!Object.prototype.hasOwnProperty.call(thresholds, "single")) {
+    return true;
+  }
+  return (
+    normalizedMoneyCents(value.additional_medicare_threshold_single) ===
+    normalizedMoneyCents(thresholds.single)
+  );
+}
+
+function normalizedMoneyCents(value: string): string {
+  const unsignedValue =
+    value.startsWith("+") || value.startsWith("-") ? value.slice(1) : value;
+  const [integerPart = "", fractionalPart = ""] = unsignedValue.split(".");
+  const wholeDigits = integerPart.replace(/^0+/, "") || "0";
+  const centDigits = fractionalPart.slice(0, 2).padEnd(2, "0");
+  let cents = BigInt(`${wholeDigits}${centDigits}`);
+  if ((fractionalPart[2] ?? "0") >= "5") {
+    cents += 1n;
+  }
+  return cents.toString();
 }
 
 function isNonNegativeDecimalStringRecord(
