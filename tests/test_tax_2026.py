@@ -1017,6 +1017,31 @@ def test_build_income_series_can_include_exact_marginal_rate_change_points():
     ]
 
 
+def test_build_income_series_includes_high_income_marginal_breakpoint():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=money("0.00"),
+        brackets=(
+            TaxBracket(money("0.00"), Decimal("0.10")),
+            TaxBracket(money("600000000.00"), Decimal("0.20")),
+        ),
+    )
+
+    rows = build_income_series(
+        start=money("0.00"),
+        stop=money("700000000.00"),
+        step=money("700000000.00"),
+        include_marginal_breakpoints=True,
+        federal=federal,
+    )
+
+    rates_by_income = {
+        row.gross_income: row.marginal_employee_tax_rate for row in rows
+    }
+    assert rates_by_income[money("600027900.00")] == Decimal("0.2235")
+
+
 def test_build_income_series_includes_dependent_care_breakpoints():
     rows = build_income_series(
         start=0,
