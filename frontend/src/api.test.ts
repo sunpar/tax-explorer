@@ -756,6 +756,34 @@ describe("api requests", () => {
     );
   });
 
+  test("returns tax burden responses matching the rounded requested income", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(taxBurdenResponse), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(
+      fetchTaxBurden({ ...calculateRequest, grossIncome: "99999.995" })
+    ).resolves.toEqual(taxBurdenResponse);
+  });
+
+  test("rejects tax burden responses for a different requested income", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(taxBurdenResponse), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(
+      fetchTaxBurden({ ...calculateRequest, grossIncome: "90000" })
+    ).rejects.toMatchObject({
+      message: "Malformed tax burden response"
+    });
+  });
+
   test("returns signed zero tax burden amount responses", async () => {
     const body = {
       ...taxBurdenResponse,

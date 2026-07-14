@@ -438,6 +438,17 @@ function isTaxBurden(value: unknown): value is TaxBurden {
   );
 }
 
+function hasMatchingGrossIncome(
+  value: TaxBurden,
+  requestedGrossIncome: string
+): boolean {
+  return (
+    isNonNegativeDecimalString(requestedGrossIncome) &&
+    normalizedMoneyCents(value.gross_income) ===
+      normalizedMoneyCents(requestedGrossIncome)
+  );
+}
+
 function isPayrollBreakdownItem(value: unknown): value is PayrollBreakdownItem {
   return (
     isRecord(value) &&
@@ -534,7 +545,10 @@ export async function fetchTaxBurden(request: CalculateRequest): Promise<TaxBurd
       pretax_deduction_mode: request.pretaxDeductionMode
     })
   });
-  if (!isTaxBurden(response)) {
+  if (
+    !isTaxBurden(response) ||
+    !hasMatchingGrossIncome(response, request.grossIncome)
+  ) {
     throw new Error("Malformed tax burden response");
   }
   return response;
