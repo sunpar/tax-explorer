@@ -905,6 +905,37 @@ def test_dual_earner_series_marginal_rates_follow_configured_income_split():
     ]
 
 
+def test_dual_earner_series_includes_secondary_income_marginal_breakpoint():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="married_joint",
+        standard_deduction=money("0.00"),
+        brackets=(TaxBracket(money("0.00"), Decimal("0.10")),),
+    )
+    no_pretax_deductions = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=money("0.00"),
+        health_fsa_limit=money("0.00"),
+        dependent_care_fsa_limit=money("0.00"),
+    )
+
+    rows = build_income_series(
+        start=money("0.00"),
+        stop=money("400000.00"),
+        step=money("120000.00"),
+        include_marginal_breakpoints=True,
+        secondary_income=money("200000.00"),
+        federal=federal,
+        pretax_deductions=no_pretax_deductions,
+    )
+
+    rates_by_income = {
+        row.gross_income: row.marginal_employee_tax_rate for row in rows
+    }
+    assert rates_by_income[money("184500.00")] == Decimal("0.1145")
+    assert rates_by_income[money("200000.00")] == Decimal("0.1765")
+
+
 def test_dual_earner_series_marginal_rate_uses_next_worker_pretax_caps():
     federal = FederalTaxParameters(
         tax_year=2026,
@@ -1022,12 +1053,16 @@ def test_build_income_series_includes_lopsided_dual_earner_deduction_breakpoint(
 
     assert [row.gross_income for row in rows] == [
         money("0.00"),
+        money("5000.00"),
         money("32900.00"),
         money("65100.00"),
         money("89900.00"),
         money("120000.00"),
     ]
-    assert rows[1].total_pretax_deductions == money("32900.00")
+    deductions_by_income = {
+        row.gross_income: row.total_pretax_deductions for row in rows
+    }
+    assert deductions_by_income[money("32900.00")] == money("32900.00")
 
 
 def test_build_income_series_can_include_gradual_phase_in_breakpoints():

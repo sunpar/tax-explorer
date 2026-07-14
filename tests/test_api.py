@@ -1503,12 +1503,16 @@ def test_income_series_includes_lopsided_dual_earner_deduction_breakpoint(tmp_pa
     rows = response.json()["rows"]
     assert [row["gross_income"] for row in rows] == [
         "0.00",
+        "5000.00",
         "32900.00",
         "65100.00",
         "89900.00",
         "120000.00",
     ]
-    assert rows[1]["total_pretax_deductions"] == "32900.00"
+    deductions_by_income = {
+        row["gross_income"]: row["total_pretax_deductions"] for row in rows
+    }
+    assert deductions_by_income["32900.00"] == "32900.00"
 
 
 def test_income_series_accepts_gradual_pretax_deduction_mode(tmp_path):

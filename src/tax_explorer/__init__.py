@@ -1265,6 +1265,8 @@ def _marginal_rate_change_incomes(
     secondary_income: Decimal,
 ) -> set[Decimal]:
     incomes: set[Decimal] = set()
+    if secondary_income > 0:
+        incomes.add(secondary_income)
     if pretax_deduction_mode == PRETAX_DEDUCTION_MODE_MAX_AVAILABLE:
         incomes.update(
             _max_available_pretax_deduction_change_incomes(
