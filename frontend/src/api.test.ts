@@ -756,6 +756,57 @@ describe("api requests", () => {
     );
   });
 
+  test.each(["99999.995", "999999.95e-1", " 1e5 "])(
+    "returns tax burden responses matching requested income %s",
+    async (grossIncome) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify(taxBurdenResponse), {
+          headers: { "Content-Type": "application/json" },
+          status: 200
+        })
+      );
+
+      await expect(
+        fetchTaxBurden({ ...calculateRequest, grossIncome })
+      ).resolves.toEqual(taxBurdenResponse);
+    }
+  );
+
+  test("returns tax burden responses matching scientific requested income", async () => {
+    const body = {
+      ...taxBurdenResponse,
+      gross_income: "1000000000000000000000.00"
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(
+      fetchTaxBurden({ ...calculateRequest, grossIncome: "1e+21" })
+    ).resolves.toEqual(body);
+  });
+
+  test.each(["90000", "9e4"])(
+    "rejects tax burden responses for different requested income %s",
+    async (grossIncome) => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(JSON.stringify(taxBurdenResponse), {
+          headers: { "Content-Type": "application/json" },
+          status: 200
+        })
+      );
+
+      await expect(
+        fetchTaxBurden({ ...calculateRequest, grossIncome })
+      ).rejects.toMatchObject({
+        message: "Malformed tax burden response"
+      });
+    }
+  );
+
   test("returns signed zero tax burden amount responses", async () => {
     const body = {
       ...taxBurdenResponse,
