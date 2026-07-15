@@ -1017,6 +1017,119 @@ def test_build_income_series_can_include_exact_marginal_rate_change_points():
     ]
 
 
+def test_build_income_series_includes_high_income_marginal_breakpoint():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=money("0.00"),
+        brackets=(
+            TaxBracket(money("0.00"), Decimal("0.10")),
+            TaxBracket(money("600000000.00"), Decimal("0.20")),
+        ),
+    )
+
+    rows = build_income_series(
+        start=money("0.00"),
+        stop=money("700000000.00"),
+        step=money("700000000.00"),
+        include_marginal_breakpoints=True,
+        federal=federal,
+    )
+
+    rates_by_income = {
+        row.gross_income: row.marginal_employee_tax_rate for row in rows
+    }
+    assert rates_by_income[money("600027900.00")] == Decimal("0.2235")
+
+
+def test_build_income_series_rounds_high_income_breakpoint_up_to_first_cent():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=money("0.00"),
+        brackets=(
+            TaxBracket(money("0.00"), Decimal("0.10")),
+            TaxBracket(money("2e9"), Decimal("0.20")),
+            TaxBracket(money("1e10"), Decimal("0.30")),
+            TaxBracket(money("2e10"), Decimal("0.40")),
+        ),
+    )
+    pretax_deductions = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=money("1e10"),
+        health_fsa_limit=money("0.00"),
+        dependent_care_fsa_limit=money("0.00"),
+    )
+
+    rows = build_income_series(
+        start=money("0.00"),
+        stop=money("3e10"),
+        step=money("3e10"),
+        include_marginal_breakpoints=True,
+        pretax_deduction_mode="gradual_phase_in",
+        federal=federal,
+        pretax_deductions=pretax_deductions,
+    )
+
+    assert money("2132771177.75") in {row.gross_income for row in rows}
+
+
+def test_build_income_series_keeps_large_marginal_breakpoint_cent_precision():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=money("0.00"),
+        brackets=(
+            TaxBracket(money("0.00"), Decimal("0.10")),
+            TaxBracket(money("6e24"), Decimal("0.20")),
+        ),
+    )
+
+    rows = build_income_series(
+        start=money("0.00"),
+        stop=money("7e24"),
+        step=money("7e24"),
+        include_marginal_breakpoints=True,
+        federal=federal,
+    )
+
+    assert money("6000000000000000000027900.00") in {
+        row.gross_income for row in rows
+    }
+
+
+def test_build_income_series_probes_maximum_money_after_doubling_overflow():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=money("0.01"),
+        brackets=(
+            TaxBracket(money("0.00"), Decimal("0.10")),
+            TaxBracket(money("5e25"), Decimal("0.20")),
+        ),
+    )
+    no_pretax_deductions = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=money("0.00"),
+        health_fsa_limit=money("0.00"),
+        dependent_care_fsa_limit=money("0.00"),
+    )
+
+    rows = build_income_series(
+        start=money("5e25"),
+        stop=money("6e25"),
+        step=money("1e25"),
+        include_marginal_breakpoints=True,
+        pretax_deduction_mode="gradual_phase_in",
+        federal=federal,
+        pretax_deductions=no_pretax_deductions,
+    )
+
+    assert money("50000000000000000000000000.01") in {
+        row.gross_income for row in rows
+    }
+
+
 def test_build_income_series_includes_dependent_care_breakpoints():
     rows = build_income_series(
         start=0,
@@ -1077,11 +1190,11 @@ def test_build_income_series_can_include_gradual_phase_in_breakpoints():
     assert [row.gross_income for row in rows] == [
         money("0.00"),
         money("16100.00"),
-        money("28896.90"),
+        money("28896.91"),
         money("68220.02"),
         money("100000.00"),
-        money("127196.54"),
-        money("185848.61"),
+        money("127196.55"),
+        money("185848.62"),
         money("200000.00"),
         money("201575.50"),
         money("235279.59"),

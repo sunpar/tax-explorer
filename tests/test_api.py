@@ -1356,6 +1356,25 @@ def test_openapi_documents_request_validation_constraints(tmp_path):
         boolean_schema = parameter_schema(income_series_parameters, field_name)
         assert boolean_schema["type"] == "boolean"
         assert boolean_schema["default"] is False
+
+    income_series_schema = openapi["components"]["schemas"][
+        "IncomeSeriesResponse"
+    ]
+    assert openapi["paths"]["/api/income-series"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/IncomeSeriesResponse"
+    }
+    assert set(income_series_schema["required"]) == {
+        "rows",
+        "marginal_breakpoint_incomes",
+    }
+    assert income_series_schema["properties"]["rows"]["items"] == {
+        "$ref": "#/components/schemas/TaxBurdenResponse"
+    }
+    assert income_series_schema["properties"]["marginal_breakpoint_incomes"][
+        "items"
+    ]["type"] == "string"
     for path in (
         "/api/tax-years/{year}/filing-statuses",
         "/api/tax-years/{year}/parameters",
@@ -1474,6 +1493,16 @@ def test_income_series_can_include_marginal_breakpoints_and_rates(tmp_path):
         "203400.00",
         "245775.00",
         "250000.00",
+    ]
+    assert response.json()["marginal_breakpoint_incomes"] == [
+        "27900.00",
+        "44000.00",
+        "56400.00",
+        "94400.00",
+        "149700.00",
+        "187900.00",
+        "203400.00",
+        "245775.00",
     ]
     assert rows[0]["marginal_employee_tax_rate"] == "0.0672"
     assert rows[1]["marginal_employee_tax_rate"] == "0.0765"

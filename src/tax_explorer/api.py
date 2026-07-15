@@ -20,7 +20,7 @@ from tax_explorer import (
     PretaxDeductionParameters,
     TaxBurden,
     TaxScenario,
-    build_income_series,
+    calculate_income_series,
     calculate_tax_burden,
 )
 from tax_explorer.database import (
@@ -137,6 +137,55 @@ class CalculateRequest(BaseModel):
         return self
 
 
+class PayrollBreakdownResponse(BaseModel):
+    label: str
+    gross_income: str
+    payroll_wages: str
+    employee_social_security_tax: str
+    employee_medicare_tax: str
+    employee_additional_medicare_tax: str
+    total_employee_payroll_tax: str
+    employer_social_security_tax: str
+    employer_medicare_tax: str
+    total_employer_payroll_tax: str
+    total_payroll_tax: str
+
+
+class TaxBreakdownResponse(BaseModel):
+    code: str
+    label: str
+    amount: str
+
+
+class TaxBurdenResponse(BaseModel):
+    gross_income: str
+    employee_401k_contribution: str
+    health_fsa_contribution: str
+    dependent_care_fsa_contribution: str
+    total_pretax_deductions: str
+    taxable_income: str
+    federal_income_tax: str
+    employee_social_security_tax: str
+    employee_medicare_tax: str
+    employee_additional_medicare_tax: str
+    total_employee_payroll_tax: str
+    total_employee_tax: str
+    effective_employee_tax_rate: str
+    marginal_employee_tax_rate: str
+    employer_social_security_tax: str
+    employer_medicare_tax: str
+    total_employer_payroll_tax: str
+    total_tax_with_employer_payroll: str
+    marginal_tax_rate_with_employer_payroll: str
+    payroll_breakdown: list[PayrollBreakdownResponse]
+    tax_breakdown: list[TaxBreakdownResponse]
+
+
+class IncomeSeriesResponse(BaseModel):
+    rows: list[TaxBurdenResponse]
+    marginal_breakpoint_incomes: list[str]
+
+
 def create_app(
     database_path: str | Path = DEFAULT_DATABASE_PATH,
     *,
@@ -251,7 +300,7 @@ def create_app(
         pretax_deduction_mode: PretaxDeductionMode = Query(
             default=PRETAX_DEDUCTION_MODE_MAX_AVAILABLE
         ),
-    ) -> dict[str, list[dict[str, Any]]]:
+    ) -> IncomeSeriesResponse:
         try:
             _prevalidate_supported_income_series_request(
                 year=year,
@@ -270,7 +319,7 @@ def create_app(
             raise _parameter_http_exception(exc) from exc
 
         try:
-            rows = build_income_series(
+            series = calculate_income_series(
                 start=start,
                 stop=stop,
                 step=step,
@@ -286,7 +335,13 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        return {"rows": [_tax_burden_to_response(row) for row in rows]}
+        return IncomeSeriesResponse(
+            rows=[_tax_burden_to_response(row) for row in series.rows],
+            marginal_breakpoint_incomes=[
+                _decimal_to_string(income)
+                for income in series.marginal_breakpoint_incomes
+            ],
+        )
 
     _preserve_exact_tax_year_openapi_limit(app)
     return app

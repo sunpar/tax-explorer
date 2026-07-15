@@ -8,6 +8,7 @@ from typing import Callable, Iterable, Mapping
 
 
 MONEY = Decimal("0.01")
+_MAX_MONEY = Decimal("1e26") - MONEY
 RATE_PRECISION = Decimal("0.0001")
 MAX_INCOME_SERIES_ROWS = 2001
 ZERO = Decimal("0")
@@ -141,6 +142,12 @@ class TaxBurden:
     total_tax_with_employer_payroll: Decimal
     marginal_tax_rate_with_employer_payroll: Decimal
     payroll_breakdown: tuple[PayrollBreakdownItem, ...]
+
+
+@dataclass(frozen=True)
+class IncomeSeriesResult:
+    rows: tuple[TaxBurden, ...]
+    marginal_breakpoint_incomes: tuple[Decimal, ...]
 
 
 @dataclass(frozen=True)
@@ -349,6 +356,35 @@ def build_income_series(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> list[TaxBurden]:
+    result = calculate_income_series(
+        start=start,
+        stop=stop,
+        step=step,
+        include_employer_payroll_tax=include_employer_payroll_tax,
+        include_marginal_breakpoints=include_marginal_breakpoints,
+        pretax_deduction_mode=pretax_deduction_mode,
+        dependent_count=dependent_count,
+        secondary_income=secondary_income,
+        federal=federal,
+        payroll=payroll,
+        pretax_deductions=pretax_deductions,
+    )
+    return list(result.rows)
+
+
+def calculate_income_series(
+    start: Decimal | int | float | str,
+    stop: Decimal | int | float | str,
+    step: Decimal | int | float | str,
+    include_employer_payroll_tax: bool = False,
+    include_marginal_breakpoints: bool = False,
+    pretax_deduction_mode: str = PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
+    dependent_count: int = 0,
+    secondary_income: Decimal | int | float | str = ZERO_MONEY,
+    federal: FederalTaxParameters = FEDERAL_2026_SINGLE,
+    payroll: PayrollTaxParameters = PAYROLL_2026,
+    pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
+) -> IncomeSeriesResult:
     federal, payroll, pretax_deductions = _validated_tax_parameters(
         federal, payroll, pretax_deductions
     )
@@ -389,6 +425,7 @@ def build_income_series(
     )
 
     incomes: set[Decimal] = set()
+    marginal_breakpoint_incomes: set[Decimal] = set()
 
     def add_income(income: Decimal) -> None:
         incomes.add(income)
@@ -413,25 +450,29 @@ def build_income_series(
         ):
             if start_amount <= income <= stop_amount:
                 add_income(income)
+                marginal_breakpoint_incomes.add(income)
 
-    return [
-        _calculate_tax_burden(
-            TaxScenario(
-                gross_income=income,
-                include_employer_payroll_tax=include_employer_payroll_tax,
-                pretax_deduction_mode=pretax_deduction_mode,
-                dependent_count=dependent_count,
-                secondary_income=min(configured_secondary_income, income),
-            ),
-            federal=federal,
-            payroll=payroll,
-            pretax_deductions=pretax_deductions,
-            next_secondary_income=min(
-                configured_secondary_income, income + ONE_DOLLAR
-            ),
-        )
-        for income in sorted(incomes)
-    ]
+    return IncomeSeriesResult(
+        rows=tuple(
+            _calculate_tax_burden(
+                TaxScenario(
+                    gross_income=income,
+                    include_employer_payroll_tax=include_employer_payroll_tax,
+                    pretax_deduction_mode=pretax_deduction_mode,
+                    dependent_count=dependent_count,
+                    secondary_income=min(configured_secondary_income, income),
+                ),
+                federal=federal,
+                payroll=payroll,
+                pretax_deductions=pretax_deductions,
+                next_secondary_income=min(
+                    configured_secondary_income, income + ONE_DOLLAR
+                ),
+            )
+            for income in sorted(incomes)
+        ),
+        marginal_breakpoint_incomes=tuple(sorted(marginal_breakpoint_incomes)),
+    )
 
 
 def _validate_pretax_deduction_mode(mode: str) -> None:
@@ -1524,26 +1565,42 @@ def _worker_incomes(
 
 
 def _solve_income_for_target(
-    target: Decimal, value_at_income: Callable[[Decimal], Decimal]
+    target: Decimal,
+    value_at_income: Callable[[Decimal], Decimal],
 ) -> Decimal | None:
     if target < 0:
         return None
 
     lower = ZERO
     upper = max(ONE_DOLLAR, target)
+    try:
+        upper_money = _money(upper)
+    except ValueError:
+        return None
     while value_at_income(upper) < target:
-        upper *= 2
-        if upper > Decimal("1000000000"):
+        if upper >= _MAX_MONEY:
             return None
+        upper = min(upper * 2, _MAX_MONEY)
+        upper_money = _money(upper)
 
-    for _ in range(80):
-        midpoint = (lower + upper) / 2
+    lower_money = _money(lower)
+    while lower_money != upper_money:
+        midpoint = lower + (upper - lower) / 2
+        if midpoint == lower or midpoint == upper:
+            break
+        midpoint_money = _money(midpoint)
         if value_at_income(midpoint) < target:
             lower = midpoint
+            lower_money = midpoint_money
         else:
             upper = midpoint
+            upper_money = midpoint_money
 
-    return _money(upper)
+    if value_at_income(upper_money) < target:
+        if upper_money >= _MAX_MONEY:
+            return None
+        upper_money += MONEY
+    return upper_money
 
 
 def _additional_medicare_threshold(

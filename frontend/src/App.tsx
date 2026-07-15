@@ -27,6 +27,7 @@ import {
 import type { FilingStatus, TaxBurden, TaxParameters } from "./types";
 
 type ChartRow = TaxBurden & {
+  isMarginalBreakpoint: boolean;
   incomeNumber: number;
   totalTaxNumber: number;
   totalPretaxDeductionsNumber: number;
@@ -107,6 +108,11 @@ const PRIMARY_INCOME_STORAGE_KEY = "taxExplorer.primaryIncomeThousands";
 const SECONDARY_INCOME_STORAGE_KEY = "taxExplorer.secondaryIncomeThousands";
 const DEFAULT_TAX_YEAR = 2026;
 const SELECTED_INCOME_MAX = 3000000;
+const DEFAULT_STEP_THOUSANDS = "10";
+const DEFAULT_STEP_DOLLARS = 10000;
+const MAX_MONEY_NUMBER = 1e26;
+const MAX_AUTOMATIC_STOP = MAX_MONEY_NUMBER * (1 - Number.EPSILON);
+const MAX_INCOME_SERIES_ROWS = 2001;
 
 function sanitizeDependentCount(value: string | number | null): number {
   if (typeof value === "string" && !/^\d+$/.test(value)) return 0;
@@ -761,25 +767,34 @@ function solveIncomeForTarget(
   target: number,
   valueAtIncome: (grossIncome: number) => number
 ): number | null {
-  if (target < 0) return null;
+  if (!Number.isFinite(target) || target < 0 || target >= MAX_MONEY_NUMBER) {
+    return null;
+  }
 
   let lower = 0;
   let upper = Math.max(1, target);
+  let upperMoney = roundMoneyNumber(upper);
   while (valueAtIncome(upper) < target) {
-    upper *= 2;
-    if (upper > 1000000000) return null;
+    if (upper >= MAX_MONEY_NUMBER) return null;
+    upper = Math.min(upper * 2, MAX_MONEY_NUMBER);
+    upperMoney = roundMoneyNumber(upper);
   }
 
-  for (let index = 0; index < 80; index += 1) {
-    const midpoint = (lower + upper) / 2;
+  let lowerMoney = roundMoneyNumber(lower);
+  while (lowerMoney !== upperMoney) {
+    const midpoint = lower + (upper - lower) / 2;
+    if (midpoint === lower || midpoint === upper) break;
+    const midpointMoney = roundMoneyNumber(midpoint);
     if (valueAtIncome(midpoint) < target) {
       lower = midpoint;
+      lowerMoney = midpointMoney;
     } else {
       upper = midpoint;
+      upperMoney = midpointMoney;
     }
   }
 
-  return roundMoneyNumber(upper);
+  return upperMoney < MAX_MONEY_NUMBER ? upperMoney : null;
 }
 
 function roundMoneyNumber(value: number): number {
@@ -817,13 +832,45 @@ function defaultStopThousands(
       secondaryIncome
     )
   );
-  return dollarsToThousands(lastChangeIncome * 1.1);
+  return dollarsToThousands(
+    Math.min(lastChangeIncome * 1.1, MAX_AUTOMATIC_STOP)
+  );
+}
+
+function defaultSeriesStep(
+  start: number,
+  stop: number,
+  requestedStep: number,
+  parameters: TaxParameters,
+  mode: PretaxDeductionMode,
+  dependentCount: number,
+  secondaryIncome: number
+): number {
+  const breakpointCount = marginalRateChangeIncomes(
+    parameters,
+    mode,
+    dependentCount,
+    secondaryIncome
+  ).filter((income) => income >= start && income <= stop).length;
+  const gridRowBudget = Math.max(
+    2,
+    MAX_INCOME_SERIES_ROWS - breakpointCount - 1
+  );
+  const minimumStep =
+    stop <= start
+      ? requestedStep
+      : Math.ceil(((stop - start) / (gridRowBudget - 1)) * 100) / 100;
+  return Math.max(requestedStep, minimumStep);
 }
 
 function buildChartRows(
   rows: TaxBurden[],
-  includeEmployer: boolean
+  includeEmployer: boolean,
+  marginalBreakpointIncomes: readonly string[] = [],
+  legacyMarginalBreakpointIncomes: readonly number[] = []
 ): ChartRow[] {
+  const breakpointIncomes = new Set(marginalBreakpointIncomes);
+  const legacyBreakpointIncomes = new Set(legacyMarginalBreakpointIncomes);
   return rows.map((row) => {
     const incomeNumber = Number(row.gross_income);
     const totalTaxNumber = includeEmployer
@@ -836,6 +883,9 @@ function buildChartRows(
 
     return {
       ...row,
+      isMarginalBreakpoint:
+        breakpointIncomes.has(row.gross_income) ||
+        legacyBreakpointIncomes.has(incomeNumber),
       incomeNumber,
       totalTaxNumber,
       totalPretaxDeductionsNumber,
@@ -894,33 +944,6 @@ function readClickedIncome(state: unknown): number | null {
   return Number.isFinite(income) ? income : null;
 }
 
-function marginalRateChangeIncomeSet(
-  parameters: TaxParameters | null,
-  mode: PretaxDeductionMode,
-  dependentCount: number,
-  secondaryIncome: number,
-  start: string,
-  stop: string
-): Set<number> {
-  const startAmount = Number(start) || 0;
-  const stopAmount = Number(stop) || 0;
-  const incomes = new Set<number>([startAmount]);
-  if (!parameters) return incomes;
-
-  for (const income of marginalRateChangeIncomes(
-    parameters,
-    mode,
-    dependentCount,
-    secondaryIncome
-  )) {
-    incomes.add(income);
-  }
-
-  return new Set(
-    [...incomes].filter((income) => income >= startAmount && income <= stopAmount)
-  );
-}
-
 function ChartTooltip({
   active,
   label,
@@ -973,7 +996,8 @@ function App() {
   const [startThousands, setStartThousands] = useState("0");
   const [stopThousands, setStopThousands] = useState("");
   const [hasCustomStop, setHasCustomStop] = useState(false);
-  const [stepThousands, setStepThousands] = useState("10");
+  const [stepThousands, setStepThousands] = useState(DEFAULT_STEP_THOUSANDS);
+  const [hasCustomStep, setHasCustomStep] = useState(false);
   const [selectedIncome, setSelectedIncome] = useState(100000);
   const [hasCustomSelectedIncome, setHasCustomSelectedIncome] = useState(false);
   const hasCustomSelectedIncomeRef = useRef(false);
@@ -1001,6 +1025,11 @@ function App() {
   const [chartMode, setChartMode] = useState<ChartMode>("effectiveRate");
   const [parameters, setParameters] = useState<TaxParameters | null>(null);
   const [rows, setRows] = useState<TaxBurden[]>([]);
+  const [marginalBreakpointIncomes, setMarginalBreakpointIncomes] = useState<
+    string[]
+  >([]);
+  const [hasMarginalBreakpointMetadata, setHasMarginalBreakpointMetadata] =
+    useState(true);
   const [selectedBurden, setSelectedBurden] = useState<TaxBurden | null>(null);
   const [comparisonSeries, setComparisonSeries] = useState<CurveSeries[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1101,6 +1130,8 @@ function App() {
           setLoadedFilingStatusesYear(null);
           setParameters(null);
           setRows([]);
+          setMarginalBreakpointIncomes([]);
+          setHasMarginalBreakpointMetadata(true);
           setSelectedBurden(null);
           setComparisonSeries([]);
           setLoading(false);
@@ -1148,6 +1179,17 @@ function App() {
         ? effectiveStop
         : thousandsToDollars(nextDefaultStopThousands);
       const resolvedStop = clampStopDollarsAtStart(start, requestedStop);
+      const resolvedStep = hasCustomStep
+        ? Number(validStep)
+        : defaultSeriesStep(
+            Number(start),
+            Number(resolvedStop),
+            DEFAULT_STEP_DOLLARS,
+            nextParameters,
+            pretaxDeductionMode,
+            dependentCount,
+            secondaryIncome
+          );
       const resolvedSecondaryIncomeRequest = clampSecondaryDollarsAtStop(
         secondaryIncomeRequest,
         resolvedStop
@@ -1157,7 +1199,7 @@ function App() {
         filingStatus,
         start,
         stop: resolvedStop,
-        step: validStep,
+        step: String(resolvedStep),
         includeEmployerPayrollTax: includeEmployer,
         includeMarginalBreakpoints: true,
         dependentCount,
@@ -1174,16 +1216,30 @@ function App() {
           compareTaxYears
         ),
         color: seriesColor(0),
-        rows: buildChartRows(selectedSeries.rows, includeEmployer)
+        rows: buildChartRows(
+          selectedSeries.rows,
+          includeEmployer,
+          selectedSeries.marginal_breakpoint_incomes
+        )
       };
 
       if (cancelled) return;
       if (!hasCustomStop && stopThousands !== nextDefaultStopThousands) {
         setStopThousands(nextDefaultStopThousands);
       }
+      const nextDefaultStepThousands = dollarsToThousands(resolvedStep);
+      if (!hasCustomStep && stepThousands !== nextDefaultStepThousands) {
+        setStepThousands(nextDefaultStepThousands);
+      }
       selectedScenarioFailedRef.current = false;
       setParameters(nextParameters);
       setRows(selectedSeries.rows);
+      setMarginalBreakpointIncomes(
+        selectedSeries.marginal_breakpoint_incomes
+      );
+      setHasMarginalBreakpointMetadata(
+        selectedSeries.has_marginal_breakpoint_metadata
+      );
       setComparisonSeries([selectedCurveSeries]);
 
       let nextComparisonSeries: CurveSeries[];
@@ -1258,7 +1314,11 @@ function App() {
                 compareTaxYears
               ),
               color: seriesColor(index),
-              rows: buildChartRows(response.rows, includeEmployer)
+              rows: buildChartRows(
+                response.rows,
+                includeEmployer,
+                response.marginal_breakpoint_incomes
+              )
             };
           })
         );
@@ -1277,6 +1337,8 @@ function App() {
         selectedScenarioFailedRef.current = true;
         setParameters(null);
         setRows([]);
+        setMarginalBreakpointIncomes([]);
+        setHasMarginalBreakpointMetadata(true);
         setSelectedBurden(null);
         setComparisonSeries([]);
         setScenarioError(nextError.message);
@@ -1298,6 +1360,7 @@ function App() {
     step,
     stopThousands,
     hasCustomStop,
+    hasCustomStep,
     includeEmployer,
     pretaxDeductionMode,
     dependentCount,
@@ -1355,10 +1418,36 @@ function App() {
     isSelectedStatusReady
   ]);
 
-  const chartRows = useMemo<ChartRow[]>(
-    () => buildChartRows(rows, includeEmployer),
-    [rows, includeEmployer]
-  );
+  const chartRows = useMemo<ChartRow[]>(() => {
+    const legacyBreakpointIncomes =
+      !hasMarginalBreakpointMetadata && parameters
+        ? marginalRateChangeIncomes(
+            parameters,
+            pretaxDeductionMode,
+            dependentCount,
+            secondaryIncome
+          ).filter(
+            (income) => income >= Number(start) && income <= Number(effectiveStop)
+          )
+        : [];
+    return buildChartRows(
+      rows,
+      includeEmployer,
+      marginalBreakpointIncomes,
+      legacyBreakpointIncomes
+    );
+  }, [
+    dependentCount,
+    effectiveStop,
+    hasMarginalBreakpointMetadata,
+    includeEmployer,
+    marginalBreakpointIncomes,
+    parameters,
+    pretaxDeductionMode,
+    rows,
+    secondaryIncome,
+    start
+  ]);
 
   const selectedRow = useMemo(() => {
     if (selectedBurden) return buildChartRows([selectedBurden], includeEmployer)[0];
@@ -1402,24 +1491,11 @@ function App() {
   }, [dependentCount, parameters, secondaryIncome, selectedRow]);
 
   const tableRows = useMemo(() => {
-    const breakpointIncomes = marginalRateChangeIncomeSet(
-      parameters,
-      pretaxDeductionMode,
-      dependentCount,
-      secondaryIncome,
-      start,
-      effectiveStop
+    const startAmount = Number(start) || 0;
+    return chartRows.filter(
+      (row) => row.incomeNumber === startAmount || row.isMarginalBreakpoint
     );
-    return chartRows.filter((row) => breakpointIncomes.has(row.incomeNumber));
-  }, [
-    chartRows,
-    dependentCount,
-    parameters,
-    pretaxDeductionMode,
-    secondaryIncome,
-    start,
-    effectiveStop
-  ]);
+  }, [chartRows, start]);
 
   const sampledIncomeOptions = useMemo(
     () => sortedUniqueNumbers(tableRows.map((row) => row.incomeNumber)),
@@ -1843,7 +1919,10 @@ function App() {
               type="number"
               min="1"
               value={stepThousands}
-              onChange={(event) => setStepThousands(event.target.value)}
+              onChange={(event) => {
+                setStepThousands(event.target.value);
+                setHasCustomStep(true);
+              }}
               onBlur={() => {
                 if (stepDollarsFromThousands(stepThousands) === null) {
                   setStepThousands("1");
