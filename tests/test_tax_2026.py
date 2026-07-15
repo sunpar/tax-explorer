@@ -979,6 +979,37 @@ def test_dual_earner_series_includes_later_worker_wage_base_crossing():
     } <= set(series.marginal_breakpoint_incomes)
 
 
+def test_dual_earner_series_checks_both_sides_of_gradual_phase_in_start():
+    federal = replace(FEDERAL_2026_SINGLE, filing_status="married_joint")
+    payroll = replace(PAYROLL_2026, social_security_wage_base=money("746.00"))
+    pretax_deductions = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=money("261.50"),
+        health_fsa_limit=money("101.50"),
+        dependent_care_fsa_limit=money("945.00"),
+        gradual_phase_in_start_rate=Decimal("0.59"),
+    )
+
+    series = calculate_income_series(
+        start=money("0.00"),
+        stop=money("200000.00"),
+        step=money("200000.00"),
+        include_marginal_breakpoints=True,
+        pretax_deduction_mode="gradual_phase_in",
+        dependent_count=1,
+        secondary_income=money("850.00"),
+        federal=federal,
+        payroll=payroll,
+        pretax_deductions=pretax_deductions,
+    )
+
+    assert {
+        money("746.00"),
+        money("16100.01"),
+        money("184812.00"),
+    } <= set(series.marginal_breakpoint_incomes)
+
+
 def test_dual_earner_series_marginal_rate_uses_next_worker_pretax_caps():
     federal = FederalTaxParameters(
         tax_year=2026,

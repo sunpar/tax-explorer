@@ -1618,6 +1618,9 @@ def _dual_worker_payroll_wage_search_incomes(
         _MAX_MONEY,
     )
     if pretax_deduction_mode == PRETAX_DEDUCTION_MODE_GRADUAL_PHASE_IN:
+        phase_in_start = min(federal.standard_deduction, _MAX_MONEY)
+        if phase_in_start < _MAX_MONEY:
+            search_incomes.add(phase_in_start + MONEY)
         phase_in_end = min(
             _gradual_phase_in_end_income(
                 federal,
