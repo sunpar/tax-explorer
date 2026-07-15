@@ -85,4 +85,6 @@ export type TaxBurden = {
 
 export type IncomeSeriesResponse = {
   rows: TaxBurden[];
+  marginal_breakpoint_incomes: string[];
+  has_marginal_breakpoint_metadata: boolean;
 };

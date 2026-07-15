@@ -341,7 +341,11 @@ function incomeSeries(
   return {
     rows: incomes.map((income) =>
       taxBurden(income, filingStatus, dependentCount, secondaryIncome)
-    )
+    ),
+    marginal_breakpoint_incomes: incomes
+      .slice(1)
+      .map((income) => income.toFixed(2)),
+    has_marginal_breakpoint_metadata: true
   };
 }
 
@@ -580,6 +584,161 @@ describe("App tax curve controls", () => {
       )
     );
     expect(stopInput).toHaveValue(75);
+  });
+
+  test("preserves breakpoint rows from legacy income-series responses", async () => {
+    const legacySeries = incomeSeries("single");
+    mockFetchIncomeSeries.mockResolvedValue({
+      ...legacySeries,
+      marginal_breakpoint_incomes: [],
+      has_marginal_breakpoint_metadata: false
+    });
+
+    await renderLoadedApp();
+
+    const sampledRows = screen
+      .getByRole("heading", { name: "Sampled Income Rows" })
+      .closest("section");
+    expect(sampledRows).not.toBeNull();
+    expect(
+      within(sampledRows as HTMLElement)
+        .getAllByRole("row")
+        .some(
+          (row) =>
+            within(row).queryAllByRole("cell")[0]?.textContent === "$127,900"
+        )
+    ).toBe(true);
+  });
+
+  test("includes high-income brackets in the default Stop and breakpoint table", async () => {
+    const highIncomeParameters: TaxParameters = {
+      ...singleParameters,
+      federal: {
+        ...singleParameters.federal,
+        brackets: [
+          { lower_bound: "0.00", rate: "0.10" },
+          { lower_bound: "2000000000.00", rate: "0.20" },
+          { lower_bound: "10000000000.00", rate: "0.30" },
+          { lower_bound: "20000000000.00", rate: "0.40" }
+        ]
+      },
+      pretax_deductions: {
+        ...singleParameters.pretax_deductions,
+        employee_401k_limit: "10000000000.00",
+        health_fsa_limit: "0.00",
+        dependent_care_fsa_limit: "0.00"
+      }
+    };
+    const highIncomeStart = 2132770177.73;
+    const adjacentGridIncome = 2132771177.74;
+    const highIncomeBreakpoint = 2132771177.75;
+    const highIncomeStop = highIncomeBreakpoint + 1000;
+    mockFetchTaxParameters.mockResolvedValue(highIncomeParameters);
+    mockFetchIncomeSeries.mockImplementation(async (request) => {
+      const breakpointRow = {
+        ...taxBurden(highIncomeBreakpoint, "single"),
+        marginal_employee_tax_rate: "0.4444"
+      };
+      return {
+        rows:
+          Number(request.start) === highIncomeStart
+            ? [
+                taxBurden(highIncomeStart, "single"),
+                taxBurden(adjacentGridIncome, "single"),
+                breakpointRow
+              ]
+            : [taxBurden(0, "single"), breakpointRow],
+        marginal_breakpoint_incomes: [highIncomeBreakpoint.toFixed(2)],
+        has_marginal_breakpoint_metadata: true
+      };
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(mockFetchIncomeSeries).toHaveBeenCalled());
+    const initialSeriesRequest = mockFetchIncomeSeries.mock.calls[0][0];
+    const initialGridRows =
+      Math.floor(
+        (Number(initialSeriesRequest.stop) - Number(initialSeriesRequest.start)) /
+          Number(initialSeriesRequest.step)
+      ) + 1;
+    expect(Number(initialSeriesRequest.step)).toBeGreaterThan(10000);
+    expect(initialGridRows).toBeLessThan(2001);
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: String(highIncomeStop / 1000) }
+    });
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: String(highIncomeStart / 1000) }
+    });
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: String(highIncomeStart),
+          stop: String(highIncomeStop),
+          step: "10000"
+        })
+      )
+    );
+    fireEvent.change(screen.getByLabelText("Step ($k)"), {
+      target: { value: "1.00001" }
+    });
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: String(highIncomeStart),
+          stop: String(highIncomeStop),
+          step: "1000.01"
+        })
+      )
+    );
+    const lastSeriesRequest =
+      mockFetchIncomeSeries.mock.calls[
+        mockFetchIncomeSeries.mock.calls.length - 1
+      ][0];
+    expect(Number(lastSeriesRequest.stop)).toBeGreaterThan(highIncomeBreakpoint);
+    const sampledRows = screen
+      .getByRole("heading", { name: "Sampled Income Rows" })
+      .closest("section");
+    expect(sampledRows).not.toBeNull();
+    expect(
+      within(sampledRows as HTMLElement).getByText("$2,132,771,178")
+    ).toBeInTheDocument();
+    expect(
+      within(sampledRows as HTMLElement).getByText("44.44%")
+    ).toBeInTheDocument();
+    expect(within(sampledRows as HTMLElement).getAllByRole("row")).toHaveLength(3);
+  });
+
+  test("keeps the default Stop below the backend money ceiling", async () => {
+    const nearLimitParameters: TaxParameters = {
+      ...singleParameters,
+      federal: {
+        ...singleParameters.federal,
+        standard_deduction: "10000000000000000000000000.00",
+        brackets: [
+          { lower_bound: "0.00", rate: "0.10" },
+          {
+            lower_bound: "85000000000000000000000000.00",
+            rate: "0.20"
+          }
+        ]
+      },
+      pretax_deductions: {
+        ...singleParameters.pretax_deductions,
+        employee_401k_limit: "0.00",
+        health_fsa_limit: "0.00",
+        dependent_care_fsa_limit: "0.00"
+      }
+    };
+    mockFetchTaxParameters.mockResolvedValue(nearLimitParameters);
+
+    render(<App />);
+
+    await waitFor(() => expect(mockFetchIncomeSeries).toHaveBeenCalled());
+    for (const [request] of mockFetchIncomeSeries.mock.calls) {
+      expect(Number(request.stop)).toBeGreaterThan(9.5e25);
+      expect(Number(request.stop)).toBeLessThan(1e26);
+    }
   });
 
   test("quick range buttons update Start and Stop", async () => {

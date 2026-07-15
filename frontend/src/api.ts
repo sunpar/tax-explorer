@@ -528,16 +528,56 @@ function isTaxBreakdownItem(value: unknown): value is TaxBreakdownItem {
   );
 }
 
-function isIncomeSeriesResponse(value: unknown): value is IncomeSeriesResponse {
-  if (!isRecord(value) || !Array.isArray(value.rows)) return false;
+function parseIncomeSeriesResponse(value: unknown): IncomeSeriesResponse | null {
+  if (!isRecord(value) || !Array.isArray(value.rows)) return null;
 
   const { rows } = value;
-  if (rows.length === 0 || !rows.every(isTaxBurden)) return false;
+  const hasBreakpointMetadata = Object.prototype.hasOwnProperty.call(
+    value,
+    "marginal_breakpoint_incomes"
+  );
+  const breakpointIncomes = hasBreakpointMetadata
+    ? value.marginal_breakpoint_incomes
+    : [];
+  if (
+    rows.length === 0 ||
+    !rows.every(isTaxBurden) ||
+    !Array.isArray(breakpointIncomes)
+  ) {
+    return null;
+  }
 
-  return rows.every(
+  const rowIncomes = new Set(rows.map((row) => row.gross_income));
+  if (
+    !breakpointIncomes.every(
+      (income) => isNonNegativeDecimalString(income) && rowIncomes.has(income)
+    ) ||
+    new Set(breakpointIncomes).size !== breakpointIncomes.length
+  ) {
+    return null;
+  }
+
+  if (!rows.every(
     (row, index) =>
       index === 0 ||
-      Number(row.gross_income) > Number(rows[index - 1].gross_income)
+      moneyCentsAreGreater(row.gross_income, rows[index - 1].gross_income)
+  )) {
+    return null;
+  }
+
+  return {
+    rows,
+    marginal_breakpoint_incomes: breakpointIncomes,
+    has_marginal_breakpoint_metadata: hasBreakpointMetadata
+  };
+}
+
+function moneyCentsAreGreater(left: string, right: string): boolean {
+  const leftCents = normalizedMoneyCents(left);
+  const rightCents = normalizedMoneyCents(right);
+  return (
+    leftCents.length > rightCents.length ||
+    (leftCents.length === rightCents.length && leftCents > rightCents)
   );
 }
 
@@ -581,10 +621,11 @@ export async function fetchIncomeSeries(
   const response = await requestJson(
     `/api/income-series?${params.toString()}`
   );
-  if (!isIncomeSeriesResponse(response)) {
+  const parsedResponse = parseIncomeSeriesResponse(response);
+  if (!parsedResponse) {
     throw new Error("Malformed income series response");
   }
-  return response;
+  return parsedResponse;
 }
 
 export async function fetchTaxBurden(request: CalculateRequest): Promise<TaxBurden> {

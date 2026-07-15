@@ -145,6 +145,12 @@ class TaxBurden:
 
 
 @dataclass(frozen=True)
+class IncomeSeriesResult:
+    rows: tuple[TaxBurden, ...]
+    marginal_breakpoint_incomes: tuple[Decimal, ...]
+
+
+@dataclass(frozen=True)
 class _PretaxDeductions:
     employee_401k_contribution: Decimal
     health_fsa_contribution: Decimal
@@ -350,6 +356,35 @@ def build_income_series(
     payroll: PayrollTaxParameters = PAYROLL_2026,
     pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
 ) -> list[TaxBurden]:
+    result = calculate_income_series(
+        start=start,
+        stop=stop,
+        step=step,
+        include_employer_payroll_tax=include_employer_payroll_tax,
+        include_marginal_breakpoints=include_marginal_breakpoints,
+        pretax_deduction_mode=pretax_deduction_mode,
+        dependent_count=dependent_count,
+        secondary_income=secondary_income,
+        federal=federal,
+        payroll=payroll,
+        pretax_deductions=pretax_deductions,
+    )
+    return list(result.rows)
+
+
+def calculate_income_series(
+    start: Decimal | int | float | str,
+    stop: Decimal | int | float | str,
+    step: Decimal | int | float | str,
+    include_employer_payroll_tax: bool = False,
+    include_marginal_breakpoints: bool = False,
+    pretax_deduction_mode: str = PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
+    dependent_count: int = 0,
+    secondary_income: Decimal | int | float | str = ZERO_MONEY,
+    federal: FederalTaxParameters = FEDERAL_2026_SINGLE,
+    payroll: PayrollTaxParameters = PAYROLL_2026,
+    pretax_deductions: PretaxDeductionParameters = PRETAX_DEDUCTIONS_2026,
+) -> IncomeSeriesResult:
     federal, payroll, pretax_deductions = _validated_tax_parameters(
         federal, payroll, pretax_deductions
     )
@@ -390,6 +425,7 @@ def build_income_series(
     )
 
     incomes: set[Decimal] = set()
+    marginal_breakpoint_incomes: set[Decimal] = set()
 
     def add_income(income: Decimal) -> None:
         incomes.add(income)
@@ -414,25 +450,29 @@ def build_income_series(
         ):
             if start_amount <= income <= stop_amount:
                 add_income(income)
+                marginal_breakpoint_incomes.add(income)
 
-    return [
-        _calculate_tax_burden(
-            TaxScenario(
-                gross_income=income,
-                include_employer_payroll_tax=include_employer_payroll_tax,
-                pretax_deduction_mode=pretax_deduction_mode,
-                dependent_count=dependent_count,
-                secondary_income=min(configured_secondary_income, income),
-            ),
-            federal=federal,
-            payroll=payroll,
-            pretax_deductions=pretax_deductions,
-            next_secondary_income=min(
-                configured_secondary_income, income + ONE_DOLLAR
-            ),
-        )
-        for income in sorted(incomes)
-    ]
+    return IncomeSeriesResult(
+        rows=tuple(
+            _calculate_tax_burden(
+                TaxScenario(
+                    gross_income=income,
+                    include_employer_payroll_tax=include_employer_payroll_tax,
+                    pretax_deduction_mode=pretax_deduction_mode,
+                    dependent_count=dependent_count,
+                    secondary_income=min(configured_secondary_income, income),
+                ),
+                federal=federal,
+                payroll=payroll,
+                pretax_deductions=pretax_deductions,
+                next_secondary_income=min(
+                    configured_secondary_income, income + ONE_DOLLAR
+                ),
+            )
+            for income in sorted(incomes)
+        ),
+        marginal_breakpoint_incomes=tuple(sorted(marginal_breakpoint_incomes)),
+    )
 
 
 def _validate_pretax_deduction_mode(mode: str) -> None:

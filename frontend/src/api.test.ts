@@ -1005,7 +1005,21 @@ describe("api requests", () => {
       rows: [
         { ...taxBurdenResponse, gross_income: "0.00" },
         taxBurdenResponse
-      ]
+      ],
+      marginal_breakpoint_incomes: [taxBurdenResponse.gross_income]
+    },
+    {
+      rows: [
+        {
+          ...taxBurdenResponse,
+          gross_income: "50000000000000000000000000.00"
+        },
+        {
+          ...taxBurdenResponse,
+          gross_income: "50000000000000000000000000.01"
+        }
+      ],
+      marginal_breakpoint_incomes: ["50000000000000000000000000.01"]
     }
   ])("returns valid income series responses", async (body) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
@@ -1015,26 +1029,43 @@ describe("api requests", () => {
       })
     );
 
-    await expect(fetchIncomeSeries(seriesRequest)).resolves.toEqual(body);
+    await expect(fetchIncomeSeries(seriesRequest)).resolves.toEqual({
+      ...body,
+      marginal_breakpoint_incomes:
+        "marginal_breakpoint_incomes" in body
+          ? body.marginal_breakpoint_incomes
+          : [],
+      has_marginal_breakpoint_metadata:
+        "marginal_breakpoint_incomes" in body
+    });
   });
 
   test.each([
     {},
     { rows: [] },
-    { rows: taxBurdenResponse },
-    { rows: [{ ...taxBurdenResponse, marginal_employee_tax_rate: "oops" }] },
+    { rows: taxBurdenResponse, marginal_breakpoint_incomes: [] },
+    {
+      rows: [{ ...taxBurdenResponse, marginal_employee_tax_rate: "oops" }],
+      marginal_breakpoint_incomes: []
+    },
     {
       rows: [
         taxBurdenResponse,
         { ...taxBurdenResponse, gross_income: "0.00" }
-      ]
+      ],
+      marginal_breakpoint_incomes: []
     },
-    { rows: [taxBurdenResponse, taxBurdenResponse] },
     {
-      rows: [
-        { ...taxBurdenResponse, gross_income: "9007199254740992.00" },
-        { ...taxBurdenResponse, gross_income: "9007199254740993.00" }
-      ]
+      rows: [taxBurdenResponse, taxBurdenResponse],
+      marginal_breakpoint_incomes: []
+    },
+    { rows: [taxBurdenResponse], marginal_breakpoint_incomes: "100000.00" },
+    { rows: [taxBurdenResponse], marginal_breakpoint_incomes: null },
+    { rows: [taxBurdenResponse], marginal_breakpoint_incomes: ["oops"] },
+    { rows: [taxBurdenResponse], marginal_breakpoint_incomes: ["90000.00"] },
+    {
+      rows: [taxBurdenResponse],
+      marginal_breakpoint_incomes: ["100000.00", "100000.00"]
     }
   ])("rejects malformed income series responses", async (body) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
