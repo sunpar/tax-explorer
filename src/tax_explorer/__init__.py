@@ -1352,21 +1352,43 @@ def _marginal_rate_change_incomes(
                 incomes.add(income)
 
     for worker_index in range(worker_count):
-        income = _solve_income_for_target(
+        def value_at_income(
+            gross_income: Decimal,
+            index: int = worker_index,
+        ) -> Decimal:
+            return _worker_payroll_wages_before_tax(
+                gross_income,
+                min(secondary_income, gross_income),
+                federal,
+                pretax_deductions,
+                pretax_deduction_mode,
+                worker_count,
+            )[index]
+
+        if worker_count == 1:
+            income = _solve_income_for_target(
+                target=payroll.social_security_wage_base,
+                value_at_income=value_at_income,
+            )
+            if income is not None:
+                incomes.add(income)
+            continue
+
+        search_incomes = _dual_worker_payroll_wage_search_incomes(
             target=payroll.social_security_wage_base,
-            value_at_income=lambda gross_income, index=worker_index: (
-                _worker_payroll_wages_before_tax(
-                    gross_income,
-                    min(secondary_income, gross_income),
-                    federal,
-                    pretax_deductions,
-                    pretax_deduction_mode,
-                    worker_count,
-                )[index]
-            ),
+            secondary_income=secondary_income,
+            federal=federal,
+            pretax_deductions=pretax_deductions,
+            pretax_deduction_mode=pretax_deduction_mode,
+            worker_count=worker_count,
         )
-        if income is not None:
-            incomes.add(income)
+        incomes.update(
+            _solve_income_transitions_for_target(
+                target=payroll.social_security_wage_base,
+                value_at_income=value_at_income,
+                search_incomes=search_incomes,
+            )
+        )
 
     additional_medicare_income = _solve_income_for_target(
         target=_additional_medicare_threshold(federal, payroll),
@@ -1562,6 +1584,90 @@ def _worker_incomes(
         return (gross_income,)
     secondary = min(secondary_income, gross_income)
     return (gross_income - secondary, secondary)
+
+
+def _dual_worker_payroll_wage_search_incomes(
+    target: Decimal,
+    secondary_income: Decimal,
+    federal: FederalTaxParameters,
+    pretax_deductions: PretaxDeductionParameters,
+    pretax_deduction_mode: str,
+    worker_count: int,
+) -> set[Decimal]:
+    non_dependent_cap = (
+        pretax_deductions.employee_401k_limit
+        + pretax_deductions.health_fsa_limit
+    )
+    total_cap = _pretax_deduction_cap(pretax_deductions)
+    per_worker_non_dependent_cap = non_dependent_cap / worker_count
+    search_incomes = {
+        MONEY,
+        min(target, _MAX_MONEY),
+        min(federal.standard_deduction, _MAX_MONEY),
+        min(secondary_income, _MAX_MONEY),
+        min(per_worker_non_dependent_cap, _MAX_MONEY),
+        min(secondary_income + per_worker_non_dependent_cap, _MAX_MONEY),
+        min(total_cap, _MAX_MONEY),
+        min(secondary_income + total_cap, _MAX_MONEY),
+    }
+    upper_bound = min(
+        max(
+            target + secondary_income + total_cap,
+            secondary_income + per_worker_non_dependent_cap,
+        ),
+        _MAX_MONEY,
+    )
+    if pretax_deduction_mode == PRETAX_DEDUCTION_MODE_GRADUAL_PHASE_IN:
+        phase_in_end = min(
+            _gradual_phase_in_end_income(
+                federal,
+                pretax_deductions,
+                worker_count,
+            ),
+            _MAX_MONEY,
+        )
+        search_incomes.add(phase_in_end)
+        upper_bound = max(upper_bound, phase_in_end)
+
+    search_incomes.add(upper_bound)
+    search_incomes.add(_MAX_MONEY)
+    return search_incomes
+
+
+def _solve_income_transitions_for_target(
+    target: Decimal,
+    value_at_income: Callable[[Decimal], Decimal],
+    search_incomes: Iterable[Decimal],
+) -> set[Decimal]:
+    if target < 0:
+        return set()
+
+    ordered_incomes = sorted(
+        {max(MONEY, _money(income)) for income in search_incomes}
+    )
+
+    @lru_cache
+    def meets_target(income: Decimal) -> bool:
+        return value_at_income(income) >= target
+
+    transitions: set[Decimal] = set()
+    for lower, upper in pairwise(ordered_incomes):
+        lower_meets_target = meets_target(lower)
+        if lower_meets_target == meets_target(upper):
+            continue
+
+        lower_cents = int(lower / MONEY)
+        upper_cents = int(upper / MONEY)
+        while upper_cents - lower_cents > 1:
+            midpoint_cents = (lower_cents + upper_cents) // 2
+            midpoint = Decimal(midpoint_cents) * MONEY
+            if meets_target(midpoint) == lower_meets_target:
+                lower_cents = midpoint_cents
+            else:
+                upper_cents = midpoint_cents
+        transitions.add(Decimal(upper_cents) * MONEY)
+
+    return transitions
 
 
 def _solve_income_for_target(

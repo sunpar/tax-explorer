@@ -14,6 +14,7 @@ from tax_explorer import (
     TaxBracket,
     TaxScenario,
     build_income_series,
+    calculate_income_series,
     calculate_tax_burden,
 )
 
@@ -934,6 +935,48 @@ def test_dual_earner_series_includes_secondary_income_marginal_breakpoint():
     }
     assert rates_by_income[money("184500.00")] == Decimal("0.1145")
     assert rates_by_income[money("200000.00")] == Decimal("0.1765")
+
+
+def test_dual_earner_series_includes_nonmonotone_worker_wage_base_crossings():
+    federal = replace(
+        FEDERAL_2026_SINGLE,
+        filing_status="married_joint",
+        standard_deduction=money("32200.00"),
+    )
+
+    series = calculate_income_series(
+        start=money("0.00"),
+        stop=money("500000.00"),
+        step=money("500000.00"),
+        include_marginal_breakpoints=True,
+        pretax_deduction_mode="gradual_phase_in",
+        dependent_count=1,
+        secondary_income=money("186500.00"),
+        federal=federal,
+    )
+
+    assert {
+        money("202982.40"),
+        money("215178.56"),
+    } <= set(series.marginal_breakpoint_incomes)
+
+
+def test_dual_earner_series_includes_later_worker_wage_base_crossing():
+    series = calculate_income_series(
+        start=money("0.00"),
+        stop=money("500000.00"),
+        step=money("500000.00"),
+        include_marginal_breakpoints=True,
+        pretax_deduction_mode="gradual_phase_in",
+        dependent_count=1,
+        secondary_income=money("186500.00"),
+        federal=FEDERAL_2026_MARRIED_JOINT,
+    )
+
+    assert {
+        money("185399.40"),
+        money("467180.01"),
+    } <= set(series.marginal_breakpoint_incomes)
 
 
 def test_dual_earner_series_marginal_rate_uses_next_worker_pretax_caps():

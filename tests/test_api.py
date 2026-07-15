@@ -1563,6 +1563,31 @@ def test_income_series_includes_lopsided_dual_earner_deduction_breakpoint(tmp_pa
     assert deductions_by_income["32900.00"] == "32900.00"
 
 
+def test_income_series_returns_all_dual_earner_wage_base_crossings(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "married_joint",
+            "start": "0",
+            "stop": "500000",
+            "step": "500000",
+            "include_marginal_breakpoints": True,
+            "pretax_deduction_mode": "gradual_phase_in",
+            "dependent_count": 1,
+            "secondary_income": "186500",
+        },
+    )
+
+    assert response.status_code == 200
+    assert {
+        "185399.40",
+        "467180.01",
+    } <= set(response.json()["marginal_breakpoint_incomes"])
+
+
 def test_income_series_accepts_gradual_pretax_deduction_mode(tmp_path):
     client = create_test_client(tmp_path)
 
