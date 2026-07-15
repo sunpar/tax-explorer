@@ -1042,6 +1042,62 @@ def test_build_income_series_includes_high_income_marginal_breakpoint():
     assert rates_by_income[money("600027900.00")] == Decimal("0.2235")
 
 
+def test_build_income_series_keeps_large_marginal_breakpoint_cent_precision():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=money("0.00"),
+        brackets=(
+            TaxBracket(money("0.00"), Decimal("0.10")),
+            TaxBracket(money("6e24"), Decimal("0.20")),
+        ),
+    )
+
+    rows = build_income_series(
+        start=money("0.00"),
+        stop=money("7e24"),
+        step=money("7e24"),
+        include_marginal_breakpoints=True,
+        federal=federal,
+    )
+
+    assert money("6000000000000000000027900.00") in {
+        row.gross_income for row in rows
+    }
+
+
+def test_build_income_series_probes_maximum_money_after_doubling_overflow():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=money("0.01"),
+        brackets=(
+            TaxBracket(money("0.00"), Decimal("0.10")),
+            TaxBracket(money("5e25"), Decimal("0.20")),
+        ),
+    )
+    no_pretax_deductions = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=money("0.00"),
+        health_fsa_limit=money("0.00"),
+        dependent_care_fsa_limit=money("0.00"),
+    )
+
+    rows = build_income_series(
+        start=money("5e25"),
+        stop=money("6e25"),
+        step=money("1e25"),
+        include_marginal_breakpoints=True,
+        pretax_deduction_mode="gradual_phase_in",
+        federal=federal,
+        pretax_deductions=no_pretax_deductions,
+    )
+
+    assert money("50000000000000000000000000.01") in {
+        row.gross_income for row in rows
+    }
+
+
 def test_build_income_series_includes_dependent_care_breakpoints():
     rows = build_income_series(
         start=0,

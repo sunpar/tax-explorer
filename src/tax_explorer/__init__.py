@@ -8,6 +8,7 @@ from typing import Callable, Iterable, Mapping
 
 
 MONEY = Decimal("0.01")
+_MAX_MONEY = Decimal("1e26") - MONEY
 RATE_PRECISION = Decimal("0.0001")
 MAX_INCOME_SERIES_ROWS = 2001
 ZERO = Decimal("0")
@@ -410,7 +411,6 @@ def build_income_series(
             pretax_deduction_mode,
             worker_count,
             configured_secondary_income,
-            stop_amount,
         ):
             if start_amount <= income <= stop_amount:
                 add_income(income)
@@ -1264,7 +1264,6 @@ def _marginal_rate_change_incomes(
     pretax_deduction_mode: str,
     worker_count: int,
     secondary_income: Decimal,
-    maximum_income: Decimal,
 ) -> set[Decimal]:
     incomes: set[Decimal] = set()
     if secondary_income > 0:
@@ -1276,7 +1275,6 @@ def _marginal_rate_change_incomes(
                 pretax_deductions,
                 worker_count,
                 secondary_income,
-                maximum_income,
             )
         )
         for bracket in federal.brackets:
@@ -1290,7 +1288,6 @@ def _marginal_rate_change_incomes(
                     pretax_deduction_mode,
                     worker_count,
                 ),
-                maximum_income=maximum_income,
             )
             if income is not None:
                 incomes.add(income)
@@ -1310,7 +1307,6 @@ def _marginal_rate_change_incomes(
                     pretax_deduction_mode,
                     worker_count,
                 ),
-                maximum_income=maximum_income,
             )
             if income is not None:
                 incomes.add(income)
@@ -1328,7 +1324,6 @@ def _marginal_rate_change_incomes(
                     worker_count,
                 )[index]
             ),
-            maximum_income=maximum_income,
         )
         if income is not None:
             incomes.add(income)
@@ -1343,7 +1338,6 @@ def _marginal_rate_change_incomes(
             pretax_deduction_mode,
             worker_count,
         ),
-        maximum_income=maximum_income,
     )
     if additional_medicare_income is not None:
         incomes.add(additional_medicare_income)
@@ -1356,7 +1350,6 @@ def _max_available_pretax_deduction_change_incomes(
     pretax_deductions: PretaxDeductionParameters,
     worker_count: int,
     secondary_income: Decimal,
-    maximum_income: Decimal,
 ) -> set[Decimal]:
     incomes: set[Decimal] = set()
     total_cap = _pretax_deduction_cap(pretax_deductions)
@@ -1384,7 +1377,6 @@ def _max_available_pretax_deduction_change_incomes(
             PRETAX_DEDUCTION_MODE_MAX_AVAILABLE,
             worker_count,
         ),
-        maximum_income=maximum_income,
     )
     if max_deduction_income is not None:
         incomes.add(max_deduction_income)
@@ -1535,26 +1527,36 @@ def _worker_incomes(
 def _solve_income_for_target(
     target: Decimal,
     value_at_income: Callable[[Decimal], Decimal],
-    maximum_income: Decimal,
 ) -> Decimal | None:
-    if target < 0 or maximum_income < 0:
+    if target < 0:
         return None
 
     lower = ZERO
-    upper = min(max(ONE_DOLLAR, target), maximum_income)
+    upper = max(ONE_DOLLAR, target)
+    try:
+        upper_money = _money(upper)
+    except ValueError:
+        return None
     while value_at_income(upper) < target:
-        if upper >= maximum_income:
+        if upper >= _MAX_MONEY:
             return None
-        upper = min(upper * 2, maximum_income)
+        upper = min(upper * 2, _MAX_MONEY)
+        upper_money = _money(upper)
 
-    for _ in range(80):
-        midpoint = (lower + upper) / 2
+    lower_money = _money(lower)
+    while lower_money != upper_money:
+        midpoint = lower + (upper - lower) / 2
+        if midpoint == lower or midpoint == upper:
+            break
+        midpoint_money = _money(midpoint)
         if value_at_income(midpoint) < target:
             lower = midpoint
+            lower_money = midpoint_money
         else:
             upper = midpoint
+            upper_money = midpoint_money
 
-    return _money(upper)
+    return upper_money
 
 
 def _additional_medicare_threshold(
