@@ -1556,6 +1556,10 @@ def _solve_income_for_target(
             upper = midpoint
             upper_money = midpoint_money
 
+    if value_at_income(upper_money) < target:
+        if upper_money >= _MAX_MONEY:
+            return None
+        upper_money += MONEY
     return upper_money
 
 

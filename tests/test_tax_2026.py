@@ -1042,6 +1042,38 @@ def test_build_income_series_includes_high_income_marginal_breakpoint():
     assert rates_by_income[money("600027900.00")] == Decimal("0.2235")
 
 
+def test_build_income_series_rounds_high_income_breakpoint_up_to_first_cent():
+    federal = FederalTaxParameters(
+        tax_year=2026,
+        filing_status="single",
+        standard_deduction=money("0.00"),
+        brackets=(
+            TaxBracket(money("0.00"), Decimal("0.10")),
+            TaxBracket(money("2e9"), Decimal("0.20")),
+            TaxBracket(money("1e10"), Decimal("0.30")),
+            TaxBracket(money("2e10"), Decimal("0.40")),
+        ),
+    )
+    pretax_deductions = replace(
+        PRETAX_DEDUCTIONS_2026,
+        employee_401k_limit=money("1e10"),
+        health_fsa_limit=money("0.00"),
+        dependent_care_fsa_limit=money("0.00"),
+    )
+
+    rows = build_income_series(
+        start=money("0.00"),
+        stop=money("3e10"),
+        step=money("3e10"),
+        include_marginal_breakpoints=True,
+        pretax_deduction_mode="gradual_phase_in",
+        federal=federal,
+        pretax_deductions=pretax_deductions,
+    )
+
+    assert money("2132771177.75") in {row.gross_income for row in rows}
+
+
 def test_build_income_series_keeps_large_marginal_breakpoint_cent_precision():
     federal = FederalTaxParameters(
         tax_year=2026,
@@ -1158,11 +1190,11 @@ def test_build_income_series_can_include_gradual_phase_in_breakpoints():
     assert [row.gross_income for row in rows] == [
         money("0.00"),
         money("16100.00"),
-        money("28896.90"),
+        money("28896.91"),
         money("68220.02"),
         money("100000.00"),
-        money("127196.54"),
-        money("185848.61"),
+        money("127196.55"),
+        money("185848.62"),
         money("200000.00"),
         money("201575.50"),
         money("235279.59"),
