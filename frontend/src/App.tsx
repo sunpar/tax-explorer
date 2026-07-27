@@ -931,16 +931,6 @@ function formatCapUsage(
   return `${formatPercentValue(usage)} of ${toCurrency(capNumber)} max`;
 }
 
-function nearestRow(rows: ChartRow[], income: number): ChartRow | undefined {
-  return rows.reduce<ChartRow | undefined>((nearest, row) => {
-    if (!nearest) return row;
-    return Math.abs(row.incomeNumber - income) <
-      Math.abs(nearest.incomeNumber - income)
-      ? row
-      : nearest;
-  }, undefined);
-}
-
 function readClickedIncome(state: unknown): number | null {
   if (!state || typeof state !== "object") return null;
   const chartState = state as ChartClickState;
@@ -1501,8 +1491,13 @@ function App() {
   ]);
 
   const selectedRow = useMemo(() => {
-    if (selectedBurden) return buildChartRows([selectedBurden], includeEmployer)[0];
-    return nearestRow(chartRows, selectedIncome);
+    const selectedBurdenRow = selectedBurden
+      ? buildChartRows([selectedBurden], includeEmployer)[0]
+      : undefined;
+    if (selectedBurdenRow?.incomeNumber === selectedIncome) {
+      return selectedBurdenRow;
+    }
+    return chartRows.find((row) => row.incomeNumber === selectedIncome);
   }, [chartRows, includeEmployer, selectedBurden, selectedIncome]);
   const selectedDeductionUsage = useMemo(() => {
     if (!selectedRow || !parameters) return [];

@@ -1624,6 +1624,23 @@ describe("App tax curve controls", () => {
     );
   });
 
+  test("does not show a sampled row after an exact income calculation fails", async () => {
+    await renderLoadedApp();
+    const selectedIncomeError = "exact calculation unavailable";
+    mockFetchTaxBurden.mockRejectedValueOnce(new Error(selectedIncomeError));
+
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "120000" }
+    });
+
+    expect(await screen.findByText(selectedIncomeError)).toBeInTheDocument();
+    const grossIncomeMetric = screen.getByText("Gross income").closest(".metric");
+    expect(grossIncomeMetric).not.toBeNull();
+    expect(
+      within(grossIncomeMetric as HTMLElement).getByText("-")
+    ).toBeInTheDocument();
+  });
+
   test("keeps scenario loading errors visible after selected income recovery", async () => {
     await renderLoadedApp();
     const scenarioError = "scenario parameters unavailable";
