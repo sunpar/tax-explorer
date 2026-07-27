@@ -1222,9 +1222,9 @@ function App() {
         : thousandsToDollars(nextDefaultStopThousands);
       const resolvedStop = clampStopDollarsAtStart(start, requestedStop);
       const resolvedAutomaticStopThousands =
-        resolvedStop === requestedStop
-          ? nextDefaultStopThousands
-          : startThousands;
+        Number(startThousands) > Number(nextDefaultStopThousands)
+          ? startThousands
+          : nextDefaultStopThousands;
       const resolvedStep = hasCustomStep
         ? Number(validStep)
         : defaultSeriesStep(

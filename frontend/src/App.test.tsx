@@ -861,7 +861,8 @@ describe("App tax curve controls", () => {
 
   test.each([
     { startThousands: "200", startDollars: "200000" },
-    { startThousands: "200.00001", startDollars: "200000.01" }
+    { startThousands: "200.00001", startDollars: "200000.01" },
+    { startThousands: "140.690001", startDollars: "140690" }
   ])(
     "keeps the automatic Stop at Start $startThousands entered while parameters load",
     async ({ startThousands, startDollars }) => {
