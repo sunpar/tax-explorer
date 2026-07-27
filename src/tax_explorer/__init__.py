@@ -434,7 +434,7 @@ def calculate_income_series(
                 f"income-series supports at most {MAX_INCOME_SERIES_ROWS} rows"
             )
 
-    while current <= stop_amount:
+    while True:
         add_income(current)
         if step_amount > stop_amount - current:
             break
