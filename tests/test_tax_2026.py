@@ -1350,9 +1350,12 @@ def test_build_income_series_allows_a_terminal_row_at_the_money_ceiling():
         start=maximum_income,
         stop=maximum_income,
         step=money("1.00"),
+        include_employer_payroll_tax=True,
     )
 
     assert [row.gross_income for row in rows] == [maximum_income]
+    assert rows[0].marginal_employee_tax_rate == Decimal("0.3935")
+    assert rows[0].marginal_tax_rate_with_employer_payroll == Decimal("0.4080")
 
 
 def test_build_income_series_rejects_excessive_row_count():

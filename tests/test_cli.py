@@ -710,6 +710,7 @@ def test_cli_allows_a_terminal_row_at_the_money_ceiling(monkeypatch, tmp_path):
             maximum_income,
             "--step",
             "1",
+            "--include-employer-payroll-tax",
             "--database-path",
             str(tmp_path / "tax.sqlite3"),
         ]
@@ -718,6 +719,8 @@ def test_cli_allows_a_terminal_row_at_the_money_ceiling(monkeypatch, tmp_path):
     rows = list(csv.DictReader(io.StringIO(output.getvalue())))
     assert result == 0
     assert [row["gross_income"] for row in rows] == [maximum_income]
+    assert rows[0]["marginal_employee_tax_rate"] == "0.3935"
+    assert rows[0]["marginal_tax_rate_with_employer_payroll"] == "0.4080"
 
 
 def test_cli_can_include_marginal_breakpoint_rows(monkeypatch, tmp_path):

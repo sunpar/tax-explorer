@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
 from functools import lru_cache
 from itertools import pairwise
 from typing import Callable, Iterable, Mapping
@@ -10,6 +10,7 @@ from typing import Callable, Iterable, Mapping
 MONEY = Decimal("0.01")
 _MAX_MONEY = Decimal("1e26") - MONEY
 RATE_PRECISION = Decimal("0.0001")
+_MARGINAL_RATE_CALCULATION_PRECISION = 40
 MAX_INCOME_SERIES_ROWS = 2001
 ZERO = Decimal("0")
 ZERO_MONEY = Decimal("0.00")
@@ -1236,41 +1237,43 @@ def _forward_difference_marginal_rate(
     worker_count: int,
     next_worker_count: int,
 ) -> Decimal:
-    current = _calculate_tax_amounts(
-        gross_income,
-        secondary_income=secondary_income,
-        include_employer_payroll_tax=include_employer_payroll_tax,
-        pretax_deduction_mode=pretax_deduction_mode,
-        federal=federal,
-        payroll=payroll,
-        pretax_deductions=pretax_deductions,
-        worker_count=worker_count,
-        rounded=False,
-    )
-    next_amounts = _calculate_tax_amounts(
-        gross_income + ONE_DOLLAR,
-        secondary_income=next_secondary_income,
-        include_employer_payroll_tax=include_employer_payroll_tax,
-        pretax_deduction_mode=pretax_deduction_mode,
-        federal=federal,
-        payroll=payroll,
-        pretax_deductions=next_pretax_deductions,
-        worker_count=next_worker_count,
-        rounded=False,
-    )
-    current_tax = (
-        current.total_tax_with_employer_payroll
-        if include_employer_payroll_tax
-        else current.total_employee_tax
-    )
-    next_tax = (
-        next_amounts.total_tax_with_employer_payroll
-        if include_employer_payroll_tax
-        else next_amounts.total_employee_tax
-    )
-    return ((next_tax - current_tax) / ONE_DOLLAR).quantize(
-        RATE_PRECISION, rounding=ROUND_HALF_UP
-    )
+    with localcontext() as context:
+        context.prec = max(context.prec, _MARGINAL_RATE_CALCULATION_PRECISION)
+        current = _calculate_tax_amounts(
+            gross_income,
+            secondary_income=secondary_income,
+            include_employer_payroll_tax=include_employer_payroll_tax,
+            pretax_deduction_mode=pretax_deduction_mode,
+            federal=federal,
+            payroll=payroll,
+            pretax_deductions=pretax_deductions,
+            worker_count=worker_count,
+            rounded=False,
+        )
+        next_amounts = _calculate_tax_amounts(
+            gross_income + ONE_DOLLAR,
+            secondary_income=next_secondary_income,
+            include_employer_payroll_tax=include_employer_payroll_tax,
+            pretax_deduction_mode=pretax_deduction_mode,
+            federal=federal,
+            payroll=payroll,
+            pretax_deductions=next_pretax_deductions,
+            worker_count=next_worker_count,
+            rounded=False,
+        )
+        current_tax = (
+            current.total_tax_with_employer_payroll
+            if include_employer_payroll_tax
+            else current.total_employee_tax
+        )
+        next_tax = (
+            next_amounts.total_tax_with_employer_payroll
+            if include_employer_payroll_tax
+            else next_amounts.total_employee_tax
+        )
+        return ((next_tax - current_tax) / ONE_DOLLAR).quantize(
+            RATE_PRECISION, rounding=ROUND_HALF_UP
+        )
 
 
 def _calculate_progressive_tax_raw(

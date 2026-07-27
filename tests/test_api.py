@@ -2072,13 +2072,15 @@ def test_income_series_allows_a_terminal_row_at_the_money_ceiling(tmp_path):
             "start": maximum_income,
             "stop": maximum_income,
             "step": "1",
+            "include_employer_payroll_tax": True,
         },
     )
 
     assert response.status_code == 200
-    assert [row["gross_income"] for row in response.json()["rows"]] == [
-        maximum_income
-    ]
+    rows = response.json()["rows"]
+    assert [row["gross_income"] for row in rows] == [maximum_income]
+    assert rows[0]["marginal_employee_tax_rate"] == "0.3935"
+    assert rows[0]["marginal_tax_rate_with_employer_payroll"] == "0.4080"
 
 
 def test_income_series_breakdown_includes_employer_components_when_selected(
