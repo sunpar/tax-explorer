@@ -745,6 +745,84 @@ describe("App tax curve controls", () => {
     expect(within(sampledRows as HTMLElement).getAllByRole("row")).toHaveLength(3);
   });
 
+  test("reserves automatic series capacity for backend breakpoint enrichment", async () => {
+    const highIncomeMarriedParameters: TaxParameters = {
+      ...marriedParameters,
+      federal: {
+        ...marriedParameters.federal,
+        standard_deduction: "32200.00",
+        brackets: [
+          { lower_bound: "0.00", rate: "0.10" },
+          { lower_bound: "24800.00", rate: "0.12" },
+          { lower_bound: "100800.00", rate: "0.22" },
+          { lower_bound: "211400.00", rate: "0.24" },
+          { lower_bound: "403550.00", rate: "0.32" },
+          { lower_bound: "512450.00", rate: "0.35" },
+          { lower_bound: "768700.00", rate: "0.37" },
+          { lower_bound: "50000000.00", rate: "0.39" }
+        ]
+      },
+      payroll: {
+        ...marriedParameters.payroll,
+        social_security_wage_base: "184500.00"
+      }
+    };
+    const backendBreakpointRows = 14;
+    const backendRowLimit = 2001;
+    const requestedRowCount = (request: {
+      start: string;
+      stop: string;
+      step: string;
+    }) => {
+      const start = Number(request.start);
+      const stop = Number(request.stop);
+      const step = Number(request.step);
+      const gridRows = Math.floor((stop - start) / step) + 1;
+      const lastGridIncome =
+        Math.round((start + (gridRows - 1) * step) * 100) / 100;
+      return gridRows + (lastGridIncome === stop ? 0 : 1);
+    };
+    localStorage.setItem("taxExplorer.dependentCount", "1");
+    localStorage.setItem("taxExplorer.secondaryIncomeThousands", "186.5");
+    mockFetchTaxParameters.mockImplementation(async (_year, filingStatus) =>
+      filingStatus === "married_joint"
+        ? highIncomeMarriedParameters
+        : singleParameters
+    );
+    mockFetchIncomeSeries.mockImplementation(async (request) => {
+      if (
+        request.filingStatus === "married_joint" &&
+        requestedRowCount(request) + backendBreakpointRows > backendRowLimit
+      ) {
+        throw new Error("income-series supports at most 2001 rows");
+      }
+      return incomeSeries(
+        request.filingStatus,
+        request.dependentCount,
+        Number(request.secondaryIncome)
+      );
+    });
+
+    render(<App />);
+    await screen.findByRole("heading", { name: "Tax Burden Curve" });
+    fireEvent.click(
+      await screen.findByRole("radio", { name: "Married filing jointly" })
+    );
+
+    await waitFor(() => {
+      const marriedRequest = mockFetchIncomeSeries.mock.calls
+        .map(([request]) => request)
+        .find((request) => request.filingStatus === "married_joint");
+      expect(marriedRequest).toBeDefined();
+      expect(
+        requestedRowCount(marriedRequest!) + backendBreakpointRows
+      ).toBeLessThanOrEqual(backendRowLimit);
+    });
+    expect(
+      screen.queryByText("income-series supports at most 2001 rows")
+    ).not.toBeInTheDocument();
+  });
+
   test("keeps the default Stop below the backend money ceiling", async () => {
     const nearLimitParameters: TaxParameters = {
       ...singleParameters,
