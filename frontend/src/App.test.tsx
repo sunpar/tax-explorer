@@ -1402,6 +1402,48 @@ describe("App tax curve controls", () => {
     expect(selectedIncome).toHaveAttribute("max", "4000000");
   });
 
+  test("selected income slider preserves a higher income-input ceiling", async () => {
+    await renderLoadedApp();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+    const income1 = await screen.findByLabelText("Income 1 ($k)");
+    const income2 = screen.getByLabelText("Income 2 ($k)");
+    fireEvent.change(income1, { target: { value: "2500" } });
+    fireEvent.change(income2, { target: { value: "1500" } });
+
+    const selectedIncome = screen.getByLabelText(/Selected income/);
+    await waitFor(() => expect(selectedIncome).toHaveValue("4000000"));
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+
+    fireEvent.change(selectedIncome, {
+      target: { value: "3500000" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grossIncome: "3500000"
+        })
+      )
+    );
+    expect(selectedIncome).toHaveValue("3500000");
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+  });
+
+  test("selected income slider caps expansion for extreme chart stops", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "100000" }
+    });
+
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(100000);
+    expect(screen.getByLabelText(/Selected income/)).toHaveAttribute(
+      "max",
+      "10000000"
+    );
+  });
+
   test("clears selected income calculation errors after a successful retry", async () => {
     await renderLoadedApp();
     const selectedIncomeError = "temporary calculation failure";
