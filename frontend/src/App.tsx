@@ -1404,6 +1404,7 @@ function App() {
     filingStatus,
     selectedFilingStatus?.label,
     start,
+    startThousands,
     stop,
     effectiveStop,
     step,

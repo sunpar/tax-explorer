@@ -903,6 +903,44 @@ describe("App tax curve controls", () => {
     }
   );
 
+  test("keeps the latest raw Start while parameters load", async () => {
+    const pendingParameters = deferred<TaxParameters>();
+    mockFetchTaxParameters.mockReturnValue(pendingParameters.promise);
+
+    render(<App />);
+    await screen.findByRole("heading", { name: "Tax Burden Curve" });
+    await waitFor(() => expect(mockFetchTaxParameters).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "200.000011" }
+    });
+    await waitFor(() =>
+      expect(mockFetchTaxParameters).toHaveBeenCalledTimes(2)
+    );
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "200.000012" }
+    });
+    await waitFor(() =>
+      expect(mockFetchTaxParameters).toHaveBeenCalledTimes(3)
+    );
+
+    await act(async () => {
+      pendingParameters.resolve(singleParameters);
+    });
+
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({
+          start: "200000.01",
+          stop: "200000.01"
+        })
+      )
+    );
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(200.000012);
+    expectNoInvertedIncomeSeriesRequests();
+  });
+
   test("quick range buttons update Start and Stop", async () => {
     await renderLoadedApp();
 
