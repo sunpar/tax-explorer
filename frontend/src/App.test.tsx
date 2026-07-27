@@ -905,6 +905,55 @@ describe("App tax curve controls", () => {
     }
   );
 
+  test("keeps a positive fractional Start above a zero automatic Stop", async () => {
+    const zeroTransitionParameters: TaxParameters = {
+      ...singleParameters,
+      federal: {
+        ...singleParameters.federal,
+        brackets: [{ lower_bound: "0.00", rate: "0.10" }]
+      },
+      payroll: {
+        ...singleParameters.payroll,
+        social_security_wage_base: "0.00",
+        additional_medicare_threshold_single: "0.00",
+        additional_medicare_thresholds: { single: "0.00" }
+      },
+      pretax_deductions: {
+        ...singleParameters.pretax_deductions,
+        employee_401k_limit: "0.00",
+        health_fsa_limit: "0.00",
+        dependent_care_fsa_limit: "0.00"
+      }
+    };
+    const pendingParameters = deferred<TaxParameters>();
+    mockFetchTaxParameters.mockReturnValue(pendingParameters.promise);
+
+    render(<App />);
+    await screen.findByRole("heading", { name: "Tax Burden Curve" });
+    await waitFor(() => expect(mockFetchTaxParameters).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "0.5" }
+    });
+    await waitFor(() =>
+      expect(mockFetchTaxParameters).toHaveBeenCalledTimes(2)
+    );
+
+    await act(async () => {
+      pendingParameters.resolve(zeroTransitionParameters);
+    });
+
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({ start: "500", stop: "500" })
+      )
+    );
+    expect(
+      (screen.getByLabelText("Stop ($k)") as HTMLInputElement).value
+    ).toBe("0.5");
+    expectNoInvertedIncomeSeriesRequests();
+  });
+
   test("keeps the latest raw Start while parameters load", async () => {
     const pendingParameters = deferred<TaxParameters>();
     mockFetchTaxParameters.mockReturnValue(pendingParameters.promise);

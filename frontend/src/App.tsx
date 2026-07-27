@@ -239,6 +239,9 @@ function decimalInputIsGreater(left: string, right: string): boolean {
   if (normalizedLeft.negative !== normalizedRight.negative) {
     return !normalizedLeft.negative;
   }
+  if (normalizedLeft.digits === "0" || normalizedRight.digits === "0") {
+    return normalizedLeft.digits !== "0";
+  }
 
   const leftOrder = BigInt(normalizedLeft.digits.length) + normalizedLeft.scale;
   const rightOrder =
