@@ -1059,16 +1059,16 @@ function App() {
     filingStatus === "married_joint"
       ? Math.max(0, configuredPrimaryIncome) + secondaryIncome
       : 0;
-  const selectedIncomeMax = Math.max(
+  const automaticSelectedIncomeMax = Math.max(
     SELECTED_INCOME_MAX_FLOOR,
     Math.min(
       Number(effectiveStop) || 0,
       SELECTED_INCOME_LINEAR_RANGE_LIMIT
     ),
     Number(start) || 0,
-    configuredIncomeSplitTotal,
-    selectedIncome
+    configuredIncomeSplitTotal
   );
+  const selectedIncomeMax = Math.max(automaticSelectedIncomeMax, selectedIncome);
   const primaryIncome = Math.max(0, selectedIncome - secondaryIncome);
   const activeSecondaryIncome = Math.min(secondaryIncome, selectedIncome);
   const secondaryIncomeRequest = String(activeSecondaryIncome);
@@ -1529,11 +1529,15 @@ function App() {
     () => sampledIncomeOptions.filter((income) => income > 0),
     [sampledIncomeOptions]
   );
-  const defaultSelectedIncome =
+  const defaultSampledIncome =
     sampledIncomeOptions.length > 0
       ? (sampledIncomeOptions.filter((income) => income > 0).pop() ??
         sampledIncomeOptions[sampledIncomeOptions.length - 1])
       : undefined;
+  const defaultSelectedIncome =
+    defaultSampledIncome === undefined
+      ? undefined
+      : Math.min(defaultSampledIncome, automaticSelectedIncomeMax);
 
   useEffect(() => {
     if (

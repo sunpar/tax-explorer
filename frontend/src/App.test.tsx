@@ -116,9 +116,11 @@ vi.mock("recharts", async () => {
         {
           "data-testid": "chart",
           "data-chart-data": JSON.stringify(data),
-          onClick: () =>
+          onClick: (event: { detail?: number }) =>
             onClick?.({
-              activePayload: [{ payload: { incomeNumber: 50000 } }]
+              activePayload: [
+                { payload: { incomeNumber: event.detail || 50000 } }
+              ]
             })
         },
         renderTooltip(children, data)
@@ -632,6 +634,7 @@ describe("App tax curve controls", () => {
     const highIncomeStart = 2132770177.73;
     const adjacentGridIncome = 2132771177.74;
     const highIncomeBreakpoint = 2132771177.75;
+    const explicitHighChartIncome = Math.floor(highIncomeBreakpoint);
     const highIncomeStop = highIncomeBreakpoint + 1000;
     mockFetchTaxParameters.mockResolvedValue(highIncomeParameters);
     mockFetchIncomeSeries.mockImplementation(async (request) => {
@@ -664,6 +667,28 @@ describe("App tax curve controls", () => {
       ) + 1;
     expect(Number(initialSeriesRequest.step)).toBeGreaterThan(10000);
     expect(initialGridRows).toBeLessThan(2001);
+    const selectedIncome = screen.getByLabelText(/Selected income/);
+    await waitFor(() => expect(selectedIncome).toHaveValue("10000000"));
+    expect(selectedIncome).toHaveAttribute("max", "10000000");
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({ grossIncome: "10000000" })
+      )
+    );
+
+    fireEvent.click(screen.getByTestId("chart"), {
+      detail: explicitHighChartIncome
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grossIncome: String(explicitHighChartIncome)
+        })
+      )
+    );
+    expect(selectedIncome).toHaveAttribute("max", String(explicitHighChartIncome));
+
     fireEvent.change(screen.getByLabelText("Stop ($k)"), {
       target: { value: String(highIncomeStop / 1000) }
     });
