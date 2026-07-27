@@ -1364,6 +1364,44 @@ describe("App tax curve controls", () => {
     expect(screen.getAllByText("$3,000,000").length).toBeGreaterThan(0);
   });
 
+  test("selected income slider expands to a higher chart stop", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "4000" }
+    });
+
+    const selectedIncome = screen.getByLabelText(/Selected income/);
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+
+    fireEvent.change(selectedIncome, {
+      target: { value: "4000000" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grossIncome: "4000000"
+        })
+      )
+    );
+    expect(selectedIncome).toHaveValue("4000000");
+    expect(screen.getAllByText("$4,000,000").length).toBeGreaterThan(0);
+  });
+
+  test("selected income slider keeps a valid range above its default maximum", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "4000" }
+    });
+
+    const selectedIncome = screen.getByLabelText(/Selected income/);
+    await waitFor(() => expect(selectedIncome).toHaveValue("4000000"));
+    expect(selectedIncome).toHaveAttribute("min", "4000000");
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+  });
+
   test("clears selected income calculation errors after a successful retry", async () => {
     await renderLoadedApp();
     const selectedIncomeError = "temporary calculation failure";

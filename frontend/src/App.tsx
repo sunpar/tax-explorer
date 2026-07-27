@@ -1044,6 +1044,11 @@ function App() {
   const start = thousandsToDollars(startThousands);
   const stop = thousandsToDollars(stopThousands);
   const effectiveStop = clampStopDollarsAtStart(start, stop);
+  const selectedIncomeMax = Math.max(
+    SELECTED_INCOME_MAX,
+    Number(effectiveStop) || 0,
+    selectedIncome
+  );
   const step = stepDollarsFromThousands(stepThousands);
   const dependentCount = sanitizeDependentCount(dependentCountInput);
   const rawSecondaryIncome = Number(
@@ -1936,7 +1941,7 @@ function App() {
             <input
               type="range"
               min={Number(start) || 0}
-              max={SELECTED_INCOME_MAX}
+              max={selectedIncomeMax}
               step={1}
               value={selectedIncome}
               onChange={(event) => {
