@@ -107,7 +107,7 @@ const DEPENDENT_COUNT_STORAGE_KEY = "taxExplorer.dependentCount";
 const PRIMARY_INCOME_STORAGE_KEY = "taxExplorer.primaryIncomeThousands";
 const SECONDARY_INCOME_STORAGE_KEY = "taxExplorer.secondaryIncomeThousands";
 const DEFAULT_TAX_YEAR = 2026;
-const SELECTED_INCOME_MAX = 3000000;
+const SELECTED_INCOME_MAX_FLOOR = 3000000;
 const DEFAULT_STEP_THOUSANDS = "10";
 const DEFAULT_STEP_DOLLARS = 10000;
 const MAX_MONEY_NUMBER = 1e26;
@@ -1045,7 +1045,7 @@ function App() {
   const stop = thousandsToDollars(stopThousands);
   const effectiveStop = clampStopDollarsAtStart(start, stop);
   const selectedIncomeMax = Math.max(
-    SELECTED_INCOME_MAX,
+    SELECTED_INCOME_MAX_FLOOR,
     Number(effectiveStop) || 0,
     selectedIncome
   );
