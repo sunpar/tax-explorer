@@ -862,7 +862,8 @@ describe("App tax curve controls", () => {
   test.each([
     { startThousands: "200", startDollars: "200000" },
     { startThousands: "200.00001", startDollars: "200000.01" },
-    { startThousands: "140.690001", startDollars: "140690" }
+    { startThousands: "140.690001", startDollars: "140690" },
+    { startThousands: "140.69000000000001", startDollars: "140690" }
   ])(
     "keeps the automatic Stop at Start $startThousands entered while parameters load",
     async ({ startThousands, startDollars }) => {
@@ -880,9 +881,9 @@ describe("App tax curve controls", () => {
       await waitFor(() =>
         expect(mockFetchTaxParameters).toHaveBeenCalledTimes(2)
       );
-      expect(screen.getByLabelText("Start ($k)")).toHaveValue(
-        Number(startThousands)
-      );
+      expect(
+        (screen.getByLabelText("Start ($k)") as HTMLInputElement).value
+      ).toBe(startThousands);
       expect(screen.getByLabelText("Stop ($k)")).toHaveValue(null);
 
       await act(async () => {
@@ -897,9 +898,9 @@ describe("App tax curve controls", () => {
           })
         )
       );
-      expect(screen.getByLabelText("Stop ($k)")).toHaveValue(
-        Number(startThousands)
-      );
+      expect(
+        (screen.getByLabelText("Stop ($k)") as HTMLInputElement).value
+      ).toBe(startThousands);
       expectNoInvertedIncomeSeriesRequests();
     }
   );
