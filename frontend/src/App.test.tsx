@@ -689,6 +689,17 @@ describe("App tax curve controls", () => {
     );
     expect(selectedIncome).toHaveAttribute("max", String(explicitHighChartIncome));
 
+    fireEvent.change(selectedIncome, {
+      target: { value: "9000000" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({ grossIncome: "9000000" })
+      )
+    );
+    expect(selectedIncome).toHaveAttribute("max", String(explicitHighChartIncome));
+
     fireEvent.change(screen.getByLabelText("Stop ($k)"), {
       target: { value: String(highIncomeStop / 1000) }
     });
@@ -1467,6 +1478,25 @@ describe("App tax curve controls", () => {
       "max",
       "10000000"
     );
+  });
+
+  test("selected income slider resets an explicit high ceiling with the range", async () => {
+    await renderLoadedApp();
+
+    fireEvent.click(screen.getByTestId("chart"), { detail: 4000000 });
+    const selectedIncome = screen.getByLabelText(/Selected income/);
+    await waitFor(() => expect(selectedIncome).toHaveValue("4000000"));
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+
+    fireEvent.change(selectedIncome, { target: { value: "2000000" } });
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "1000" }
+    });
+
+    await waitFor(() => expect(selectedIncome).toHaveValue("1000000"));
+    expect(selectedIncome).toHaveAttribute("max", "3000000");
   });
 
   test("clears selected income calculation errors after a successful retry", async () => {

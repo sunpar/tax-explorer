@@ -1000,6 +1000,7 @@ function App() {
   const [stepThousands, setStepThousands] = useState(DEFAULT_STEP_THOUSANDS);
   const [hasCustomStep, setHasCustomStep] = useState(false);
   const [selectedIncome, setSelectedIncome] = useState(100000);
+  const [explicitSelectedIncomeMax, setExplicitSelectedIncomeMax] = useState(0);
   const [hasCustomSelectedIncome, setHasCustomSelectedIncome] = useState(false);
   const hasCustomSelectedIncomeRef = useRef(false);
   const stopEditCollapseAnchorRef = useRef<{
@@ -1068,7 +1069,11 @@ function App() {
     Number(start) || 0,
     configuredIncomeSplitTotal
   );
-  const selectedIncomeMax = Math.max(automaticSelectedIncomeMax, selectedIncome);
+  const selectedIncomeMax = Math.max(
+    automaticSelectedIncomeMax,
+    explicitSelectedIncomeMax,
+    selectedIncome
+  );
   const primaryIncome = Math.max(0, selectedIncome - secondaryIncome);
   const activeSecondaryIncome = Math.min(secondaryIncome, selectedIncome);
   const secondaryIncomeRequest = String(activeSecondaryIncome);
@@ -1083,6 +1088,18 @@ function App() {
     taxYearDiscoveryError,
     scenarioError ?? selectedIncomeError
   ].filter((error): error is string => Boolean(error));
+
+  useEffect(() => {
+    setExplicitSelectedIncomeMax(0);
+  }, [
+    configuredIncomeSplitTotal,
+    dependentCount,
+    effectiveStop,
+    filingStatus,
+    pretaxDeductionMode,
+    start,
+    year
+  ]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -1668,6 +1685,9 @@ function App() {
     if (income !== null) {
       stopEditCollapseAnchorRef.current = null;
       markCustomSelectedIncome();
+      setExplicitSelectedIncomeMax((currentMax) =>
+        Math.max(currentMax, income)
+      );
       setSelectedIncome(income);
     }
   };
