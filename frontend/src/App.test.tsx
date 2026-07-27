@@ -1808,6 +1808,48 @@ describe("App tax curve controls", () => {
     );
   });
 
+  test("does not show the prior scenario while its replacement is pending", async () => {
+    await renderLoadedApp();
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "120000" }
+    });
+
+    const federalIncomeTaxMetric = screen
+      .getByText("Federal income tax")
+      .closest(".metric");
+    expect(federalIncomeTaxMetric).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        within(federalIncomeTaxMetric as HTMLElement).getByText("$12,000")
+      ).toBeInTheDocument()
+    );
+
+    const pendingCalculation = deferred<TaxBurden>();
+    mockFetchTaxBurden.mockReturnValueOnce(pendingCalculation.promise);
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filingStatus: "married_joint",
+          grossIncome: "120000"
+        })
+      )
+    );
+    expect(
+      within(federalIncomeTaxMetric as HTMLElement).getByText("-")
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      pendingCalculation.resolve(taxBurden(120000, "married_joint"));
+    });
+    await waitFor(() =>
+      expect(
+        within(federalIncomeTaxMetric as HTMLElement).getByText("$9,000")
+      ).toBeInTheDocument()
+    );
+  });
+
   test("does not treat a precision-colliding sampled income as exact", async () => {
     const highIncome = 5e25;
     const collidingIncome = "50000000000000000000000000.01";
