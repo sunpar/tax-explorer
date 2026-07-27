@@ -787,6 +787,41 @@ def test_returns_parameters_for_selected_filing_status(tmp_path):
     }
 
 
+def test_parameters_preserve_adjacent_cent_brackets_beyond_float_precision(tmp_path):
+    database_path = tmp_path / "tax.sqlite3"
+    client = TestClient(create_app(database_path=database_path))
+    brackets = (
+        (2026, "single", "0.00", "0.10"),
+        (2026, "single", "50000000000000000000000000.00", "0.12"),
+        (2026, "single", "50000000000000000000000000.01", "0.22"),
+    )
+    with connect(database_path) as connection:
+        connection.execute(
+            """
+            DELETE FROM federal_tax_brackets
+            WHERE year = ? AND filing_status = ?
+            """,
+            (2026, "single"),
+        )
+        connection.executemany(
+            """
+            INSERT INTO federal_tax_brackets
+                (year, filing_status, lower_bound, rate)
+            VALUES (?, ?, ?, ?)
+            """,
+            brackets,
+        )
+        connection.commit()
+
+    response = client.get("/api/tax-years/2026/parameters")
+
+    assert response.status_code == 200
+    assert response.json()["federal"]["brackets"] == [
+        {"lower_bound": lower_bound, "rate": rate}
+        for _, _, lower_bound, rate in brackets
+    ]
+
+
 def test_parameters_report_invalid_persisted_values_as_unprocessable(tmp_path):
     client = create_corrupted_payroll_test_client(tmp_path)
 

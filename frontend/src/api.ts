@@ -253,10 +253,15 @@ function isFederalParameters(
 function isFederalBrackets(value: unknown): value is FederalBracket[] {
   if (!Array.isArray(value) || value.length === 0) return false;
   if (!value.every(isFederalBracket)) return false;
-  if (Number(value[0].lower_bound) !== 0) return false;
+  if (normalizedMoneyCents(value[0].lower_bound) !== "0") return false;
 
   for (let index = 1; index < value.length; index += 1) {
-    if (Number(value[index].lower_bound) <= Number(value[index - 1].lower_bound)) {
+    if (
+      !moneyCentsAreGreater(
+        value[index].lower_bound,
+        value[index - 1].lower_bound
+      )
+    ) {
       return false;
     }
   }
@@ -266,7 +271,7 @@ function isFederalBrackets(value: unknown): value is FederalBracket[] {
 function isFederalBracket(value: unknown): value is FederalBracket {
   return (
     isRecord(value) &&
-    isDecimalString(value.lower_bound) &&
+    isNonNegativeDecimalString(value.lower_bound) &&
     isUnitRateString(value.rate)
   );
 }

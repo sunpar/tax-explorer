@@ -455,6 +455,28 @@ describe("api requests", () => {
     await expect(fetchTaxParameters(2026, "single")).resolves.toEqual(body);
   });
 
+  test("returns adjacent-cent federal brackets beyond Number precision", async () => {
+    const body = {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        brackets: [
+          { lower_bound: "0.00", rate: "0.10" },
+          { lower_bound: "50000000000000000000000000.00", rate: "0.12" },
+          { lower_bound: "50000000000000000000000000.01", rate: "0.22" }
+        ]
+      }
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+        status: 200
+      })
+    );
+
+    await expect(fetchTaxParameters(2026, "single")).resolves.toEqual(body);
+  });
+
   test.each([
     {},
     {
@@ -535,17 +557,6 @@ describe("api requests", () => {
       ...taxParameterResponse,
       federal: {
         ...taxParameterResponse.federal,
-        brackets: [
-          { lower_bound: "0.00", rate: "0.10" },
-          { lower_bound: "9007199254740992.00", rate: "0.12" },
-          { lower_bound: "9007199254740993.00", rate: "0.22" }
-        ]
-      }
-    },
-    {
-      ...taxParameterResponse,
-      federal: {
-        ...taxParameterResponse.federal,
         brackets: [{ lower_bound: "1000.00", rate: "0.10" }]
       }
     },
@@ -556,6 +567,16 @@ describe("api requests", () => {
         brackets: [
           { lower_bound: "0.00", rate: "0.10" },
           { lower_bound: "0.00", rate: "0.12" }
+        ]
+      }
+    },
+    {
+      ...taxParameterResponse,
+      federal: {
+        ...taxParameterResponse.federal,
+        brackets: [
+          { lower_bound: "0.00", rate: "0.10" },
+          { lower_bound: "-1.00", rate: "0.12" }
         ]
       }
     },
