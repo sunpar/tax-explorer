@@ -2060,6 +2060,29 @@ def test_income_series_rejects_excessive_row_count(tmp_path):
     assert response.json()["detail"] == "income-series supports at most 2001 rows"
 
 
+def test_income_series_allows_a_terminal_row_at_the_money_ceiling(tmp_path):
+    client = create_test_client(tmp_path)
+    maximum_income = "99999999999999999999999999.99"
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": maximum_income,
+            "stop": maximum_income,
+            "step": "1",
+            "include_employer_payroll_tax": True,
+        },
+    )
+
+    assert response.status_code == 200
+    rows = response.json()["rows"]
+    assert [row["gross_income"] for row in rows] == [maximum_income]
+    assert rows[0]["marginal_employee_tax_rate"] == "0.3935"
+    assert rows[0]["marginal_tax_rate_with_employer_payroll"] == "0.4080"
+
+
 def test_income_series_breakdown_includes_employer_components_when_selected(
     tmp_path,
 ):
