@@ -256,7 +256,7 @@ def create_app(
         }
 
     @app.post("/api/calculate")
-    def calculate(request: CalculateRequest) -> dict[str, Any]:
+    def calculate(request: CalculateRequest) -> TaxBurdenResponse:
         try:
             _prevalidate_supported_calculate_request(request)
         except ValueError as exc:
@@ -284,7 +284,7 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return _tax_burden_to_response(result)
+        return TaxBurdenResponse(**_tax_burden_to_response(result))
 
     @app.get("/api/income-series")
     def income_series(
