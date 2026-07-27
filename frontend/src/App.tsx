@@ -22,7 +22,8 @@ import {
   fetchFilingStatuses,
   fetchIncomeSeries,
   fetchTaxParameters,
-  fetchTaxYears
+  fetchTaxYears,
+  moneyAmountMatchesRequest
 } from "./api";
 import type { FilingStatus, TaxBurden, TaxParameters } from "./types";
 
@@ -1491,13 +1492,19 @@ function App() {
   ]);
 
   const selectedRow = useMemo(() => {
-    const selectedBurdenRow = selectedBurden
-      ? buildChartRows([selectedBurden], includeEmployer)[0]
-      : undefined;
-    if (selectedBurdenRow?.incomeNumber === selectedIncome) {
-      return selectedBurdenRow;
+    const selectedIncomeRequest = String(selectedIncome);
+    if (
+      selectedBurden &&
+      moneyAmountMatchesRequest(
+        selectedBurden.gross_income,
+        selectedIncomeRequest
+      )
+    ) {
+      return buildChartRows([selectedBurden], includeEmployer)[0];
     }
-    return chartRows.find((row) => row.incomeNumber === selectedIncome);
+    return chartRows.find((row) =>
+      moneyAmountMatchesRequest(row.gross_income, selectedIncomeRequest)
+    );
   }, [chartRows, includeEmployer, selectedBurden, selectedIncome]);
   const selectedDeductionUsage = useMemo(() => {
     if (!selectedRow || !parameters) return [];

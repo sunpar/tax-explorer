@@ -499,16 +499,14 @@ function isTaxBurden(value: unknown): value is TaxBurden {
   );
 }
 
-function hasMatchingGrossIncome(
-  value: TaxBurden,
-  requestedGrossIncome: string
+export function moneyAmountMatchesRequest(
+  responseAmount: string,
+  requestedAmount: string
 ): boolean {
-  const responseCents = normalizedMoneyCents(value.gross_income);
+  const responseCents = normalizedMoneyCents(responseAmount);
   return (
-    normalizedRequestedMoneyCents(
-      requestedGrossIncome,
-      responseCents.length
-    ) === responseCents
+    normalizedRequestedMoneyCents(requestedAmount, responseCents.length) ===
+    responseCents
   );
 }
 
@@ -651,7 +649,7 @@ export async function fetchTaxBurden(request: CalculateRequest): Promise<TaxBurd
   });
   if (
     !isTaxBurden(response) ||
-    !hasMatchingGrossIncome(response, request.grossIncome)
+    !moneyAmountMatchesRequest(response.gross_income, request.grossIncome)
   ) {
     throw new Error("Malformed tax burden response");
   }
