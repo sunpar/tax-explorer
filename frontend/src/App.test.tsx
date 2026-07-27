@@ -859,39 +859,49 @@ describe("App tax curve controls", () => {
     }
   });
 
-  test("keeps the automatic Stop at the Start entered while parameters load", async () => {
-    const pendingParameters = deferred<TaxParameters>();
-    mockFetchTaxParameters.mockReturnValue(pendingParameters.promise);
+  test.each([
+    { startThousands: "200", startDollars: "200000" },
+    { startThousands: "200.00001", startDollars: "200000.01" }
+  ])(
+    "keeps the automatic Stop at Start $startThousands entered while parameters load",
+    async ({ startThousands, startDollars }) => {
+      const pendingParameters = deferred<TaxParameters>();
+      mockFetchTaxParameters.mockReturnValue(pendingParameters.promise);
 
-    render(<App />);
-    await screen.findByRole("heading", { name: "Tax Burden Curve" });
-    await waitFor(() => expect(mockFetchTaxParameters).toHaveBeenCalled());
+      render(<App />);
+      await screen.findByRole("heading", { name: "Tax Burden Curve" });
+      await waitFor(() => expect(mockFetchTaxParameters).toHaveBeenCalled());
 
-    fireEvent.change(screen.getByLabelText("Start ($k)"), {
-      target: { value: "200" }
-    });
+      fireEvent.change(screen.getByLabelText("Start ($k)"), {
+        target: { value: startThousands }
+      });
 
-    await waitFor(() =>
-      expect(mockFetchTaxParameters).toHaveBeenCalledTimes(2)
-    );
-    expect(screen.getByLabelText("Start ($k)")).toHaveValue(200);
-    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(null);
+      await waitFor(() =>
+        expect(mockFetchTaxParameters).toHaveBeenCalledTimes(2)
+      );
+      expect(screen.getByLabelText("Start ($k)")).toHaveValue(
+        Number(startThousands)
+      );
+      expect(screen.getByLabelText("Stop ($k)")).toHaveValue(null);
 
-    await act(async () => {
-      pendingParameters.resolve(singleParameters);
-    });
+      await act(async () => {
+        pendingParameters.resolve(singleParameters);
+      });
 
-    await waitFor(() =>
-      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
-        expect.objectContaining({
-          start: "200000",
-          stop: "200000"
-        })
-      )
-    );
-    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(200);
-    expectNoInvertedIncomeSeriesRequests();
-  });
+      await waitFor(() =>
+        expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+          expect.objectContaining({
+            start: startDollars,
+            stop: startDollars
+          })
+        )
+      );
+      expect(screen.getByLabelText("Stop ($k)")).toHaveValue(
+        Number(startThousands)
+      );
+      expectNoInvertedIncomeSeriesRequests();
+    }
+  );
 
   test("quick range buttons update Start and Stop", async () => {
     await renderLoadedApp();

@@ -1221,7 +1221,10 @@ function App() {
         ? effectiveStop
         : thousandsToDollars(nextDefaultStopThousands);
       const resolvedStop = clampStopDollarsAtStart(start, requestedStop);
-      const resolvedStopThousands = dollarsToThousands(resolvedStop);
+      const resolvedAutomaticStopThousands =
+        resolvedStop === requestedStop
+          ? nextDefaultStopThousands
+          : startThousands;
       const resolvedStep = hasCustomStep
         ? Number(validStep)
         : defaultSeriesStep(
@@ -1267,8 +1270,11 @@ function App() {
       };
 
       if (cancelled) return;
-      if (!hasCustomStop && stopThousands !== resolvedStopThousands) {
-        setStopThousands(resolvedStopThousands);
+      if (
+        !hasCustomStop &&
+        stopThousands !== resolvedAutomaticStopThousands
+      ) {
+        setStopThousands(resolvedAutomaticStopThousands);
       }
       const nextDefaultStepThousands = dollarsToThousands(resolvedStep);
       if (!hasCustomStep && stepThousands !== nextDefaultStepThousands) {
