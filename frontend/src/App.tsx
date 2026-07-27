@@ -1000,7 +1000,8 @@ function App() {
   const [stepThousands, setStepThousands] = useState(DEFAULT_STEP_THOUSANDS);
   const [hasCustomStep, setHasCustomStep] = useState(false);
   const [selectedIncome, setSelectedIncome] = useState(100000);
-  const [explicitSelectedIncomeMax, setExplicitSelectedIncomeMax] = useState(0);
+  const [explicitSelectedIncomeCeiling, setExplicitSelectedIncomeCeiling] =
+    useState<{ contextKey: string; maximum: number } | null>(null);
   const [hasCustomSelectedIncome, setHasCustomSelectedIncome] = useState(false);
   const hasCustomSelectedIncomeRef = useRef(false);
   const stopEditCollapseAnchorRef = useRef<{
@@ -1060,6 +1061,27 @@ function App() {
     filingStatus === "married_joint"
       ? Math.max(0, configuredPrimaryIncome) + secondaryIncome
       : 0;
+  const selectedIncomeCeilingContextKey = JSON.stringify([
+    year,
+    filingStatus,
+    start,
+    effectiveStop,
+    step,
+    hasCustomStop,
+    hasCustomStep,
+    includeEmployer,
+    pretaxDeductionMode,
+    dependentCount,
+    secondaryIncome,
+    storedPrimaryIncomeThousands,
+    compareFilingStatuses,
+    compareTaxYears
+  ]);
+  const explicitSelectedIncomeMax =
+    explicitSelectedIncomeCeiling?.contextKey ===
+    selectedIncomeCeilingContextKey
+      ? explicitSelectedIncomeCeiling.maximum
+      : 0;
   const automaticSelectedIncomeMax = Math.max(
     SELECTED_INCOME_MAX_FLOOR,
     Math.min(
@@ -1088,18 +1110,6 @@ function App() {
     taxYearDiscoveryError,
     scenarioError ?? selectedIncomeError
   ].filter((error): error is string => Boolean(error));
-
-  useEffect(() => {
-    setExplicitSelectedIncomeMax(0);
-  }, [
-    configuredIncomeSplitTotal,
-    dependentCount,
-    effectiveStop,
-    filingStatus,
-    pretaxDeductionMode,
-    start,
-    year
-  ]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -1685,9 +1695,13 @@ function App() {
     if (income !== null) {
       stopEditCollapseAnchorRef.current = null;
       markCustomSelectedIncome();
-      setExplicitSelectedIncomeMax((currentMax) =>
-        Math.max(currentMax, income)
-      );
+      setExplicitSelectedIncomeCeiling((currentCeiling) => ({
+        contextKey: selectedIncomeCeilingContextKey,
+        maximum:
+          currentCeiling?.contextKey === selectedIncomeCeilingContextKey
+            ? Math.max(currentCeiling.maximum, income)
+            : income
+      }));
       setSelectedIncome(income);
     }
   };
