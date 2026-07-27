@@ -1375,6 +1375,11 @@ def test_openapi_documents_request_validation_constraints(tmp_path):
     assert income_series_schema["properties"]["marginal_breakpoint_incomes"][
         "items"
     ]["type"] == "string"
+    assert openapi["paths"]["/api/calculate"]["post"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/TaxBurdenResponse"
+    }
     for path in (
         "/api/tax-years/{year}/filing-statuses",
         "/api/tax-years/{year}/parameters",
