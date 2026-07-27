@@ -114,6 +114,9 @@ const DEFAULT_STEP_DOLLARS = 10000;
 const MAX_MONEY_NUMBER = 1e26;
 const MAX_AUTOMATIC_STOP = MAX_MONEY_NUMBER * (1 - Number.EPSILON);
 const MAX_INCOME_SERIES_ROWS = 2001;
+// The backend's exact solver can discover transitions missed by this browser-side
+// breakpoint estimate, so automatic requests keep a small row cushion.
+const BACKEND_BREAKPOINT_ROW_RESERVE = 32;
 
 function sanitizeDependentCount(value: string | number | null): number {
   if (typeof value === "string" && !/^\d+$/.test(value)) return 0;
@@ -855,7 +858,10 @@ function defaultSeriesStep(
   ).filter((income) => income >= start && income <= stop).length;
   const gridRowBudget = Math.max(
     2,
-    MAX_INCOME_SERIES_ROWS - breakpointCount - 1
+    MAX_INCOME_SERIES_ROWS -
+      breakpointCount -
+      BACKEND_BREAKPOINT_ROW_RESERVE -
+      1
   );
   const minimumStep =
     stop <= start
