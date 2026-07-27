@@ -1574,7 +1574,6 @@ function App() {
   ]);
 
   const selectedRow = useMemo(() => {
-    if (rowsContextKey !== taxResultContextKey) return undefined;
     const selectedIncomeRequest = String(selectedIncome);
     if (
       selectedBurdenResult?.contextKey === taxResultContextKey &&
@@ -1588,6 +1587,7 @@ function App() {
         includeEmployer
       )[0];
     }
+    if (rowsContextKey !== taxResultContextKey) return undefined;
     return chartRows.find((row) =>
       moneyAmountMatchesRequest(row.gross_income, selectedIncomeRequest)
     );
@@ -1600,7 +1600,13 @@ function App() {
     taxResultContextKey
   ]);
   const selectedDeductionUsage = useMemo(() => {
-    if (!selectedRow || !parameters) return [];
+    if (
+      !selectedRow ||
+      !parameters ||
+      rowsContextKey !== taxResultContextKey
+    ) {
+      return [];
+    }
     const caps = pretaxDeductionCaps(
       parameters,
       dependentCount,
@@ -1634,7 +1640,14 @@ function App() {
         )} max)`
       }
     ] satisfies DeductionUsageItem[];
-  }, [dependentCount, parameters, secondaryIncome, selectedRow]);
+  }, [
+    dependentCount,
+    parameters,
+    rowsContextKey,
+    secondaryIncome,
+    selectedRow,
+    taxResultContextKey
+  ]);
 
   const tableRows = useMemo(() => {
     const startAmount = Number(start) || 0;

@@ -1828,10 +1828,17 @@ describe("App tax curve controls", () => {
       ).toBeInTheDocument()
     );
 
+    const pendingSeries = deferred<IncomeSeriesResponse>();
     const pendingCalculation = deferred<TaxBurden>();
+    mockFetchIncomeSeries.mockReturnValueOnce(pendingSeries.promise);
     mockFetchTaxBurden.mockReturnValueOnce(pendingCalculation.promise);
     fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
 
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({ filingStatus: "married_joint" })
+      )
+    );
     await waitFor(() =>
       expect(mockFetchTaxBurden).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1850,6 +1857,21 @@ describe("App tax curve controls", () => {
     await waitFor(() =>
       expect(
         within(federalIncomeTaxMetric as HTMLElement).getByText("$9,000")
+      ).toBeInTheDocument()
+    );
+    const deductionUsage = screen.getByRole("region", {
+      name: "Deduction usage details"
+    });
+    expect(
+      within(deductionUsage).queryByText("Total pre-tax")
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      pendingSeries.resolve(incomeSeries("married_joint"));
+    });
+    await waitFor(() =>
+      expect(
+        within(deductionUsage).getByText("Total pre-tax")
       ).toBeInTheDocument()
     );
   });
