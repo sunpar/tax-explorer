@@ -769,6 +769,19 @@ describe("App tax curve controls", () => {
     };
     const backendBreakpointRows = 14;
     const backendRowLimit = 2001;
+    const requestedRowCount = (request: {
+      start: string;
+      stop: string;
+      step: string;
+    }) => {
+      const start = Number(request.start);
+      const stop = Number(request.stop);
+      const step = Number(request.step);
+      const gridRows = Math.floor((stop - start) / step) + 1;
+      const lastGridIncome =
+        Math.round((start + (gridRows - 1) * step) * 100) / 100;
+      return gridRows + (lastGridIncome === stop ? 0 : 1);
+    };
     localStorage.setItem("taxExplorer.dependentCount", "1");
     localStorage.setItem("taxExplorer.secondaryIncomeThousands", "186.5");
     mockFetchTaxParameters.mockImplementation(async (_year, filingStatus) =>
@@ -777,17 +790,11 @@ describe("App tax curve controls", () => {
         : singleParameters
     );
     mockFetchIncomeSeries.mockImplementation(async (request) => {
-      if (request.filingStatus === "married_joint") {
-        const start = Number(request.start);
-        const stop = Number(request.stop);
-        const step = Number(request.step);
-        const gridRows = Math.floor((stop - start) / step) + 1;
-        const lastGridIncome =
-          Math.round((start + (gridRows - 1) * step) * 100) / 100;
-        const stopRows = lastGridIncome === stop ? 0 : 1;
-        if (gridRows + stopRows + backendBreakpointRows > backendRowLimit) {
-          throw new Error("income-series supports at most 2001 rows");
-        }
+      if (
+        request.filingStatus === "married_joint" &&
+        requestedRowCount(request) + backendBreakpointRows > backendRowLimit
+      ) {
+        throw new Error("income-series supports at most 2001 rows");
       }
       return incomeSeries(
         request.filingStatus,
@@ -807,16 +814,9 @@ describe("App tax curve controls", () => {
         .map(([request]) => request)
         .find((request) => request.filingStatus === "married_joint");
       expect(marriedRequest).toBeDefined();
-      const start = Number(marriedRequest?.start);
-      const stop = Number(marriedRequest?.stop);
-      const step = Number(marriedRequest?.step);
-      const gridRows = Math.floor((stop - start) / step) + 1;
-      const lastGridIncome =
-        Math.round((start + (gridRows - 1) * step) * 100) / 100;
-      const stopRows = lastGridIncome === stop ? 0 : 1;
-      expect(gridRows + stopRows + backendBreakpointRows).toBeLessThanOrEqual(
-        backendRowLimit
-      );
+      expect(
+        requestedRowCount(marriedRequest!) + backendBreakpointRows
+      ).toBeLessThanOrEqual(backendRowLimit);
     });
     expect(
       screen.queryByText("income-series supports at most 2001 rows")
