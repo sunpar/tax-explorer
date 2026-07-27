@@ -115,6 +115,8 @@ const DEFAULT_STEP_DOLLARS = 10000;
 const MAX_MONEY_NUMBER = 1e26;
 const MAX_AUTOMATIC_STOP = MAX_MONEY_NUMBER * (1 - Number.EPSILON);
 const MAX_INCOME_SERIES_ROWS = 2001;
+const DECIMAL_INPUT_PATTERN =
+  /^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/;
 // The backend's exact solver can discover transitions missed by this browser-side
 // breakpoint estimate, so automatic requests keep a small row cushion.
 const BACKEND_BREAKPOINT_ROW_RESERVE = 32;
@@ -210,6 +212,55 @@ function dollarsToThousands(value: string | number): string {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "0";
   return trimTrailingZeros((amount / 1000).toFixed(3));
+}
+
+function decimalInputIsGreater(left: string, right: string): boolean {
+  function normalizedDecimal(value: string) {
+    const trimmedValue = value.trim();
+    if (!Number.isFinite(Number(trimmedValue))) return null;
+    const match = DECIMAL_INPUT_PATTERN.exec(trimmedValue);
+    if (!match) return null;
+
+    const fractionalPart = match[3] ?? match[4] ?? "";
+    const digits = `${match[2] ?? ""}${fractionalPart}`.replace(/^0+/, "");
+    if (digits === "") {
+      return { digits: "0", negative: false, scale: 0n };
+    }
+    return {
+      digits,
+      negative: match[1] === "-",
+      scale: BigInt(match[5] ?? "0") - BigInt(fractionalPart.length)
+    };
+  }
+
+  const normalizedLeft = normalizedDecimal(left);
+  const normalizedRight = normalizedDecimal(right);
+  if (!normalizedLeft || !normalizedRight) return false;
+  if (normalizedLeft.negative !== normalizedRight.negative) {
+    return !normalizedLeft.negative;
+  }
+  if (normalizedLeft.digits === "0" || normalizedRight.digits === "0") {
+    return normalizedLeft.digits !== "0";
+  }
+
+  const leftOrder = BigInt(normalizedLeft.digits.length) + normalizedLeft.scale;
+  const rightOrder =
+    BigInt(normalizedRight.digits.length) + normalizedRight.scale;
+  let absoluteComparison: number;
+  if (leftOrder !== rightOrder) {
+    absoluteComparison = leftOrder > rightOrder ? 1 : -1;
+  } else {
+    const comparisonLength = Math.max(
+      normalizedLeft.digits.length,
+      normalizedRight.digits.length
+    );
+    const leftDigits = normalizedLeft.digits.padEnd(comparisonLength, "0");
+    const rightDigits = normalizedRight.digits.padEnd(comparisonLength, "0");
+    absoluteComparison = leftDigits === rightDigits ? 0 : leftDigits > rightDigits ? 1 : -1;
+  }
+  return normalizedLeft.negative
+    ? absoluteComparison < 0
+    : absoluteComparison > 0;
 }
 
 function nonNegativeDollarsFromThousands(value: string): number | null {
@@ -1221,6 +1272,10 @@ function App() {
         ? effectiveStop
         : thousandsToDollars(nextDefaultStopThousands);
       const resolvedStop = clampStopDollarsAtStart(start, requestedStop);
+      const resolvedAutomaticStopThousands =
+        decimalInputIsGreater(startThousands, nextDefaultStopThousands)
+          ? startThousands
+          : nextDefaultStopThousands;
       const resolvedStep = hasCustomStep
         ? Number(validStep)
         : defaultSeriesStep(
@@ -1266,8 +1321,11 @@ function App() {
       };
 
       if (cancelled) return;
-      if (!hasCustomStop && stopThousands !== nextDefaultStopThousands) {
-        setStopThousands(nextDefaultStopThousands);
+      if (
+        !hasCustomStop &&
+        stopThousands !== resolvedAutomaticStopThousands
+      ) {
+        setStopThousands(resolvedAutomaticStopThousands);
       }
       const nextDefaultStepThousands = dollarsToThousands(resolvedStep);
       if (!hasCustomStep && stepThousands !== nextDefaultStepThousands) {
@@ -1397,6 +1455,7 @@ function App() {
     filingStatus,
     selectedFilingStatus?.label,
     start,
+    startThousands,
     stop,
     effectiveStop,
     step,
