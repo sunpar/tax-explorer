@@ -1343,6 +1343,18 @@ def test_build_income_series_rejects_unroundable_money_inputs(field, kwargs):
         build_income_series(**kwargs)
 
 
+def test_build_income_series_allows_a_terminal_row_at_the_money_ceiling():
+    maximum_income = money("99999999999999999999999999.99")
+
+    rows = build_income_series(
+        start=maximum_income,
+        stop=maximum_income,
+        step=money("1.00"),
+    )
+
+    assert [row.gross_income for row in rows] == [maximum_income]
+
+
 def test_build_income_series_rejects_excessive_row_count():
     with pytest.raises(ValueError, match="at most 2001 rows"):
         build_income_series(start=0, stop=2001000, step=1000)

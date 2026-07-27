@@ -436,6 +436,8 @@ def calculate_income_series(
 
     while current <= stop_amount:
         add_income(current)
+        if step_amount > stop_amount - current:
+            break
         current = _money(current + step_amount)
 
     if include_marginal_breakpoints:

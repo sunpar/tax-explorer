@@ -697,6 +697,29 @@ def test_cli_accepts_year_filing_status_and_secondary_income(monkeypatch, tmp_pa
     assert row["employee_social_security_tax"] == "18178.40"
 
 
+def test_cli_allows_a_terminal_row_at_the_money_ceiling(monkeypatch, tmp_path):
+    output = io.StringIO()
+    monkeypatch.setattr("sys.stdout", output)
+    maximum_income = "99999999999999999999999999.99"
+
+    result = main(
+        [
+            "--start",
+            maximum_income,
+            "--stop",
+            maximum_income,
+            "--step",
+            "1",
+            "--database-path",
+            str(tmp_path / "tax.sqlite3"),
+        ]
+    )
+
+    rows = list(csv.DictReader(io.StringIO(output.getvalue())))
+    assert result == 0
+    assert [row["gross_income"] for row in rows] == [maximum_income]
+
+
 def test_cli_can_include_marginal_breakpoint_rows(monkeypatch, tmp_path):
     output = io.StringIO()
     monkeypatch.setattr("sys.stdout", output)
