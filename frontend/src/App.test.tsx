@@ -1808,6 +1808,131 @@ describe("App tax curve controls", () => {
     );
   });
 
+  test("does not show the prior scenario while its replacement is pending", async () => {
+    await renderLoadedApp();
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "120000" }
+    });
+
+    const summaryStrip = screen
+      .getByText("Gross income")
+      .closest(".summary-strip");
+    expect(summaryStrip).not.toBeNull();
+    const federalIncomeTaxMetric = within(summaryStrip as HTMLElement)
+      .getByText("Federal income tax")
+      .closest(".metric");
+    expect(federalIncomeTaxMetric).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        within(federalIncomeTaxMetric as HTMLElement).getByText("$12,000")
+      ).toBeInTheDocument()
+    );
+
+    const pendingSeries = deferred<IncomeSeriesResponse>();
+    const pendingCalculation = deferred<TaxBurden>();
+    mockFetchIncomeSeries.mockReturnValueOnce(pendingSeries.promise);
+    mockFetchTaxBurden.mockReturnValueOnce(pendingCalculation.promise);
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({ filingStatus: "married_joint" })
+      )
+    );
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filingStatus: "married_joint",
+          grossIncome: "120000"
+        })
+      )
+    );
+    expect(
+      within(federalIncomeTaxMetric as HTMLElement).getByText("-")
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      pendingCalculation.resolve(taxBurden(120000, "married_joint"));
+    });
+    await waitFor(() =>
+      expect(
+        within(federalIncomeTaxMetric as HTMLElement).getByText("$9,000")
+      ).toBeInTheDocument()
+    );
+    const deductionUsage = screen.getByRole("region", {
+      name: "Deduction usage details"
+    });
+    expect(
+      within(deductionUsage).queryByText("Total pre-tax")
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      pendingSeries.resolve(incomeSeries("married_joint"));
+    });
+    await waitFor(() =>
+      expect(
+        within(deductionUsage).getByText("Total pre-tax")
+      ).toBeInTheDocument()
+    );
+  });
+
+  test("does not show sampled rows from the prior scenario", async () => {
+    await renderLoadedApp();
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "100000" }
+    });
+
+    const summaryStrip = screen
+      .getByText("Gross income")
+      .closest(".summary-strip");
+    expect(summaryStrip).not.toBeNull();
+    const federalIncomeTaxMetric = within(summaryStrip as HTMLElement)
+      .getByText("Federal income tax")
+      .closest(".metric");
+    expect(federalIncomeTaxMetric).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        within(federalIncomeTaxMetric as HTMLElement).getByText("$10,000")
+      ).toBeInTheDocument()
+    );
+
+    const pendingSeries = deferred<IncomeSeriesResponse>();
+    const pendingCalculation = deferred<TaxBurden>();
+    mockFetchIncomeSeries.mockReturnValueOnce(pendingSeries.promise);
+    mockFetchTaxBurden.mockReturnValueOnce(pendingCalculation.promise);
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+
+    await waitFor(() =>
+      expect(mockFetchIncomeSeries).toHaveBeenCalledWith(
+        expect.objectContaining({ filingStatus: "married_joint" })
+      )
+    );
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filingStatus: "married_joint",
+          grossIncome: "100000"
+        })
+      )
+    );
+    expect(
+      within(federalIncomeTaxMetric as HTMLElement).getByText("-")
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      pendingSeries.resolve(incomeSeries("married_joint"));
+    });
+    await waitFor(() =>
+      expect(
+        within(federalIncomeTaxMetric as HTMLElement).getByText("$7,500")
+      ).toBeInTheDocument()
+    );
+
+    await act(async () => {
+      pendingCalculation.resolve(taxBurden(100000, "married_joint"));
+    });
+  });
+
   test("does not treat a precision-colliding sampled income as exact", async () => {
     const highIncome = 5e25;
     const collidingIncome = "50000000000000000000000000.01";

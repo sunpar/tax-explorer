@@ -60,6 +60,11 @@ type CurveSeries = {
   rows: ChartRow[];
 };
 
+type ContextualTaxBurden = {
+  contextKey: string;
+  burden: TaxBurden;
+};
+
 type ComparisonChartPoint = {
   incomeNumber: number;
 } & Record<string, number | null>;
@@ -1081,7 +1086,9 @@ function App() {
   >([]);
   const [hasMarginalBreakpointMetadata, setHasMarginalBreakpointMetadata] =
     useState(true);
-  const [selectedBurden, setSelectedBurden] = useState<TaxBurden | null>(null);
+  const [rowsContextKey, setRowsContextKey] = useState<string | null>(null);
+  const [selectedBurdenResult, setSelectedBurdenResult] =
+    useState<ContextualTaxBurden | null>(null);
   const [comparisonSeries, setComparisonSeries] = useState<CurveSeries[]>([]);
   const [loading, setLoading] = useState(true);
   const [taxYearDiscoveryError, setTaxYearDiscoveryError] = useState<
@@ -1147,6 +1154,14 @@ function App() {
   const primaryIncome = Math.max(0, selectedIncome - secondaryIncome);
   const activeSecondaryIncome = Math.min(secondaryIncome, selectedIncome);
   const secondaryIncomeRequest = String(activeSecondaryIncome);
+  const taxResultContextKey = JSON.stringify([
+    year,
+    filingStatus,
+    includeEmployer,
+    pretaxDeductionMode,
+    dependentCount,
+    secondaryIncomeRequest
+  ]);
   const selectedFilingStatus = filingStatuses.find(
     (status) => status.code === filingStatus
   );
@@ -1223,9 +1238,10 @@ function App() {
           setLoadedFilingStatusesYear(null);
           setParameters(null);
           setRows([]);
+          setRowsContextKey(null);
           setMarginalBreakpointIncomes([]);
           setHasMarginalBreakpointMetadata(true);
-          setSelectedBurden(null);
+          setSelectedBurdenResult(null);
           setComparisonSeries([]);
           setLoading(false);
         }
@@ -1334,6 +1350,7 @@ function App() {
       selectedScenarioFailedRef.current = false;
       setParameters(nextParameters);
       setRows(selectedSeries.rows);
+      setRowsContextKey(taxResultContextKey);
       setMarginalBreakpointIncomes(
         selectedSeries.marginal_breakpoint_incomes
       );
@@ -1437,9 +1454,10 @@ function App() {
         selectedScenarioFailedRef.current = true;
         setParameters(null);
         setRows([]);
+        setRowsContextKey(null);
         setMarginalBreakpointIncomes([]);
         setHasMarginalBreakpointMetadata(true);
-        setSelectedBurden(null);
+        setSelectedBurdenResult(null);
         setComparisonSeries([]);
         setScenarioError(nextError.message);
       })
@@ -1472,7 +1490,8 @@ function App() {
     taxYears,
     filingStatuses,
     isSelectedStatusReady,
-    filingStatusLoadFailedForYear
+    filingStatusLoadFailedForYear,
+    taxResultContextKey
   ]);
 
   useEffect(() => {
@@ -1495,13 +1514,16 @@ function App() {
     })
       .then((burden) => {
         if (!cancelled && !selectedScenarioFailedRef.current) {
-          setSelectedBurden(burden);
+          setSelectedBurdenResult({
+            contextKey: taxResultContextKey,
+            burden
+          });
           setSelectedIncomeError(null);
         }
       })
       .catch((nextError: Error) => {
         if (cancelled || selectedScenarioFailedRef.current) return;
-        setSelectedBurden(null);
+        setSelectedBurdenResult(null);
         setSelectedIncomeError(nextError.message);
       });
 
@@ -1516,7 +1538,8 @@ function App() {
     pretaxDeductionMode,
     dependentCount,
     secondaryIncomeRequest,
-    isSelectedStatusReady
+    isSelectedStatusReady,
+    taxResultContextKey
   ]);
 
   const chartRows = useMemo<ChartRow[]>(() => {
@@ -1553,20 +1576,37 @@ function App() {
   const selectedRow = useMemo(() => {
     const selectedIncomeRequest = String(selectedIncome);
     if (
-      selectedBurden &&
+      selectedBurdenResult?.contextKey === taxResultContextKey &&
       moneyAmountMatchesRequest(
-        selectedBurden.gross_income,
+        selectedBurdenResult.burden.gross_income,
         selectedIncomeRequest
       )
     ) {
-      return buildChartRows([selectedBurden], includeEmployer)[0];
+      return buildChartRows(
+        [selectedBurdenResult.burden],
+        includeEmployer
+      )[0];
     }
+    if (rowsContextKey !== taxResultContextKey) return undefined;
     return chartRows.find((row) =>
       moneyAmountMatchesRequest(row.gross_income, selectedIncomeRequest)
     );
-  }, [chartRows, includeEmployer, selectedBurden, selectedIncome]);
+  }, [
+    chartRows,
+    includeEmployer,
+    rowsContextKey,
+    selectedBurdenResult,
+    selectedIncome,
+    taxResultContextKey
+  ]);
   const selectedDeductionUsage = useMemo(() => {
-    if (!selectedRow || !parameters) return [];
+    if (
+      !selectedRow ||
+      !parameters ||
+      rowsContextKey !== taxResultContextKey
+    ) {
+      return [];
+    }
     const caps = pretaxDeductionCaps(
       parameters,
       dependentCount,
@@ -1600,7 +1640,14 @@ function App() {
         )} max)`
       }
     ] satisfies DeductionUsageItem[];
-  }, [dependentCount, parameters, secondaryIncome, selectedRow]);
+  }, [
+    dependentCount,
+    parameters,
+    rowsContextKey,
+    secondaryIncome,
+    selectedRow,
+    taxResultContextKey
+  ]);
 
   const tableRows = useMemo(() => {
     const startAmount = Number(start) || 0;
