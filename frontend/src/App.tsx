@@ -22,7 +22,8 @@ import {
   fetchFilingStatuses,
   fetchIncomeSeries,
   fetchTaxParameters,
-  fetchTaxYears
+  fetchTaxYears,
+  moneyAmountMatchesRequest
 } from "./api";
 import type { FilingStatus, TaxBurden, TaxParameters } from "./types";
 
@@ -931,16 +932,6 @@ function formatCapUsage(
   return `${formatPercentValue(usage)} of ${toCurrency(capNumber)} max`;
 }
 
-function nearestRow(rows: ChartRow[], income: number): ChartRow | undefined {
-  return rows.reduce<ChartRow | undefined>((nearest, row) => {
-    if (!nearest) return row;
-    return Math.abs(row.incomeNumber - income) <
-      Math.abs(nearest.incomeNumber - income)
-      ? row
-      : nearest;
-  }, undefined);
-}
-
 function readClickedIncome(state: unknown): number | null {
   if (!state || typeof state !== "object") return null;
   const chartState = state as ChartClickState;
@@ -1501,8 +1492,19 @@ function App() {
   ]);
 
   const selectedRow = useMemo(() => {
-    if (selectedBurden) return buildChartRows([selectedBurden], includeEmployer)[0];
-    return nearestRow(chartRows, selectedIncome);
+    const selectedIncomeRequest = String(selectedIncome);
+    if (
+      selectedBurden &&
+      moneyAmountMatchesRequest(
+        selectedBurden.gross_income,
+        selectedIncomeRequest
+      )
+    ) {
+      return buildChartRows([selectedBurden], includeEmployer)[0];
+    }
+    return chartRows.find((row) =>
+      moneyAmountMatchesRequest(row.gross_income, selectedIncomeRequest)
+    );
   }, [chartRows, includeEmployer, selectedBurden, selectedIncome]);
   const selectedDeductionUsage = useMemo(() => {
     if (!selectedRow || !parameters) return [];

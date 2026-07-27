@@ -24,13 +24,17 @@ import {
   fetchTaxYears
 } from "./api";
 
-vi.mock("./api", () => ({
-  fetchTaxBurden: vi.fn(),
-  fetchFilingStatuses: vi.fn(),
-  fetchIncomeSeries: vi.fn(),
-  fetchTaxParameters: vi.fn(),
-  fetchTaxYears: vi.fn()
-}));
+vi.mock("./api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./api")>();
+  return {
+    ...actual,
+    fetchTaxBurden: vi.fn(),
+    fetchFilingStatuses: vi.fn(),
+    fetchIncomeSeries: vi.fn(),
+    fetchTaxParameters: vi.fn(),
+    fetchTaxYears: vi.fn()
+  };
+});
 
 vi.mock("recharts", async () => {
   const ReactModule = await import("react");
@@ -1622,6 +1626,86 @@ describe("App tax curve controls", () => {
     await waitFor(() =>
       expect(screen.queryByText(selectedIncomeError)).not.toBeInTheDocument()
     );
+  });
+
+  test("does not show a sampled row after an exact income calculation fails", async () => {
+    await renderLoadedApp();
+    const selectedIncomeError = "exact calculation unavailable";
+    mockFetchTaxBurden.mockRejectedValueOnce(new Error(selectedIncomeError));
+
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "120000" }
+    });
+
+    expect(await screen.findByText(selectedIncomeError)).toBeInTheDocument();
+    const grossIncomeMetric = screen.getByText("Gross income").closest(".metric");
+    expect(grossIncomeMetric).not.toBeNull();
+    expect(
+      within(grossIncomeMetric as HTMLElement).getByText("-")
+    ).toBeInTheDocument();
+  });
+
+  test("does not show a stale result while an exact income calculation is pending", async () => {
+    await renderLoadedApp();
+    const pendingCalculation = deferred<TaxBurden>();
+    mockFetchTaxBurden.mockReturnValueOnce(pendingCalculation.promise);
+
+    fireEvent.change(screen.getByLabelText(/Selected income/), {
+      target: { value: "120000" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({ grossIncome: "120000" })
+      )
+    );
+    const grossIncomeMetric = screen.getByText("Gross income").closest(".metric");
+    expect(grossIncomeMetric).not.toBeNull();
+    expect(
+      within(grossIncomeMetric as HTMLElement).getByText("-")
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      pendingCalculation.resolve(taxBurden(120000, "single"));
+    });
+    await waitFor(() =>
+      expect(
+        within(grossIncomeMetric as HTMLElement).getByText("$120,000")
+      ).toBeInTheDocument()
+    );
+  });
+
+  test("does not treat a precision-colliding sampled income as exact", async () => {
+    const highIncome = 5e25;
+    const collidingIncome = "50000000000000000000000000.01";
+    mockFetchIncomeSeries.mockResolvedValue({
+      rows: [
+        {
+          ...taxBurden(highIncome, "single"),
+          gross_income: collidingIncome
+        }
+      ],
+      marginal_breakpoint_incomes: [collidingIncome],
+      has_marginal_breakpoint_metadata: true
+    });
+    render(<App />);
+    await screen.findByRole("heading", { name: "Tax Burden Curve" });
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Selected income/)).toHaveValue("3000000")
+    );
+    const selectedIncomeError = "high-value calculation unavailable";
+    mockFetchTaxBurden.mockRejectedValueOnce(new Error(selectedIncomeError));
+    const highIncomeClick = new MouseEvent("click", { bubbles: true });
+    Object.defineProperty(highIncomeClick, "detail", { value: highIncome });
+
+    fireEvent(screen.getByTestId("chart"), highIncomeClick);
+
+    expect(await screen.findByText(selectedIncomeError)).toBeInTheDocument();
+    const grossIncomeMetric = screen.getByText("Gross income").closest(".metric");
+    expect(grossIncomeMetric).not.toBeNull();
+    expect(
+      within(grossIncomeMetric as HTMLElement).getByText("-")
+    ).toBeInTheDocument();
   });
 
   test("keeps scenario loading errors visible after selected income recovery", async () => {
