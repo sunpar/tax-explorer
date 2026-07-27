@@ -116,9 +116,11 @@ vi.mock("recharts", async () => {
         {
           "data-testid": "chart",
           "data-chart-data": JSON.stringify(data),
-          onClick: () =>
+          onClick: (event: { detail?: number }) =>
             onClick?.({
-              activePayload: [{ payload: { incomeNumber: 50000 } }]
+              activePayload: [
+                { payload: { incomeNumber: event.detail || 50000 } }
+              ]
             })
         },
         renderTooltip(children, data)
@@ -632,6 +634,7 @@ describe("App tax curve controls", () => {
     const highIncomeStart = 2132770177.73;
     const adjacentGridIncome = 2132771177.74;
     const highIncomeBreakpoint = 2132771177.75;
+    const explicitHighChartIncome = Math.floor(highIncomeBreakpoint);
     const highIncomeStop = highIncomeBreakpoint + 1000;
     mockFetchTaxParameters.mockResolvedValue(highIncomeParameters);
     mockFetchIncomeSeries.mockImplementation(async (request) => {
@@ -664,6 +667,39 @@ describe("App tax curve controls", () => {
       ) + 1;
     expect(Number(initialSeriesRequest.step)).toBeGreaterThan(10000);
     expect(initialGridRows).toBeLessThan(2001);
+    const selectedIncome = screen.getByLabelText(/Selected income/);
+    await waitFor(() => expect(selectedIncome).toHaveValue("10000000"));
+    expect(selectedIncome).toHaveAttribute("max", "10000000");
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({ grossIncome: "10000000" })
+      )
+    );
+
+    fireEvent.click(screen.getByTestId("chart"), {
+      detail: explicitHighChartIncome
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grossIncome: String(explicitHighChartIncome)
+        })
+      )
+    );
+    expect(selectedIncome).toHaveAttribute("max", String(explicitHighChartIncome));
+
+    fireEvent.change(selectedIncome, {
+      target: { value: "9000000" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({ grossIncome: "9000000" })
+      )
+    );
+    expect(selectedIncome).toHaveAttribute("max", String(explicitHighChartIncome));
+
     fireEvent.change(screen.getByLabelText("Stop ($k)"), {
       target: { value: String(highIncomeStop / 1000) }
     });
@@ -1362,6 +1398,125 @@ describe("App tax curve controls", () => {
     );
     expect(screen.getByLabelText(/Selected income/)).toHaveValue("3000000");
     expect(screen.getAllByText("$3,000,000").length).toBeGreaterThan(0);
+  });
+
+  test("selected income slider expands to a higher chart stop", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "4000" }
+    });
+
+    const selectedIncome = screen.getByLabelText(/Selected income/);
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+
+    fireEvent.change(selectedIncome, {
+      target: { value: "4000000" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grossIncome: "4000000"
+        })
+      )
+    );
+    expect(selectedIncome).toHaveValue("4000000");
+    expect(screen.getAllByText("$4,000,000").length).toBeGreaterThan(0);
+  });
+
+  test("selected income slider keeps a valid range above its default maximum", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Start ($k)"), {
+      target: { value: "4000" }
+    });
+
+    const selectedIncome = screen.getByLabelText(/Selected income/);
+    await waitFor(() => expect(selectedIncome).toHaveValue("4000000"));
+    expect(selectedIncome).toHaveAttribute("min", "4000000");
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+  });
+
+  test("selected income slider preserves a higher income-input ceiling", async () => {
+    await renderLoadedApp();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Married filing jointly" }));
+    const income1 = await screen.findByLabelText("Income 1 ($k)");
+    const income2 = screen.getByLabelText("Income 2 ($k)");
+    fireEvent.change(income1, { target: { value: "2500" } });
+    fireEvent.change(income2, { target: { value: "1500" } });
+
+    const selectedIncome = screen.getByLabelText(/Selected income/);
+    await waitFor(() => expect(selectedIncome).toHaveValue("4000000"));
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+
+    fireEvent.change(selectedIncome, {
+      target: { value: "3500000" }
+    });
+
+    await waitFor(() =>
+      expect(mockFetchTaxBurden).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grossIncome: "3500000"
+        })
+      )
+    );
+    expect(selectedIncome).toHaveValue("3500000");
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+  });
+
+  test("selected income slider caps expansion for extreme chart stops", async () => {
+    await renderLoadedApp();
+
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "100000" }
+    });
+
+    expect(screen.getByLabelText("Stop ($k)")).toHaveValue(100000);
+    expect(screen.getByLabelText(/Selected income/)).toHaveAttribute(
+      "max",
+      "10000000"
+    );
+  });
+
+  test("selected income slider resets an explicit high ceiling with the range", async () => {
+    await renderLoadedApp();
+
+    fireEvent.click(screen.getByTestId("chart"), { detail: 4000000 });
+    const selectedIncome = screen.getByLabelText(/Selected income/);
+    await waitFor(() => expect(selectedIncome).toHaveValue("4000000"));
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+
+    fireEvent.change(selectedIncome, { target: { value: "2000000" } });
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+
+    fireEvent.change(screen.getByLabelText("Stop ($k)"), {
+      target: { value: "1000" }
+    });
+
+    await waitFor(() => expect(selectedIncome).toHaveValue("1000000"));
+    expect(selectedIncome).toHaveAttribute("max", "3000000");
+  });
+
+  test("selected income slider resets an explicit high ceiling with the series step", async () => {
+    await renderLoadedApp();
+
+    fireEvent.click(screen.getByTestId("chart"), { detail: 4000000 });
+    const selectedIncome = screen.getByLabelText(/Selected income/);
+    await waitFor(() => expect(selectedIncome).toHaveValue("4000000"));
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+
+    fireEvent.change(selectedIncome, { target: { value: "2000000" } });
+    expect(selectedIncome).toHaveAttribute("max", "4000000");
+
+    fireEvent.change(screen.getByLabelText("Step ($k)"), {
+      target: { value: "20" }
+    });
+
+    await waitFor(() =>
+      expect(selectedIncome).toHaveAttribute("max", "3000000")
+    );
   });
 
   test("clears selected income calculation errors after a successful retry", async () => {

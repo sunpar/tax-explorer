@@ -107,7 +107,8 @@ const DEPENDENT_COUNT_STORAGE_KEY = "taxExplorer.dependentCount";
 const PRIMARY_INCOME_STORAGE_KEY = "taxExplorer.primaryIncomeThousands";
 const SECONDARY_INCOME_STORAGE_KEY = "taxExplorer.secondaryIncomeThousands";
 const DEFAULT_TAX_YEAR = 2026;
-const SELECTED_INCOME_MAX = 3000000;
+const SELECTED_INCOME_MAX_FLOOR = 3000000;
+const SELECTED_INCOME_LINEAR_RANGE_LIMIT = 10000000;
 const DEFAULT_STEP_THOUSANDS = "10";
 const DEFAULT_STEP_DOLLARS = 10000;
 const MAX_MONEY_NUMBER = 1e26;
@@ -999,6 +1000,8 @@ function App() {
   const [stepThousands, setStepThousands] = useState(DEFAULT_STEP_THOUSANDS);
   const [hasCustomStep, setHasCustomStep] = useState(false);
   const [selectedIncome, setSelectedIncome] = useState(100000);
+  const [explicitSelectedIncomeCeiling, setExplicitSelectedIncomeCeiling] =
+    useState<{ contextKey: string; maximum: number } | null>(null);
   const [hasCustomSelectedIncome, setHasCustomSelectedIncome] = useState(false);
   const hasCustomSelectedIncomeRef = useRef(false);
   const stopEditCollapseAnchorRef = useRef<{
@@ -1051,6 +1054,48 @@ function App() {
   );
   const secondaryIncome =
     filingStatus === "married_joint" ? Math.max(0, rawSecondaryIncome) : 0;
+  const configuredPrimaryIncome = Number(
+    thousandsToDollars(storedPrimaryIncomeThousands ?? "0")
+  );
+  const configuredIncomeSplitTotal =
+    filingStatus === "married_joint"
+      ? Math.max(0, configuredPrimaryIncome) + secondaryIncome
+      : 0;
+  const selectedIncomeCeilingContextKey = JSON.stringify([
+    year,
+    filingStatus,
+    start,
+    effectiveStop,
+    step,
+    hasCustomStop,
+    hasCustomStep,
+    includeEmployer,
+    pretaxDeductionMode,
+    dependentCount,
+    secondaryIncome,
+    storedPrimaryIncomeThousands,
+    compareFilingStatuses,
+    compareTaxYears
+  ]);
+  const explicitSelectedIncomeMax =
+    explicitSelectedIncomeCeiling?.contextKey ===
+    selectedIncomeCeilingContextKey
+      ? explicitSelectedIncomeCeiling.maximum
+      : 0;
+  const automaticSelectedIncomeMax = Math.max(
+    SELECTED_INCOME_MAX_FLOOR,
+    Math.min(
+      Number(effectiveStop) || 0,
+      SELECTED_INCOME_LINEAR_RANGE_LIMIT
+    ),
+    Number(start) || 0,
+    configuredIncomeSplitTotal
+  );
+  const selectedIncomeMax = Math.max(
+    automaticSelectedIncomeMax,
+    explicitSelectedIncomeMax,
+    selectedIncome
+  );
   const primaryIncome = Math.max(0, selectedIncome - secondaryIncome);
   const activeSecondaryIncome = Math.min(secondaryIncome, selectedIncome);
   const secondaryIncomeRequest = String(activeSecondaryIncome);
@@ -1511,11 +1556,15 @@ function App() {
     () => sampledIncomeOptions.filter((income) => income > 0),
     [sampledIncomeOptions]
   );
-  const defaultSelectedIncome =
+  const defaultSampledIncome =
     sampledIncomeOptions.length > 0
       ? (sampledIncomeOptions.filter((income) => income > 0).pop() ??
         sampledIncomeOptions[sampledIncomeOptions.length - 1])
       : undefined;
+  const defaultSelectedIncome =
+    defaultSampledIncome === undefined
+      ? undefined
+      : Math.min(defaultSampledIncome, automaticSelectedIncomeMax);
 
   useEffect(() => {
     if (
@@ -1646,6 +1695,13 @@ function App() {
     if (income !== null) {
       stopEditCollapseAnchorRef.current = null;
       markCustomSelectedIncome();
+      setExplicitSelectedIncomeCeiling((currentCeiling) => ({
+        contextKey: selectedIncomeCeilingContextKey,
+        maximum:
+          currentCeiling?.contextKey === selectedIncomeCeilingContextKey
+            ? Math.max(currentCeiling.maximum, income)
+            : income
+      }));
       setSelectedIncome(income);
     }
   };
@@ -1936,7 +1992,7 @@ function App() {
             <input
               type="range"
               min={Number(start) || 0}
-              max={SELECTED_INCOME_MAX}
+              max={selectedIncomeMax}
               step={1}
               value={selectedIncome}
               onChange={(event) => {
