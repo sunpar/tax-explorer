@@ -1462,6 +1462,35 @@ def test_calculate_response_breaks_tax_down_by_component(tmp_path):
     ]
 
 
+def test_calculate_breakdown_keeps_enabled_zero_employer_components(tmp_path):
+    client = create_test_client(tmp_path)
+
+    response = client.post(
+        "/api/calculate",
+        json={
+            "year": 2026,
+            "filing_status": "single",
+            "gross_income": "0",
+            "include_employer_payroll_tax": True,
+        },
+    )
+
+    assert response.status_code == 200
+    employer_components = response.json()["tax_breakdown"][-2:]
+    assert employer_components == [
+        {
+            "code": "employer_social_security_tax",
+            "label": "Employer Social Security tax",
+            "amount": "0.00",
+        },
+        {
+            "code": "employer_medicare_tax",
+            "label": "Employer Medicare tax",
+            "amount": "0.00",
+        },
+    ]
+
+
 def test_returns_income_series_from_database_parameters(tmp_path):
     client = create_test_client(tmp_path)
 
@@ -2133,6 +2162,39 @@ def test_income_series_breakdown_includes_employer_components_when_selected(
             "code": "employer_medicare_tax",
             "label": "Employer Medicare tax",
             "amount": "1400.70",
+        },
+    ]
+
+
+def test_income_series_breakdown_keeps_enabled_zero_employer_components(
+    tmp_path,
+):
+    client = create_test_client(tmp_path)
+
+    response = client.get(
+        "/api/income-series",
+        params={
+            "year": 2026,
+            "filing_status": "single",
+            "start": "0",
+            "stop": "0",
+            "step": "1",
+            "include_employer_payroll_tax": True,
+        },
+    )
+
+    assert response.status_code == 200
+    employer_components = response.json()["rows"][0]["tax_breakdown"][-2:]
+    assert employer_components == [
+        {
+            "code": "employer_social_security_tax",
+            "label": "Employer Social Security tax",
+            "amount": "0.00",
+        },
+        {
+            "code": "employer_medicare_tax",
+            "label": "Employer Medicare tax",
+            "amount": "0.00",
         },
     ]
 
