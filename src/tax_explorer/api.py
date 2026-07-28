@@ -284,7 +284,12 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return TaxBurdenResponse(**_tax_burden_to_response(result))
+        return TaxBurdenResponse(
+            **_tax_burden_to_response(
+                result,
+                include_employer_payroll_tax=request.include_employer_payroll_tax,
+            )
+        )
 
     @app.get("/api/income-series")
     def income_series(
@@ -336,7 +341,13 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
         return IncomeSeriesResponse(
-            rows=[_tax_burden_to_response(row) for row in series.rows],
+            rows=[
+                _tax_burden_to_response(
+                    row,
+                    include_employer_payroll_tax=include_employer_payroll_tax,
+                )
+                for row in series.rows
+            ],
             marginal_breakpoint_incomes=[
                 _decimal_to_string(income)
                 for income in series.marginal_breakpoint_incomes
@@ -483,16 +494,23 @@ def _dataclass_to_response(parameters: Any) -> dict[str, Any]:
     }
 
 
-def _tax_burden_to_response(result: TaxBurden) -> dict[str, Any]:
+def _tax_burden_to_response(
+    result: TaxBurden, *, include_employer_payroll_tax: bool
+) -> dict[str, Any]:
     response = {
         key: _value_to_response(value)
         for key, value in asdict(result).items()
     }
-    response["tax_breakdown"] = _tax_breakdown_to_response(result)
+    response["tax_breakdown"] = _tax_breakdown_to_response(
+        result,
+        include_employer_payroll_tax=include_employer_payroll_tax,
+    )
     return response
 
 
-def _tax_breakdown_to_response(result: TaxBurden) -> list[dict[str, str]]:
+def _tax_breakdown_to_response(
+    result: TaxBurden, *, include_employer_payroll_tax: bool
+) -> list[dict[str, str]]:
     components = [
         ("federal_income_tax", "Federal income tax", result.federal_income_tax),
         (
@@ -507,7 +525,7 @@ def _tax_breakdown_to_response(result: TaxBurden) -> list[dict[str, str]]:
             result.employee_additional_medicare_tax,
         ),
     ]
-    if result.total_employer_payroll_tax > Decimal("0"):
+    if include_employer_payroll_tax:
         components.extend(
             [
                 (
